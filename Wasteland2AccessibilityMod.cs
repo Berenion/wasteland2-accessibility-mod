@@ -21,6 +21,11 @@ namespace Wasteland2AccessibilityMod
         internal static float lastSliderAnnounceTime = 0f;
         internal const float SLIDER_DEBOUNCE_TIME = 0.3f; // Wait 300ms before announcing
 
+        // Tooltip deduplication - prevent double announcements
+        internal static string lastTooltipText = "";
+        internal static float lastTooltipTime = 0f;
+        internal const float TOOLTIP_DEBOUNCE_TIME = 0.5f; // Prevent same tooltip within 500ms
+
         public override void OnInitializeMelon()
         {
             MelonLogger.Msg("===========================================");
@@ -74,7 +79,6 @@ namespace Wasteland2AccessibilityMod
             // Skip non-interactive visual elements (backgrounds, sprites, etc.)
             if (!IsInteractiveElement(go))
             {
-                MelonLogger.Msg($"[{source}] Skipping non-interactive element: {go.name}");
                 return;
             }
 
@@ -83,7 +87,6 @@ namespace Wasteland2AccessibilityMod
             // Avoid double-speaking if both hooks fire for same element
             if (text == lastSpokenText && source != lastSource)
             {
-                MelonLogger.Msg($"[{source}] Skipping duplicate: {text}");
                 return;
             }
 
@@ -94,6 +97,15 @@ namespace Wasteland2AccessibilityMod
             {
                 SpeakText(text);
             }
+        }
+
+        /// <summary>
+        /// Internal method to check if we should log debug messages
+        /// </summary>
+        private static bool ShouldLog()
+        {
+            // Only log important events, not every single announcement
+            return false; // Set to true for debugging
         }
 
         /// <summary>
@@ -118,7 +130,6 @@ namespace Wasteland2AccessibilityMod
                 go.GetComponent<UIPopupList>() == null &&
                 go.GetComponent<UIButtonKeys>() == null)
             {
-                MelonLogger.Msg($"[Filter] Skipping UISprite-only element: {go.name}");
                 return false;
             }
 
@@ -240,13 +251,20 @@ namespace Wasteland2AccessibilityMod
         /// <summary>
         /// Sends text to the screen reader
         /// </summary>
-        internal static void SpeakText(string text)
+        /// <param name="text">Text to speak</param>
+        /// <param name="interrupt">If true, interrupts current speech. Use true for focus changes, false for informational updates like tooltips.</param>
+        internal static void SpeakText(string text, bool interrupt = true)
         {
             if (screenReader != null && screenReader.IsLoaded())
             {
-                // Use interrupt=true to stop previous speech and speak new text immediately
-                screenReader.Speak(text, interrupt: true);
-                MelonLogger.Msg($"[TTS] {text}");
+                screenReader.Speak(text, interrupt: interrupt);
+
+                // Only log if debugging is enabled
+                if (ShouldLog())
+                {
+                    string interruptTag = interrupt ? "[INTERRUPT]" : "[QUEUE]";
+                    MelonLogger.Msg($"[TTS] {interruptTag} {text}");
+                }
             }
         }
     }
@@ -262,7 +280,6 @@ namespace Wasteland2AccessibilityMod
         public static void Postfix(GameObject go)
         {
             if (go == null) return;
-            MelonLogger.Msg($"[SetSelection] Focus changed to: {go.name}");
             AccessibilityMod.HandleFocusChange(go, "SetSelection");
         }
     }
@@ -280,7 +297,6 @@ namespace Wasteland2AccessibilityMod
             // Only handle OnSelect(true) - when element gains focus
             if (funcName == "OnSelect" && obj is bool selected && selected && go != null)
             {
-                MelonLogger.Msg($"[Notify] OnSelect(true) for: {go.name}");
                 AccessibilityMod.HandleFocusChange(go, "Notify");
             }
         }
@@ -299,7 +315,6 @@ namespace Wasteland2AccessibilityMod
             if (lbl != null && !string.IsNullOrEmpty(lbl.text))
             {
                 string cleanedText = AccessibilityMod.CleanText(lbl.text);
-                MelonLogger.Msg($"[Dropdown] Highlighted option: {cleanedText}");
                 AccessibilityMod.SpeakText(cleanedText);
             }
         }
@@ -342,7 +357,6 @@ namespace Wasteland2AccessibilityMod
                 }
             }
 
-            MelonLogger.Msg($"[ModalDialog] {announcement}");
             AccessibilityMod.SpeakText(announcement);
         }
     }
@@ -437,7 +451,6 @@ namespace Wasteland2AccessibilityMod
                 announcement = $"{sliderName}: {valueText}";
             }
 
-            MelonLogger.Msg($"[Slider] {announcement}");
             AccessibilityMod.SpeakText(announcement);
         }
     }
@@ -473,7 +486,6 @@ namespace Wasteland2AccessibilityMod
             // Add instructions for controller users
             string announcement = panelText + "Press A to use default rangers, or press X to create custom party.";
 
-            MelonLogger.Msg($"[CharacterCreation] {announcement}");
             AccessibilityMod.SpeakText(announcement);
         }
     }
@@ -510,8 +522,278 @@ namespace Wasteland2AccessibilityMod
             string stateText = state ? "On" : "Off";
             string announcement = $"{labelText}: {stateText}";
 
-            MelonLogger.Msg($"[Toggle] {announcement}");
             AccessibilityMod.SpeakText(announcement);
+        }
+    }
+
+    /// <summary>
+    /// Harmony patch to announce UITooltip content
+    /// Patches: protected virtual void SetText(string tooltipText)
+    /// </summary>
+    [HarmonyPatch(typeof(UITooltip), "SetText")]
+    public class UITooltip_SetText_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(UITooltip __instance, string tooltipText)
+        {
+            if (__instance == null || string.IsNullOrEmpty(tooltipText)) return;
+
+            // Clean and announce the tooltip text
+            string cleanedText = AccessibilityMod.CleanText(tooltipText);
+
+            if (!string.IsNullOrEmpty(cleanedText))
+            {
+                MelonLogger.Msg($"[Tooltip] {cleanedText}");
+                // Tooltips should NOT interrupt - they're informational
+                AccessibilityMod.SpeakText(cleanedText, interrupt: false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Harmony patch to announce TextTooltip content
+    /// Patches: public void SetText(string text)
+    /// </summary>
+    [HarmonyPatch(typeof(TextTooltip), "SetText")]
+    public class TextTooltip_SetText_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(TextTooltip __instance, string text)
+        {
+            if (__instance == null || string.IsNullOrEmpty(text)) return;
+
+            // Clean and announce the tooltip text
+            string cleanedText = AccessibilityMod.CleanText(text);
+
+            if (!string.IsNullOrEmpty(cleanedText))
+            {
+                MelonLogger.Msg($"[TextTooltip] {cleanedText}");
+                // Tooltips should NOT interrupt - they're informational
+                AccessibilityMod.SpeakText(cleanedText, interrupt: false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Harmony patch to announce tooltips when they're set as the active popup
+    /// Patches: public void SetPopup(GameObject popup, GameObject messageTarget = null)
+    /// This catches tooltips created by TooltipCreator components (like in difficulty selection)
+    /// </summary>
+    [HarmonyPatch(typeof(TooltipManager), "SetPopup")]
+    public class TooltipManager_SetPopup_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(GameObject popup)
+        {
+            if (popup == null) return;
+
+            string tooltipText = null;
+
+            // Try to get TextTooltip component
+            TextTooltip textTooltip = popup.GetComponent<TextTooltip>();
+            if (textTooltip != null && textTooltip.label != null)
+            {
+                tooltipText = textTooltip.label.text;
+            }
+
+            // Try to get ItemInfoTooltip component if no TextTooltip
+            if (string.IsNullOrEmpty(tooltipText))
+            {
+                ItemInfoTooltip itemTooltip = popup.GetComponent<ItemInfoTooltip>();
+                if (itemTooltip != null && itemTooltip.nameLabel != null)
+                {
+                    tooltipText = itemTooltip.nameLabel.text;
+                }
+            }
+
+            // Announce if we found tooltip text
+            if (!string.IsNullOrEmpty(tooltipText))
+            {
+                string cleanedText = AccessibilityMod.CleanText(tooltipText);
+                if (!string.IsNullOrEmpty(cleanedText))
+                {
+                    // Deduplication: don't announce same tooltip within debounce time
+                    float currentTime = Time.unscaledTime;
+                    bool isDifferentTooltip = cleanedText != AccessibilityMod.lastTooltipText;
+                    bool enoughTimePassed = (currentTime - AccessibilityMod.lastTooltipTime) >= AccessibilityMod.TOOLTIP_DEBOUNCE_TIME;
+
+                    if (isDifferentTooltip || enoughTimePassed)
+                    {
+                        AccessibilityMod.lastTooltipText = cleanedText;
+                        AccessibilityMod.lastTooltipTime = currentTime;
+
+                        // Tooltips should NOT interrupt - they're informational
+                        AccessibilityMod.SpeakText(cleanedText, interrupt: false);
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Harmony patch to announce difficulty selection descriptions
+    /// Patches: public void SelectDifficulty(int difficultyLevel)
+    /// </summary>
+    [HarmonyPatch(typeof(DifficultySelectionMenu), "SelectDifficulty")]
+    public class DifficultySelectionMenu_SelectDifficulty_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(DifficultySelectionMenu __instance, int difficultyLevel)
+        {
+            if (__instance == null || __instance.descriptionLabel == null) return;
+
+            // Get the description text that was just set
+            string description = __instance.descriptionLabel.text;
+
+            if (!string.IsNullOrEmpty(description))
+            {
+                string cleanedText = AccessibilityMod.CleanText(description);
+                if (!string.IsNullOrEmpty(cleanedText))
+                {
+                    // Announce the difficulty name and description
+                    string difficultyName = difficultyLevel switch
+                    {
+                        0 => "Rookie",
+                        1 => "Seasoned",
+                        2 => "Ranger",
+                        3 => "Legend",
+                        _ => "Unknown"
+                    };
+
+                    string announcement = $"{difficultyName}. {cleanedText}";
+                    AccessibilityMod.SpeakText(announcement, interrupt: true);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Harmony patch to announce skill descriptions in character creation/sheet
+    /// Patches: public void SetSkill(string skillName, bool unknown = false, int level = -1)
+    /// </summary>
+    [HarmonyPatch(typeof(CHA_DescriptionPanel), "SetSkill")]
+    public class CHA_DescriptionPanel_SetSkill_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(CHA_DescriptionPanel __instance)
+        {
+            if (__instance == null || __instance.nameLabel == null || __instance.descriptionLabel == null) return;
+
+            string name = __instance.nameLabel.text;
+            string description = __instance.descriptionLabel.text;
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                string cleanedName = AccessibilityMod.CleanText(name);
+                string cleanedDesc = AccessibilityMod.CleanText(description);
+
+                // Announce skill name and first sentence of description
+                string announcement = cleanedName;
+                if (!string.IsNullOrEmpty(cleanedDesc))
+                {
+                    // Get first sentence or first 200 characters
+                    int dotIndex = cleanedDesc.IndexOf('.');
+                    if (dotIndex > 0 && dotIndex < 200)
+                    {
+                        announcement += ". " + cleanedDesc.Substring(0, dotIndex + 1);
+                    }
+                    else if (cleanedDesc.Length > 200)
+                    {
+                        announcement += ". " + cleanedDesc.Substring(0, 200) + "...";
+                    }
+                    else
+                    {
+                        announcement += ". " + cleanedDesc;
+                    }
+                }
+
+                AccessibilityMod.SpeakText(announcement, interrupt: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Harmony patch to announce attribute descriptions in character creation/sheet
+    /// Patches: public void SetAttribute(string attributeName, int level = -1)
+    /// </summary>
+    [HarmonyPatch(typeof(CHA_DescriptionPanel), "SetAttribute")]
+    public class CHA_DescriptionPanel_SetAttribute_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(CHA_DescriptionPanel __instance)
+        {
+            if (__instance == null || __instance.nameLabel == null || __instance.descriptionLabel == null) return;
+
+            string name = __instance.nameLabel.text;
+            string description = __instance.descriptionLabel.text;
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                string cleanedName = AccessibilityMod.CleanText(name);
+                string cleanedDesc = AccessibilityMod.CleanText(description);
+
+                // Announce attribute name and first sentence of description
+                string announcement = cleanedName;
+                if (!string.IsNullOrEmpty(cleanedDesc))
+                {
+                    // Get first sentence or first 200 characters
+                    int dotIndex = cleanedDesc.IndexOf('.');
+                    if (dotIndex > 0 && dotIndex < 200)
+                    {
+                        announcement += ". " + cleanedDesc.Substring(0, dotIndex + 1);
+                    }
+                    else if (cleanedDesc.Length > 200)
+                    {
+                        announcement += ". " + cleanedDesc.Substring(0, 200) + "...";
+                    }
+                    else
+                    {
+                        announcement += ". " + cleanedDesc;
+                    }
+                }
+
+                AccessibilityMod.SpeakText(announcement, interrupt: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Harmony patch to announce trait/quirk descriptions in character creation/sheet
+    /// Patches: public void SetTrait(Trait trait, PC player, CHA_TraitEditor.TraitAvailability availability = CHA_TraitEditor.TraitAvailability.Available)
+    /// </summary>
+    [HarmonyPatch(typeof(CHA_DescriptionPanel), "SetTrait")]
+    public class CHA_DescriptionPanel_SetTrait_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(CHA_DescriptionPanel __instance)
+        {
+            if (__instance == null || __instance.nameLabel == null || __instance.descriptionLabel == null) return;
+
+            string name = __instance.nameLabel.text;
+            string description = __instance.descriptionLabel.text;
+
+            if (!string.IsNullOrEmpty(name))
+            {
+                string cleanedName = AccessibilityMod.CleanText(name);
+                string cleanedDesc = AccessibilityMod.CleanText(description);
+
+                // Announce quirk/trait name and description
+                string announcement = cleanedName;
+                if (!string.IsNullOrEmpty(cleanedDesc))
+                {
+                    // For traits, include full description as they're usually short
+                    if (cleanedDesc.Length > 300)
+                    {
+                        announcement += ". " + cleanedDesc.Substring(0, 300) + "...";
+                    }
+                    else
+                    {
+                        announcement += ". " + cleanedDesc;
+                    }
+                }
+
+                AccessibilityMod.SpeakText(announcement, interrupt: true);
+            }
         }
     }
 
