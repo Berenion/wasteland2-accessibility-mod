@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+    <AssemblyName>Wasteland2AccessibilityMod</AssemblyName>
+    <Description>Accessibility mod for Wasteland 2 Director's Cut - Sets Xbox controller as default input method</Description>
+    <Version>1.0.0</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <RestoreAdditionalProjectSources>
+      https://api.nuget.org/v3/index.json
+    </RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference the game's assemblies from libs folder -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>libs\Assembly-CSharp.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>libs\UnityEngine.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- MelonLoader references - copied from game's MelonLoader installation -->
+    <Reference Include="MelonLoader">
+      <HintPath>libs\MelonLoader.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>libs\0Harmony.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CopyToGameMods" AfterTargets="Build">
+    <!-- Automatically copy the built DLL to the game's Mods folder after building -->
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="..\Mods" Condition="Exists('..\Mods')" />
+  </Target>
+</Project>
