@@ -99,7 +99,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 announcement = $"{sliderName}: {valueText}";
             }
 
-            ScreenReaderManager.Speak(announcement);
+            ScreenReaderManager.Speak(announcement, interrupt: false);
         }
     }
 }

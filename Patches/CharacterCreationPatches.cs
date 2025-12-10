@@ -35,7 +35,7 @@ namespace Wasteland2AccessibilityMod.Patches
             // Add instructions for controller users
             string announcement = panelText + "Press A to use default rangers, or press X to create custom party.";
 
-            ScreenReaderManager.Speak(announcement);
+            ScreenReaderManager.Speak(announcement, interrupt: false);
         }
     }
 
@@ -70,7 +70,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     };
 
                     string announcement = $"{difficultyName}. {cleanedText}";
-                    ScreenReaderManager.Speak(announcement, interrupt: true);
+                    ScreenReaderManager.Speak(announcement, interrupt: false);
                 }
             }
         }
@@ -121,7 +121,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += ". " + cleanedDesc;
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: true);
+                ScreenReaderManager.Speak(announcement, interrupt: false);
             }
         }
     }
@@ -161,7 +161,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += ". " + cleanedDesc;
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: true);
+                ScreenReaderManager.Speak(announcement, interrupt: false);
             }
         }
     }
@@ -215,7 +215,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     }
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: true);
+                ScreenReaderManager.Speak(announcement, interrupt: false);
             }
         }
     }
@@ -254,7 +254,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += $", Level {skillLevel}";
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: true);
+                ScreenReaderManager.Speak(announcement, interrupt: false);
             }
         }
     }
@@ -305,7 +305,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += $", {attributeRating}";
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: true);
+                ScreenReaderManager.Speak(announcement, interrupt: false);
             }
         }
     }

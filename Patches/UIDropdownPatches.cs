@@ -15,7 +15,7 @@ namespace Wasteland2AccessibilityMod.Patches
             if (lbl != null && !string.IsNullOrEmpty(lbl.text))
             {
                 string cleanedText = UITextExtractor.CleanText(lbl.text);
-                ScreenReaderManager.Speak(cleanedText);
+                ScreenReaderManager.Speak(cleanedText, interrupt: false);
             }
         }
     }
