@@ -39,9 +39,9 @@ namespace Wasteland2AccessibilityMod.Patches
     public class CHA_AttributePanel_PopulateData_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(CHA_AttributePanel __instance, PC newPC)
+        public static void Postfix(CHA_AttributePanel __instance, PC player)
         {
-            if (newPC != null && __instance.pointsRemainingLabel != null)
+            if (player != null && __instance.pointsRemainingLabel != null)
             {
                 string pointsText = __instance.pointsRemainingLabel.text;
                 if (!string.IsNullOrEmpty(pointsText))
@@ -138,11 +138,11 @@ namespace Wasteland2AccessibilityMod.Patches
     /// <summary>
     /// Patch for CharacterScreen panel switching - announces which panel is active
     /// </summary>
-    [HarmonyPatch(typeof(CharacterScreen), "ShowPanel", new Type[] { typeof(CharacterScreen.EditorPanel), typeof(bool) })]
-    public class CharacterScreen_ShowPanel_Patch
+    [HarmonyPatch(typeof(CharacterScreen), "GoToPanel")]
+    public class CharacterScreen_GoToPanel_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(CharacterScreen __instance, CharacterScreen.EditorPanel panel, bool animate)
+        public static void Postfix(CharacterScreen __instance, CharacterScreen.EditorPanel panel)
         {
             // Announce panel name
             string panelName = panel.ToString();
@@ -163,9 +163,9 @@ namespace Wasteland2AccessibilityMod.Patches
     public class CHA_SkillPanel_PopulateData_Patch
     {
         [HarmonyPostfix]
-        public static void Postfix(CHA_SkillPanel __instance, PC newPC)
+        public static void Postfix(CHA_SkillPanel __instance, PC pc)
         {
-            if (newPC != null && __instance.pointsRemainingLabel != null)
+            if (pc != null && __instance.pointsRemainingLabel != null)
             {
                 string pointsText = __instance.pointsRemainingLabel.text;
                 if (!string.IsNullOrEmpty(pointsText))

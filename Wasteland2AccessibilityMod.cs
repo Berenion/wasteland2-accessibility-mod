@@ -18,10 +18,20 @@ namespace Wasteland2AccessibilityMod
             MelonLogger.Msg("===========================================");
             MelonLogger.Msg("Features:");
             MelonLogger.Msg("  - Screen reader support for UI navigation");
+            MelonLogger.Msg("  - Exploration mode interactable navigation");
+            MelonLogger.Msg("===========================================");
+            MelonLogger.Msg("Keyboard Controls:");
+            MelonLogger.Msg("  [ - Previous interactable");
+            MelonLogger.Msg("  ] - Next interactable");
+            MelonLogger.Msg("  \\ - Repeat last announcement");
+            MelonLogger.Msg("  = - Toggle direction format (Cardinal/Clock)");
             MelonLogger.Msg("===========================================");
 
             // Initialize screen reader support
             ScreenReaderManager.Initialize();
+
+            // Initialize configuration
+            ModConfig.Initialize();
         }
 
         public override void OnLateInitializeMelon()
