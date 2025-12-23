@@ -19,6 +19,7 @@ namespace Wasteland2AccessibilityMod
             MelonLogger.Msg("Features:");
             MelonLogger.Msg("  - Screen reader support for UI navigation");
             MelonLogger.Msg("  - Exploration mode interactable navigation");
+            MelonLogger.Msg("  - Audio-aware announcements (won't interrupt voiceover)");
             MelonLogger.Msg("===========================================");
             MelonLogger.Msg("Keyboard Controls:");
             MelonLogger.Msg("  [ - Previous interactable");
@@ -30,6 +31,9 @@ namespace Wasteland2AccessibilityMod
             // Initialize screen reader support
             ScreenReaderManager.Initialize();
 
+            // Initialize audio-aware announcement manager
+            AudioAwareAnnouncementManager.Instance.Initialize();
+
             // Initialize configuration
             ModConfig.Initialize();
         }
@@ -37,6 +41,12 @@ namespace Wasteland2AccessibilityMod
         public override void OnLateInitializeMelon()
         {
             MelonLogger.Msg("Applying Harmony patches...");
+        }
+
+        public override void OnUpdate()
+        {
+            // Update the audio-aware announcement manager every frame
+            AudioAwareAnnouncementManager.Instance.Update();
         }
 
         public override void OnDeinitializeMelon()

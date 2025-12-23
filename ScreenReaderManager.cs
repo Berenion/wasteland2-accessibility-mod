@@ -58,11 +58,26 @@ namespace Wasteland2AccessibilityMod
         }
 
         /// <summary>
-        /// Sends text to the screen reader
+        /// Sends text to the screen reader with audio-aware queueing
+        /// This is the recommended method for most announcements - it will queue the announcement
+        /// if voiceover is playing, or speak immediately if no voiceover is active
         /// </summary>
         /// <param name="text">Text to speak</param>
         /// <param name="interrupt">If true, interrupts current speech. Use true for focus changes, false for informational updates like tooltips.</param>
         public static void Speak(string text, bool interrupt = true)
+        {
+            // Route through the audio-aware announcement manager
+            AudioAwareAnnouncementManager.Instance.QueueAnnouncement(text, interrupt);
+        }
+
+        /// <summary>
+        /// Sends text directly to the screen reader, bypassing the audio-aware queue
+        /// Use this only when you need to speak immediately regardless of voiceover state
+        /// (e.g., for critical system messages or debugging)
+        /// </summary>
+        /// <param name="text">Text to speak</param>
+        /// <param name="interrupt">If true, interrupts current speech</param>
+        public static void SpeakDirect(string text, bool interrupt = true)
         {
             if (screenReader != null && isLoaded)
             {
