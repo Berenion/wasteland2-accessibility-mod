@@ -70,6 +70,18 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     AnnouncePartyScrap();
                 }
+                // Check for Next category - using Page Down
+                else if (Input.GetKeyDown(KeyCode.PageDown))
+                {
+                    MelonLogger.Msg("Page Down pressed - next category");
+                    NavigationManager.NextCategory();
+                }
+                // Check for Previous category - using Page Up
+                else if (Input.GetKeyDown(KeyCode.PageUp))
+                {
+                    MelonLogger.Msg("Page Up pressed - previous category");
+                    NavigationManager.PreviousCategory();
+                }
             }
             catch (System.Exception ex)
             {

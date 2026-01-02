@@ -5,6 +5,19 @@ using UnityEngine;
 
 namespace Wasteland2AccessibilityMod
 {
+    /// <summary>
+    /// Categories for filtering interactable objects
+    /// </summary>
+    public enum InteractableCategory
+    {
+        All,        // All interactables
+        Characters, // NPCs (friendly and hostile)
+        Containers, // Lootable containers, lockers, etc.
+        Objects,    // Doors, switches, computers, etc.
+        Examine,    // Examinable/perception objects (descriptions, clues)
+        Loot        // Ground items and loot piles
+    }
+
     public static class NavigationManager
     {
         private static List<InteractableNexus> filteredInteractables = new List<InteractableNexus>();
@@ -16,13 +29,87 @@ namespace Wasteland2AccessibilityMod
         // This is NOT overwritten by proximity announcements
         private static InteractableNexus selectedInteractable = null;
 
+        // Category filtering
+        private static InteractableCategory currentCategory = InteractableCategory.All;
+        private static readonly InteractableCategory[] categoryOrder =
+        {
+            InteractableCategory.All,
+            InteractableCategory.Characters,
+            InteractableCategory.Containers,
+            InteractableCategory.Objects,
+            InteractableCategory.Examine,
+            InteractableCategory.Loot
+        };
+
+        public static InteractableCategory CurrentCategory => currentCategory;
+
+        /// <summary>
+        /// Cycles to the next category (Page Down)
+        /// </summary>
+        public static void NextCategory()
+        {
+            int currentIdx = System.Array.IndexOf(categoryOrder, currentCategory);
+            currentIdx = (currentIdx + 1) % categoryOrder.Length;
+            currentCategory = categoryOrder[currentIdx];
+
+            // Reset selection when changing category
+            currentIndex = -1;
+            selectedInteractable = null;
+
+            // Update list and announce
+            UpdateFilteredList();
+            string categoryName = GetCategoryDisplayName(currentCategory);
+            int count = filteredInteractables.Count;
+            ScreenReaderManager.Speak($"{categoryName}, {count} found", interrupt: true);
+
+            MelonLogger.Msg($"Category changed to: {categoryName} ({count} items)");
+        }
+
+        /// <summary>
+        /// Cycles to the previous category (Page Up)
+        /// </summary>
+        public static void PreviousCategory()
+        {
+            int currentIdx = System.Array.IndexOf(categoryOrder, currentCategory);
+            currentIdx--;
+            if (currentIdx < 0) currentIdx = categoryOrder.Length - 1;
+            currentCategory = categoryOrder[currentIdx];
+
+            // Reset selection when changing category
+            currentIndex = -1;
+            selectedInteractable = null;
+
+            // Update list and announce
+            UpdateFilteredList();
+            string categoryName = GetCategoryDisplayName(currentCategory);
+            int count = filteredInteractables.Count;
+            ScreenReaderManager.Speak($"{categoryName}, {count} found", interrupt: true);
+
+            MelonLogger.Msg($"Category changed to: {categoryName} ({count} items)");
+        }
+
+        private static string GetCategoryDisplayName(InteractableCategory category)
+        {
+            switch (category)
+            {
+                case InteractableCategory.All: return "All";
+                case InteractableCategory.Characters: return "Characters";
+                case InteractableCategory.Containers: return "Containers";
+                case InteractableCategory.Objects: return "Objects";
+                case InteractableCategory.Examine: return "Examine";
+                case InteractableCategory.Loot: return "Loot";
+                default: return "Unknown";
+            }
+        }
+
         public static void CycleNext()
         {
             UpdateFilteredList();
 
             if (filteredInteractables.Count == 0)
             {
-                ScreenReaderManager.Speak("No interactables nearby", interrupt: true);
+                string categoryName = GetCategoryDisplayName(currentCategory);
+                ScreenReaderManager.Speak($"No {categoryName.ToLower()} nearby", interrupt: true);
                 currentIndex = -1;
                 return;
             }
@@ -39,7 +126,8 @@ namespace Wasteland2AccessibilityMod
 
             if (filteredInteractables.Count == 0)
             {
-                ScreenReaderManager.Speak("No interactables nearby", interrupt: true);
+                string categoryName = GetCategoryDisplayName(currentCategory);
+                ScreenReaderManager.Speak($"No {categoryName.ToLower()} nearby", interrupt: true);
                 currentIndex = -1;
                 return;
             }
@@ -174,6 +262,9 @@ namespace Wasteland2AccessibilityMod
                     if (!pc.isUnconscious) continue; // Skip conscious PCs
                 }
 
+                // Apply category filter
+                if (!MatchesCategory(nexus, currentCategory)) continue;
+
                 filteredInteractables.Add(nexus);
             }
 
@@ -182,7 +273,108 @@ namespace Wasteland2AccessibilityMod
                 .OrderBy(n => Vector3.Distance(n.InstigatePoint, playerPos))
                 .ToList();
 
-            MelonLogger.Msg($"Filtered interactables: {filteredInteractables.Count} found (all minimap visible)");
+            MelonLogger.Msg($"Filtered interactables: {filteredInteractables.Count} found (category: {currentCategory})");
+        }
+
+        private static bool MatchesCategory(InteractableNexus nexus, InteractableCategory category)
+        {
+            if (category == InteractableCategory.All) return true;
+
+            // Get the Drama component for type checking
+            Drama drama = nexus.drama;
+
+            switch (category)
+            {
+                case InteractableCategory.Characters:
+                    // NPCs (not PCs) - characters you can talk to or fight
+                    if (drama != null)
+                    {
+                        Mob mob = drama.GetMob();
+                        if (mob != null && mob is NPC) return true;
+                    }
+                    return false;
+
+                case InteractableCategory.Containers:
+                    // Lootable containers, lockers, etc.
+                    if (drama != null && drama is InteractableInventoryObject) return true;
+                    // Also check component directly
+                    if (nexus.GetComponent<InteractableInventoryObject>() != null) return true;
+                    return false;
+
+                case InteractableCategory.Objects:
+                    // Doors, switches, computers, etc. - InteractableObjects that aren't containers
+                    if (drama != null)
+                    {
+                        // Must be an InteractableObject but NOT a container and NOT a character
+                        if (drama is InteractableObject && !(drama is InteractableInventoryObject))
+                        {
+                            Mob mob = drama.GetMob();
+                            if (mob == null) return true; // No mob = object
+                        }
+                    }
+                    // Check component directly
+                    var io = nexus.GetComponent<InteractableObject>();
+                    if (io != null && nexus.GetComponent<InteractableInventoryObject>() == null)
+                    {
+                        if (drama == null || drama.GetMob() == null) return true;
+                    }
+                    return false;
+
+                case InteractableCategory.Examine:
+                    // Examinable objects - perception checks, descriptions, clues
+                    // These typically only have a "Descriptor" or "perception" interaction
+                    if (drama != null)
+                    {
+                        // Check if it's primarily an examine/descriptor object
+                        var interactions = drama.GetAllowedInteractions();
+                        if (interactions != null)
+                        {
+                            bool hasDescriptor = interactions.ContainsKey("Descriptor") && interactions["Descriptor"] == 1;
+                            bool hasPerception = interactions.ContainsKey("perception") && interactions["perception"] == 1;
+
+                            // If it has descriptor/perception but isn't a container, NPC, or usable object
+                            if (hasDescriptor || hasPerception)
+                            {
+                                // Make sure it's not already covered by other categories
+                                if (!(drama is InteractableInventoryObject) &&
+                                    !(drama is InteractableObject) &&
+                                    drama.GetMob() == null)
+                                {
+                                    return true;
+                                }
+                                // Also include InteractableObjects that only have descriptor interaction
+                                if (drama is InteractableObject && !interactions.ContainsKey("Poked"))
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                        // Also check by type name for common examine patterns
+                        string typeName = drama.GetType().Name.ToLower();
+                        if (typeName.Contains("examine") || typeName.Contains("descriptor") ||
+                            typeName.Contains("clue") || typeName.Contains("perception"))
+                            return true;
+                    }
+                    // Check object name patterns
+                    string examName = nexus.name.ToLower();
+                    if (examName.Contains("examine") || examName.Contains("descriptor") ||
+                        examName.Contains("clue") || examName.Contains("perception"))
+                        return true;
+                    return false;
+
+                case InteractableCategory.Loot:
+                    // Ground items - typically have "Loot" or "Item" in name, or are GroundItemDrama
+                    string lootName = nexus.name.ToLower();
+                    if (lootName.Contains("loot") || lootName.Contains("grounditem") || lootName.Contains("drop"))
+                        return true;
+                    // Check if it's a ground item drama
+                    if (drama != null && drama.GetType().Name.Contains("GroundItem"))
+                        return true;
+                    return false;
+
+                default:
+                    return true;
+            }
         }
 
         private static string GetInteractableName(InteractableNexus nexus)
