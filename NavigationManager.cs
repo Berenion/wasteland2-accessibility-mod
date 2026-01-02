@@ -14,6 +14,7 @@ namespace Wasteland2AccessibilityMod
         Characters, // NPCs (friendly and hostile)
         Containers, // Lootable containers, lockers, etc.
         Objects,    // Doors, switches, computers, etc.
+        Exits,      // Map exits and area transitions (SceneLoad)
         Examine,    // Examinable/perception objects (descriptions, clues)
         Loot,       // Ground items and loot piles
         Misc        // Everything else (teleporters, dig spots, etc.)
@@ -38,6 +39,7 @@ namespace Wasteland2AccessibilityMod
             InteractableCategory.Characters,
             InteractableCategory.Containers,
             InteractableCategory.Objects,
+            InteractableCategory.Exits,
             InteractableCategory.Examine,
             InteractableCategory.Loot,
             InteractableCategory.Misc
@@ -98,6 +100,7 @@ namespace Wasteland2AccessibilityMod
                 case InteractableCategory.Characters: return "Characters";
                 case InteractableCategory.Containers: return "Containers";
                 case InteractableCategory.Objects: return "Objects";
+                case InteractableCategory.Exits: return "Exits";
                 case InteractableCategory.Examine: return "Examine";
                 case InteractableCategory.Loot: return "Loot";
                 case InteractableCategory.Misc: return "Miscellaneous";
@@ -305,9 +308,12 @@ namespace Wasteland2AccessibilityMod
                     return false;
 
                 case InteractableCategory.Objects:
-                    // Doors, switches, computers, etc. - InteractableObjects that aren't containers
+                    // Doors, switches, computers, etc. - InteractableObjects that aren't containers or exits
                     if (drama != null)
                     {
+                        // Exclude SceneLoad (exits)
+                        if (drama is SceneLoad) return false;
+
                         // Must be an InteractableObject but NOT a container and NOT a character
                         if (drama is InteractableObject && !(drama is InteractableInventoryObject))
                         {
@@ -321,6 +327,20 @@ namespace Wasteland2AccessibilityMod
                     {
                         if (drama == null || drama.GetMob() == null) return true;
                     }
+                    return false;
+
+                case InteractableCategory.Exits:
+                    // Map exits and area transitions
+                    if (drama != null && drama is SceneLoad) return true;
+                    // Also check component directly
+                    if (nexus.GetComponent<SceneLoad>() != null) return true;
+                    // Check for WorldMapExitEncounter
+                    if (drama != null && drama.GetType().Name.Contains("WorldMapExit")) return true;
+                    // Check object name patterns for exits
+                    string exitName = nexus.name.ToLower();
+                    if (exitName.Contains("exit") || exitName.Contains("sceneload") ||
+                        exitName.Contains("worldmap") || exitName.Contains("leave"))
+                        return true;
                     return false;
 
                 case InteractableCategory.Examine:
@@ -382,6 +402,7 @@ namespace Wasteland2AccessibilityMod
                     if (MatchesCategory(nexus, InteractableCategory.Characters)) return false;
                     if (MatchesCategory(nexus, InteractableCategory.Containers)) return false;
                     if (MatchesCategory(nexus, InteractableCategory.Objects)) return false;
+                    if (MatchesCategory(nexus, InteractableCategory.Exits)) return false;
                     if (MatchesCategory(nexus, InteractableCategory.Examine)) return false;
                     if (MatchesCategory(nexus, InteractableCategory.Loot)) return false;
                     // Doesn't match any specific category - it's misc
