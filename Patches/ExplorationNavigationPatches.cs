@@ -65,11 +65,34 @@ namespace Wasteland2AccessibilityMod.Patches
                     MelonLogger.Msg("Equals key pressed - toggling direction format");
                     ModConfig.ToggleClockPositions();
                 }
+                // Check for Announce scrap - using ' (quote/apostrophe key)
+                else if (Input.GetKeyDown(KeyCode.Quote))
+                {
+                    AnnouncePartyScrap();
+                }
             }
             catch (System.Exception ex)
             {
                 MelonLogger.Error($"Error in InputManager_Update_Patch: {ex.Message}");
                 MelonLogger.Error(ex.StackTrace);
+            }
+        }
+
+        private static void AnnouncePartyScrap()
+        {
+            try
+            {
+                if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
+
+                int scrap = MonoBehaviourSingleton<Game>.GetInstance().partyCurrency;
+                string announcement = $"{scrap} scrap";
+
+                MelonLogger.Msg($"Announcing party scrap: {scrap}");
+                ScreenReaderManager.Speak(announcement, interrupt: true);
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"Error announcing scrap: {ex.Message}");
             }
         }
     }
