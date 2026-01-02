@@ -66,6 +66,10 @@ namespace Wasteland2AccessibilityMod
         /// <param name="interrupt">If true, interrupts current speech. Use true for focus changes, false for informational updates like tooltips.</param>
         public static void Speak(string text, bool interrupt = true)
         {
+            // Clean text before speaking (removes NGUI codes, special symbols, etc.)
+            text = UITextExtractor.CleanText(text);
+            if (string.IsNullOrEmpty(text)) return;
+
             // Route through the audio-aware announcement manager
             AudioAwareAnnouncementManager.Instance.QueueAnnouncement(text, interrupt);
         }
@@ -81,6 +85,10 @@ namespace Wasteland2AccessibilityMod
         {
             if (screenReader != null && isLoaded)
             {
+                // Clean text before speaking (removes NGUI codes, special symbols, etc.)
+                text = UITextExtractor.CleanText(text);
+                if (string.IsNullOrEmpty(text)) return;
+
                 screenReader.Speak(text, interrupt: interrupt);
             }
         }

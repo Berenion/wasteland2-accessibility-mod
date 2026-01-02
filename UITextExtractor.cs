@@ -140,10 +140,19 @@ namespace Wasteland2AccessibilityMod
             // Remove NGUI color/formatting codes like [FFFFFF], [-], [b], [/b], etc.
             text = Regex.Replace(text, @"\[/?[\w-]*\]", "");
 
-            // Remove special formatting symbols
-            text = text.Replace("<@>", ""); // Localization marker
-            text = text.Replace("@", "");   // Other @ symbols
+            // Remove angle bracket formatting like <@>, <@&>, <&>, etc.
+            text = Regex.Replace(text, @"<[@&]+>", "");
+
+            // Remove other special formatting symbols
+            text = text.Replace("@", "");    // Remaining @ symbols
+            text = text.Replace("&", "and"); // Replace & with "and" for readability
             text = text.Replace("\\n", " "); // Newline markers
+            text = text.Replace("\n", " ");  // Actual newlines
+            text = text.Replace("\r", "");   // Carriage returns
+            text = text.Replace("\t", " ");  // Tabs
+
+            // Remove multiple spaces
+            text = Regex.Replace(text, @"\s+", " ");
 
             return text.Trim();
         }
