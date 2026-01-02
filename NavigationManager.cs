@@ -15,7 +15,8 @@ namespace Wasteland2AccessibilityMod
         Containers, // Lootable containers, lockers, etc.
         Objects,    // Doors, switches, computers, etc.
         Examine,    // Examinable/perception objects (descriptions, clues)
-        Loot        // Ground items and loot piles
+        Loot,       // Ground items and loot piles
+        Misc        // Everything else (teleporters, dig spots, etc.)
     }
 
     public static class NavigationManager
@@ -38,7 +39,8 @@ namespace Wasteland2AccessibilityMod
             InteractableCategory.Containers,
             InteractableCategory.Objects,
             InteractableCategory.Examine,
-            InteractableCategory.Loot
+            InteractableCategory.Loot,
+            InteractableCategory.Misc
         };
 
         public static InteractableCategory CurrentCategory => currentCategory;
@@ -98,6 +100,7 @@ namespace Wasteland2AccessibilityMod
                 case InteractableCategory.Objects: return "Objects";
                 case InteractableCategory.Examine: return "Examine";
                 case InteractableCategory.Loot: return "Loot";
+                case InteractableCategory.Misc: return "Miscellaneous";
                 default: return "Unknown";
             }
         }
@@ -371,6 +374,18 @@ namespace Wasteland2AccessibilityMod
                     if (drama != null && drama.GetType().Name.Contains("GroundItem"))
                         return true;
                     return false;
+
+                case InteractableCategory.Misc:
+                    // Miscellaneous - anything that doesn't fit other categories
+                    // This includes: teleporters, dig spots, shrines, special objects, etc.
+                    // Check if it matches any OTHER specific category - if so, exclude it
+                    if (MatchesCategory(nexus, InteractableCategory.Characters)) return false;
+                    if (MatchesCategory(nexus, InteractableCategory.Containers)) return false;
+                    if (MatchesCategory(nexus, InteractableCategory.Objects)) return false;
+                    if (MatchesCategory(nexus, InteractableCategory.Examine)) return false;
+                    if (MatchesCategory(nexus, InteractableCategory.Loot)) return false;
+                    // Doesn't match any specific category - it's misc
+                    return true;
 
                 default:
                     return true;
