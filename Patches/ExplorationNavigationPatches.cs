@@ -91,7 +91,8 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     lastSelectedInteractable = __instance.selectedInteractable;
                     MelonLogger.Msg($"Controller selected interactable: {__instance.selectedInteractable.name}");
-                    NavigationManager.AnnounceInteractable(__instance.selectedInteractable);
+                    // Controller cycling is intentional selection, so pass isFromCycling: true
+                    NavigationManager.AnnounceInteractable(__instance.selectedInteractable, isFromCycling: true);
                 }
                 else if (__instance.selectedInteractable == null)
                 {
