@@ -27,6 +27,19 @@ namespace Wasteland2AccessibilityMod.Patches
                 return;
             }
 
+            // Don't announce during menu navigation - let menu states handle it
+            if (MonoBehaviourSingleton<GUIManager>.HasInstance() &&
+                MonoBehaviourSingleton<GUIManager>.GetInstance().IsAnyMenuActive())
+            {
+                return;
+            }
+
+            // Only announce if this slider is the currently selected object
+            if (UICamera.selectedObject != __instance.gameObject)
+            {
+                return;
+            }
+
             float currentTime = Time.unscaledTime;
             float sliderValue = __instance.value;
 

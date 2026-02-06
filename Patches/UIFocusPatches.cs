@@ -12,10 +12,29 @@ namespace Wasteland2AccessibilityMod.Patches
         private static string lastSource = "";
 
         /// <summary>
+        /// Flag set by menu states to suppress patch announcements.
+        /// When true, focus patches will not announce selection changes.
+        /// </summary>
+        public static bool SuppressAnnouncements { get; set; }
+
+        /// <summary>
         /// Handles focus change events from UI hooks
         /// </summary>
         internal static void HandleFocusChange(GameObject go, string source)
         {
+            // Don't announce if a menu state is handling announcements
+            if (SuppressAnnouncements)
+            {
+                return;
+            }
+
+            // Don't announce during menus - let menu states handle it
+            if (MonoBehaviourSingleton<GUIManager>.HasInstance() &&
+                MonoBehaviourSingleton<GUIManager>.GetInstance().IsAnyMenuActive())
+            {
+                return;
+            }
+
             // Skip non-interactive visual elements (backgrounds, sprites, etc.)
             if (!UITextExtractor.IsInteractiveElement(go))
             {

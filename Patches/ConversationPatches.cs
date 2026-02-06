@@ -2,12 +2,15 @@ using HarmonyLib;
 using MelonLoader;
 using System;
 using System.Collections.Generic;
+using Wasteland2AccessibilityMod.States;
 
 namespace Wasteland2AccessibilityMod.Patches
 {
     /// <summary>
     /// Harmony patches for conversation/dialogue system accessibility
-    /// Patches ConversationHUD methods to announce dialogue text and response options
+    /// Patches ConversationHUD methods to announce dialogue text and response options.
+    /// Note: When ConversationState is actively managing navigation, some announcements
+    /// are suppressed to avoid duplicate speech output.
     /// </summary>
 
     // ============================================================================
@@ -112,6 +115,12 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             try
             {
+                // Skip announcements when ConversationState is managing navigation
+                if (ConversationState.IsManagingNavigation)
+                {
+                    return;
+                }
+
                 if (keywordInfo == null)
                 {
                     return;
@@ -225,6 +234,12 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             try
             {
+                // Skip selection announcements when ConversationState is managing navigation
+                if (ConversationState.IsManagingNavigation)
+                {
+                    return;
+                }
+
                 if (button == null)
                 {
                     return;
@@ -337,6 +352,12 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             try
             {
+                // Skip hover announcements when ConversationState is managing navigation
+                if (ConversationState.IsManagingNavigation)
+                {
+                    return;
+                }
+
                 if (button == null)
                 {
                     return;

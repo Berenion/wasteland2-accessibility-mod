@@ -15,10 +15,21 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             if (__instance == null) return;
 
-            // Only announce if this toggle is part of the currently focused UI
-            GameObject toggleGO = __instance.gameObject;
+            // Don't announce during menu navigation - let menu states handle it
+            if (MonoBehaviourSingleton<GUIManager>.HasInstance() &&
+                MonoBehaviourSingleton<GUIManager>.GetInstance().IsAnyMenuActive())
+            {
+                return;
+            }
+
+            // Only announce if this toggle is the currently selected object
+            if (UICamera.selectedObject != __instance.gameObject)
+            {
+                return;
+            }
 
             // Get the toggle's label
+            GameObject toggleGO = __instance.gameObject;
             UILabel label = toggleGO.GetComponentInChildren<UILabel>();
             string labelText = "";
             if (label != null && !string.IsNullOrEmpty(label.text))
@@ -27,7 +38,6 @@ namespace Wasteland2AccessibilityMod.Patches
             }
             else
             {
-                // Fallback to GameObject name
                 labelText = toggleGO.name;
             }
 

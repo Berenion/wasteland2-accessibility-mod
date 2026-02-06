@@ -5,109 +5,18 @@ using MelonLoader;
 namespace Wasteland2AccessibilityMod.Patches
 {
     /// <summary>
-    /// Tracks when keyboard navigation is used to suppress hover announcements temporarily
+    /// Tracks when keyboard navigation is used to suppress hover announcements temporarily.
+    /// Shared between ExplorationState and passive announcement patches.
     /// </summary>
     internal static class NavigationState
     {
         public static float lastKeyboardNavigationTime = 0f;
-        public const float KEYBOARD_NAVIGATION_SUPPRESS_HOVER = 1.5f; // Suppress hover for 1.5 seconds after keyboard nav
+        public const float KEYBOARD_NAVIGATION_SUPPRESS_HOVER = 1.5f;
     }
 
-    [HarmonyPatch(typeof(InputManager), "Update")]
-    public class InputManager_Update_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(InputManager __instance)
-        {
-            try
-            {
-                // Only process in exploration mode
-                if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
-
-                Game game = MonoBehaviourSingleton<Game>.GetInstance();
-                if (game.state != GameState.Gameplay && game.state != GameState.RandomEncounter) return;
-
-                // Don't process if input is frozen
-                if (__instance.IsInputFrozen()) return;
-
-                // Don't process during conversations, cutscenes, or combat
-                if (Drama.isConversationOn || Drama.isCutsceneOn) return;
-                if (MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat) return;
-
-                // Don't process if menus are active
-                if (MonoBehaviourSingleton<GUIManager>.GetInstance().IsAnyMenuActive()) return;
-
-                // Detect bracket keys for navigation
-                // Check for Next interactable - using ] (right bracket)
-                if (Input.GetKeyDown(KeyCode.RightBracket))
-                {
-                    MelonLogger.Msg("Right bracket pressed - cycling to next interactable");
-                    NavigationState.lastKeyboardNavigationTime = Time.time;
-                    NavigationManager.CycleNext();
-                }
-                // Check for Previous interactable - using [ (left bracket)
-                else if (Input.GetKeyDown(KeyCode.LeftBracket))
-                {
-                    MelonLogger.Msg("Left bracket pressed - cycling to previous interactable");
-                    NavigationState.lastKeyboardNavigationTime = Time.time;
-                    NavigationManager.CyclePrevious();
-                }
-                // Check for Repeat announcement - using \ (backslash)
-                else if (Input.GetKeyDown(KeyCode.Backslash))
-                {
-                    MelonLogger.Msg("Backslash pressed - repeating last announcement");
-                    NavigationState.lastKeyboardNavigationTime = Time.time;
-                    NavigationManager.RepeatLastAnnouncement();
-                }
-                // Check for Toggle direction format - using = (equals key)
-                else if (Input.GetKeyDown(KeyCode.Equals))
-                {
-                    MelonLogger.Msg("Equals key pressed - toggling direction format");
-                    ModConfig.ToggleClockPositions();
-                }
-                // Check for Announce scrap - using ' (quote/apostrophe key)
-                else if (Input.GetKeyDown(KeyCode.Quote))
-                {
-                    AnnouncePartyScrap();
-                }
-                // Check for Next category - using Page Down
-                else if (Input.GetKeyDown(KeyCode.PageDown))
-                {
-                    MelonLogger.Msg("Page Down pressed - next category");
-                    NavigationManager.NextCategory();
-                }
-                // Check for Previous category - using Page Up
-                else if (Input.GetKeyDown(KeyCode.PageUp))
-                {
-                    MelonLogger.Msg("Page Up pressed - previous category");
-                    NavigationManager.PreviousCategory();
-                }
-            }
-            catch (System.Exception ex)
-            {
-                MelonLogger.Error($"Error in InputManager_Update_Patch: {ex.Message}");
-                MelonLogger.Error(ex.StackTrace);
-            }
-        }
-
-        private static void AnnouncePartyScrap()
-        {
-            try
-            {
-                if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
-
-                int scrap = MonoBehaviourSingleton<Game>.GetInstance().partyCurrency;
-                string announcement = $"{scrap} scrap";
-
-                MelonLogger.Msg($"Announcing party scrap: {scrap}");
-                ScreenReaderManager.Speak(announcement, interrupt: true);
-            }
-            catch (System.Exception ex)
-            {
-                MelonLogger.Error($"Error announcing scrap: {ex.Message}");
-            }
-        }
-    }
+    // NOTE: InputManager_Update_Patch has been removed.
+    // All keyboard input handling is now in Core/ExplorationState.cs
+    // which is routed through Core/InputRouter.cs.
 
     [HarmonyPatch(typeof(InputManager), "SelectNextInteractable",
         new System.Type[] { typeof(bool), typeof(bool), typeof(bool) })]
