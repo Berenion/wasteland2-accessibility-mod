@@ -303,7 +303,7 @@ namespace Wasteland2AccessibilityMod.States
                 announcement += ", ends conversation";
             }
 
-            ScreenReaderManager.Speak(announcement, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
         private void SelectCurrentOption()
@@ -314,7 +314,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (opt.IsUnavailable)
             {
-                ScreenReaderManager.Speak("This option is unavailable", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("This option is unavailable");
                 return;
             }
 
@@ -328,7 +328,7 @@ namespace Wasteland2AccessibilityMod.States
             string selText = !string.IsNullOrEmpty(opt.FullResponseText)
                 ? opt.FullResponseText
                 : opt.DisplayText;
-            ScreenReaderManager.Speak($"Selected: {selText}", interrupt: false);
+            ScreenReaderManager.Speak($"Selected: {selText}");
 
             // Call OnTopicPressed on the ConversationHUD with the button's GameObject
             var hud = MonoBehaviourSingleton<ConversationHUD>.GetInstance();

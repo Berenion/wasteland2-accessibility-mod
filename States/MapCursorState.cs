@@ -143,7 +143,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 cameraFollowsCursor = !cameraFollowsCursor;
                 string status = cameraFollowsCursor ? "Camera follows cursor" : "Camera stationary";
-                ScreenReaderManager.Speak(status, interrupt: true);
+                ScreenReaderManager.SpeakInterrupt(status);
                 return true;
             }
 
@@ -176,12 +176,12 @@ namespace Wasteland2AccessibilityMod.States
             {
                 // Initialize cursor at current party position
                 InitializeCursorPosition();
-                ScreenReaderManager.Speak("Map cursor on. Use arrow keys to move, Space to scan, Enter to interact, Home to return to party, M to exit.", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("Map cursor on. Use arrow keys to move, Space to scan, Enter to interact, Home to return to party, M to exit.");
                 MelonLogger.Msg("[MapCursorState] Cursor mode enabled");
             }
             else
             {
-                ScreenReaderManager.Speak("Map cursor off", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("Map cursor off");
                 MelonLogger.Msg("[MapCursorState] Cursor mode disabled");
             }
         }
@@ -286,7 +286,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             InitializeCursorPosition();
             SnapCameraToCursor();
-            ScreenReaderManager.Speak("Returned to party", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt("Returned to party");
             AnnounceAtCursor(detailed: false);
         }
 
@@ -370,7 +370,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             string announcement = string.Join(", ", announcements.ToArray());
-            ScreenReaderManager.Speak(announcement, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
         private List<InteractableNexus> FindNearbyInteractables()
@@ -474,7 +474,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (nearbyInteractables.Count == 0)
             {
-                ScreenReaderManager.Speak("Nothing to interact with", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("Nothing to interact with");
                 return;
             }
 
@@ -488,7 +488,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             string name = GetInteractableName(target);
-            ScreenReaderManager.Speak($"Selected: {name}", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt($"Selected: {name}");
 
             // Optionally trigger default action
             // This would need more investigation of the game's interaction system

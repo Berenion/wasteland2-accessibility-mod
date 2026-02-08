@@ -48,7 +48,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     pointsText = UITextExtractor.CleanText(pointsText);
                     string announcement = $"{pointsText} attribute points available";
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
@@ -73,7 +73,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     string apText = UITextExtractor.CleanText(__instance.apLabel.text);
                     string announcement = $"Action Points {apText}";
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
@@ -102,7 +102,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 if (announcement != CharacterScreenPatches.lastAnnouncedStat)
                 {
                     CharacterScreenPatches.lastAnnouncedStat = announcement;
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
@@ -129,32 +129,13 @@ namespace Wasteland2AccessibilityMod.Patches
                 if (announcement != CharacterScreenPatches.lastAnnouncedStat)
                 {
                     CharacterScreenPatches.lastAnnouncedStat = announcement;
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
     }
 
-    /// <summary>
-    /// Patch for CharacterScreen panel switching - announces which panel is active
-    /// </summary>
-    [HarmonyPatch(typeof(CharacterScreen), "GoToPanel")]
-    public class CharacterScreen_GoToPanel_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(CharacterScreen __instance, CharacterScreen.EditorPanel panel)
-        {
-            // Announce panel name
-            string panelName = panel.ToString();
-
-            // Make it more readable
-            panelName = panelName.Replace("AddCharacter", "Add Character")
-                                 .Replace("UseDefaultParty", "Use Default Party");
-
-            string announcement = $"{panelName} panel";
-            ScreenReaderManager.Speak(announcement, interrupt: false);
-        }
-    }
+    // CharacterScreen_GoToPanel_Patch removed - CharacterState handles panel change announcements
 
     /// <summary>
     /// Patch for skill panel to announce skill points
@@ -172,7 +153,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     pointsText = UITextExtractor.CleanText(pointsText);
                     string announcement = $"{pointsText} skill points available";
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
@@ -194,7 +175,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     string attributeName = UITextExtractor.CleanText(__instance.nameLabel.text);
                     string announcement = $"{attributeName} {newValue}";
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
@@ -216,7 +197,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     string skillName = UITextExtractor.CleanText(__instance.nameLabel.text);
                     string announcement = $"{skillName} level {newValue}";
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }

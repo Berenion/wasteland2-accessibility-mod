@@ -54,7 +54,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
             if (!string.IsNullOrEmpty(text))
             {
-                ScreenReaderManager.Speak(text, interrupt: false);
+                ScreenReaderManager.Speak(text);
             }
         }
     }

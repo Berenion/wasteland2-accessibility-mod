@@ -40,7 +40,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 }
             }
 
-            ScreenReaderManager.Speak(announcement, interrupt: false);
+            ScreenReaderManager.Speak(announcement);
         }
     }
 }

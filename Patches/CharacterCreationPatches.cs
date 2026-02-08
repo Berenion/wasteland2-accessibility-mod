@@ -4,40 +4,7 @@ using System.Reflection;
 
 namespace Wasteland2AccessibilityMod.Patches
 {
-    /// <summary>
-    /// Harmony patch to announce the premade party selection panel
-    /// Patches: public void OnEnable()
-    /// </summary>
-    [HarmonyPatch(typeof(CHA_UsePremadePartyPanel), "OnEnable")]
-    public class CHA_UsePremadePartyPanel_OnEnable_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(CHA_UsePremadePartyPanel __instance)
-        {
-            if (__instance == null) return;
-
-            // Find any labels on the panel to announce
-            UILabel[] labels = __instance.GetComponentsInChildren<UILabel>();
-            string panelText = "";
-
-            foreach (UILabel label in labels)
-            {
-                if (label != null && !string.IsNullOrEmpty(label.text))
-                {
-                    string cleanedText = UITextExtractor.CleanText(label.text);
-                    if (!string.IsNullOrEmpty(cleanedText))
-                    {
-                        panelText += cleanedText + ". ";
-                    }
-                }
-            }
-
-            // Add instructions for controller users
-            string announcement = panelText + "Press A to use default rangers, or press X to create custom party.";
-
-            ScreenReaderManager.Speak(announcement, interrupt: false);
-        }
-    }
+    // CHA_UsePremadePartyPanel_OnEnable_Patch removed - CharacterState handles panel announcements
 
     /// <summary>
     /// Harmony patch to announce difficulty selection descriptions
@@ -70,7 +37,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     };
 
                     string announcement = $"{difficultyName}. {cleanedText}";
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
@@ -121,7 +88,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += ". " + cleanedDesc;
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }
@@ -161,7 +128,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += ". " + cleanedDesc;
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }
@@ -215,7 +182,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     }
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }
@@ -254,7 +221,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += $", Level {skillLevel}";
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }
@@ -305,7 +272,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += $", {attributeRating}";
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }

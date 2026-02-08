@@ -59,6 +59,10 @@ namespace Wasteland2AccessibilityMod.States
                 MainMenu mainMenu = guiManager.GetMainMenu();
                 if (mainMenu != null && mainMenu.isTopMenu) return false;
 
+                // Not active when CharacterScreen is showing - CharacterState handles that
+                if (CharacterScreen.instance != null && CharacterScreen.instance.gameObject.activeInHierarchy)
+                    return false;
+
                 // Active when any other menu is on top (including submenus over MainMenu)
                 return true;
             }
@@ -190,7 +194,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             MelonLogger.Msg($"[GenericMenuState] Menu: {menuName}");
-            ScreenReaderManager.Speak(menuName, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(menuName);
         }
 
         private string GetActiveTabName(OptionsMenu menu)
@@ -235,7 +239,7 @@ namespace Wasteland2AccessibilityMod.States
             // Announce the new tab
             string tabName = GetActiveTabName(cachedOptionsMenu);
             MelonLogger.Msg($"[GenericMenuState] Switched to tab: {tabName}");
-            ScreenReaderManager.Speak($"Options, {tabName}", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt($"Options, {tabName}");
 
             // Select first control in new tab after a short delay
             selectionEnsured = false;
@@ -291,7 +295,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 lastSelectedObject = current;
                 lastAnnouncedText = announcement;
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
                 MelonLogger.Msg($"[GenericMenuState] Initial announcement: {announcement}");
             }
         }
@@ -470,7 +474,7 @@ namespace Wasteland2AccessibilityMod.States
                             int percent = Mathf.RoundToInt(optScrollbar.slider.value * 100);
                             valueText = $"{percent} percent";
                         }
-                        ScreenReaderManager.Speak(valueText, interrupt: true);
+                        ScreenReaderManager.SpeakInterrupt(valueText);
                         MelonLogger.Msg($"[GenericMenuState] Slider adjusted: {optScrollbar.slider.value}");
                         return;
                     }
@@ -519,7 +523,7 @@ namespace Wasteland2AccessibilityMod.States
             // Check if the popup list is enabled
             if (!dropdown.popupList.enabled)
             {
-                ScreenReaderManager.Speak("unavailable", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("unavailable");
                 return;
             }
 
@@ -530,7 +534,7 @@ namespace Wasteland2AccessibilityMod.States
 
             dropdown.popupList.value = dropdown.popupList.items[newIndex];
             string val = UITextExtractor.CleanText(dropdown.popupList.value);
-            ScreenReaderManager.Speak(val, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(val);
             MelonLogger.Msg($"[GenericMenuState] Dropdown cycled to: {val}");
         }
 
@@ -656,7 +660,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (!string.IsNullOrEmpty(announcement) && announcement != lastAnnouncedText)
                     {
                         lastAnnouncedText = announcement;
-                        ScreenReaderManager.Speak(announcement, interrupt: true);
+                        ScreenReaderManager.SpeakInterrupt(announcement);
                     }
                 }
             }
@@ -799,12 +803,12 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (!optCheckbox.checkbox.enabled)
                 {
-                    ScreenReaderManager.Speak("unavailable", interrupt: true);
+                    ScreenReaderManager.SpeakInterrupt("unavailable");
                     return;
                 }
                 optCheckbox.checkbox.value = !optCheckbox.checkbox.value;
                 string state = optCheckbox.checkbox.value ? "checked" : "unchecked";
-                ScreenReaderManager.Speak(state, interrupt: true);
+                ScreenReaderManager.SpeakInterrupt(state);
                 MelonLogger.Msg($"[GenericMenuState] OPT_Checkbox toggled: {current.name} = {optCheckbox.checkbox.value}");
                 return;
             }
@@ -816,7 +820,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (!optDropdown.popupList.enabled)
                 {
-                    ScreenReaderManager.Speak("unavailable", interrupt: true);
+                    ScreenReaderManager.SpeakInterrupt("unavailable");
                     return;
                 }
                 // Cycle to next value on Enter
@@ -832,7 +836,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (!optScrollbar.slider.enabled)
                 {
-                    ScreenReaderManager.Speak("unavailable", interrupt: true);
+                    ScreenReaderManager.SpeakInterrupt("unavailable");
                     return;
                 }
                 string valueText;
@@ -843,7 +847,7 @@ namespace Wasteland2AccessibilityMod.States
                     int percent = Mathf.RoundToInt(optScrollbar.slider.value * 100);
                     valueText = $"{percent} percent";
                 }
-                ScreenReaderManager.Speak($"{valueText}, use left and right to adjust", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt($"{valueText}, use left and right to adjust");
                 return;
             }
 
@@ -853,7 +857,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 toggle.value = !toggle.value;
                 string state = toggle.value ? "checked" : "unchecked";
-                ScreenReaderManager.Speak(state, interrupt: true);
+                ScreenReaderManager.SpeakInterrupt(state);
                 MelonLogger.Msg($"[GenericMenuState] Toggled: {current.name} = {toggle.value}");
                 return;
             }
@@ -871,7 +875,7 @@ namespace Wasteland2AccessibilityMod.States
             UIButton button = current.GetComponent<UIButton>();
             if (button != null && !button.isEnabled)
             {
-                ScreenReaderManager.Speak("unavailable", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("unavailable");
                 return;
             }
 
@@ -900,7 +904,7 @@ namespace Wasteland2AccessibilityMod.States
             if (topScreen != null)
             {
                 topScreen.Close();
-                ScreenReaderManager.Speak("Closed", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("Closed");
                 MelonLogger.Msg($"[GenericMenuState] Closed: {topScreen.name}");
             }
         }

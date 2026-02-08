@@ -303,7 +303,7 @@ namespace Wasteland2AccessibilityMod.Patches
             if (UICamera.selectedObject == __instance.gameObject && newItem != null)
             {
                 string announcement = InventoryPatches.FormatItemAnnouncement(newItem, detailed: true);
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }
@@ -345,7 +345,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 if (announcement != InventoryPatches.lastAnnouncedItem)
                 {
                     InventoryPatches.lastAnnouncedItem = announcement;
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
@@ -364,7 +364,7 @@ namespace Wasteland2AccessibilityMod.Patches
             // We just announce context
             if (__result)
             {
-                ScreenReaderManager.Speak("Inventory grid", interrupt: false);
+                ScreenReaderManager.Speak("Inventory grid");
             }
         }
     }
@@ -394,7 +394,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 }
 
                 // Don't interrupt current speech for additions
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }
@@ -424,7 +424,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 }
 
                 // Don't interrupt for removals
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }
@@ -449,7 +449,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     ItemInstance item = currentItem?.GetItem();
 
                     string announcement = InventoryPatches.FormatEquipmentSlot(__instance.equipmentSlot, item);
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
             }
         }
@@ -468,7 +468,7 @@ namespace Wasteland2AccessibilityMod.Patches
             string announcement = InventoryPatches.FormatEquipmentSlot(__instance.equipmentSlot, newItem);
 
             // Don't interrupt for equipment changes (they happen during inventory management)
-            ScreenReaderManager.Speak(announcement, interrupt: false);
+            ScreenReaderManager.Speak(announcement);
         }
     }
 
@@ -505,7 +505,7 @@ namespace Wasteland2AccessibilityMod.Patches
             if (currentItemCount != lastItemCount && lastItemCount != -1)
             {
                 string announcement = $"{currentItemCount} items visible";
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
 
             lastItemCount = currentItemCount;
@@ -526,7 +526,7 @@ namespace Wasteland2AccessibilityMod.Patches
             {
                 // Announce comprehensive item details
                 string announcement = InventoryPatches.FormatDetailedItemInfo(item, currentPC);
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
         }
     }
@@ -567,7 +567,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     if (announcement != InventoryPatches.lastAnnouncedItem)
                     {
                         InventoryPatches.lastAnnouncedItem = announcement;
-                        ScreenReaderManager.Speak(announcement, interrupt: false);
+                        ScreenReaderManager.Speak(announcement);
                     }
                 }
             }

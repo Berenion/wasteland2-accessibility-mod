@@ -178,17 +178,23 @@ namespace Wasteland2AccessibilityMod
                 // Start a coroutine to delay the announcement
                 MelonCoroutines.Start(DelayedSpeak(text, interrupt, totalDelay));
             }
+            else if (interrupt)
+            {
+                ScreenReaderManager.SpeakInterrupt(text);
+            }
             else
             {
-                // Speak immediately
-                ScreenReaderManager.Speak(text, interrupt);
+                ScreenReaderManager.Speak(text);
             }
         }
 
         private static IEnumerator DelayedSpeak(string text, bool interrupt, float delay)
         {
             yield return new WaitForSeconds(delay);
-            ScreenReaderManager.Speak(text, interrupt);
+            if (interrupt)
+                ScreenReaderManager.SpeakInterrupt(text);
+            else
+                ScreenReaderManager.Speak(text);
         }
     }
 }

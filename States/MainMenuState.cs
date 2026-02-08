@@ -126,7 +126,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             // Announce the menu when it becomes active
-            ScreenReaderManager.Speak("Main Menu. Use Up and Down arrows to navigate, Enter to select.", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt("Main Menu. Use Up and Down arrows to navigate, Enter to select.");
 
             // Announce current selection after a brief delay
             if (currentIndex >= 0 && currentIndex < menuButtons.Count)
@@ -336,7 +336,7 @@ namespace Wasteland2AccessibilityMod.States
                 announcement += $", {positionInEnabled} of {enabledCount}";
             }
 
-            ScreenReaderManager.Speak(announcement, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
         private int FindCurrentSelectionIndex()
@@ -387,7 +387,7 @@ namespace Wasteland2AccessibilityMod.States
             // Check if button is disabled
             if (entry.button != null && !entry.button.isEnabled)
             {
-                ScreenReaderManager.Speak("Button unavailable", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("Button unavailable");
                 return;
             }
 

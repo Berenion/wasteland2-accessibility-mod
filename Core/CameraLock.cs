@@ -37,11 +37,11 @@ namespace Wasteland2AccessibilityMod.Core
             if (IsLocked)
             {
                 CaptureCurrentRotation();
-                ScreenReaderManager.Speak("Camera locked", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("Camera locked");
             }
             else
             {
-                ScreenReaderManager.Speak("Camera unlocked", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("Camera unlocked");
             }
 
             MelonLogger.Msg($"[CameraLock] Toggled - Locked: {IsLocked}");

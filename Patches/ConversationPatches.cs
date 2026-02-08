@@ -77,13 +77,13 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     // Descriptive/flavor text - announce immediately so it's not delayed
                     announcement = cleanedText;
-                    ScreenReaderManager.Speak(announcement, interrupt: false);
+                    ScreenReaderManager.Speak(announcement);
                 }
                 else
                 {
                     // NPC dialogue (unvoiced) - wait for any voiceover to finish
                     announcement = cleanedText;
-                    VoiceoverHelper.SpeakWithVoiceoverDelay(announcement, interrupt: false, additionalDelay: 0.2f);
+                    VoiceoverHelper.SpeakWithVoiceoverDelay(announcement, additionalDelay: 0.2f);
                 }
 
                 // Update tracking
@@ -191,7 +191,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 // Don't interrupt current speech - wait for voiceover to finish, then add delay
                 VoiceoverHelper.SpeakWithVoiceoverDelay($"Response option: {announcement}",
-                    interrupt: false, additionalDelay: 0.5f);
+                    additionalDelay: 0.5f);
 
                 MelonLogger.Msg($"[Conversation] Button added: {announcement}");
             }
@@ -328,7 +328,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += $", {skillInfo}";
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
                 MelonLogger.Msg($"[Conversation] {announcement}");
             }
             catch (Exception ex)
@@ -492,7 +492,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 lastHoverTime = currentTime;
 
                 // Announce immediately - this is navigation feedback
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
                 MelonLogger.Msg($"[Conversation] Hovering: {announcement}");
             }
             catch (Exception ex)
@@ -546,7 +546,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += $" with {npcName}";
                 }
 
-                VoiceoverHelper.SpeakWithVoiceoverDelay(announcement, interrupt: false, additionalDelay: 0.3f);
+                VoiceoverHelper.SpeakWithVoiceoverDelay(announcement, additionalDelay: 0.3f);
                 MelonLogger.Msg($"[Conversation] Started: {npcName}");
             }
             catch (Exception ex)
@@ -567,7 +567,7 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             try
             {
-                ScreenReaderManager.Speak("Conversation ended", interrupt: false);
+                ScreenReaderManager.Speak("Conversation ended");
                 MelonLogger.Msg("[Conversation] Ended");
             }
             catch (Exception ex)

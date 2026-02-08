@@ -42,7 +42,7 @@ namespace Wasteland2AccessibilityMod
 
             string format = UseClockPositions ? "clock positions" : "cardinal directions";
             MelonLogger.Msg($"Direction format changed to: {format}");
-            ScreenReaderManager.Speak($"Using {format}", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt($"Using {format}");
         }
     }
 }

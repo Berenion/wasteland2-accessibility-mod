@@ -134,7 +134,7 @@ namespace Wasteland2AccessibilityMod.Core
                 string announcement = $"{scrap} scrap";
 
                 MelonLogger.Msg($"Announcing party scrap: {scrap}");
-                ScreenReaderManager.Speak(announcement, interrupt: true);
+                ScreenReaderManager.SpeakInterrupt(announcement);
             }
             catch (System.Exception ex)
             {

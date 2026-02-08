@@ -145,7 +145,7 @@ namespace Wasteland2AccessibilityMod.States
             PC pc = GetPartyLeader();
             if (pc == null)
             {
-                ScreenReaderManager.Speak("No party member selected", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("No party member selected");
                 scanInProgress = false;
                 return;
             }
@@ -416,7 +416,7 @@ namespace Wasteland2AccessibilityMod.States
                 summaryParts.Add("Use arrows to browse, Enter to select, R for range, S to exit");
             }
 
-            ScreenReaderManager.Speak(string.Join(", ", summaryParts.ToArray()), interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(string.Join(", ", summaryParts.ToArray()));
 
             // If we found anything, announce first category
             if (totalFound > 0)
@@ -488,7 +488,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (results.Count == 0)
             {
-                ScreenReaderManager.Speak($"No {categoryName.ToLower()}", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt($"No {categoryName.ToLower()}");
                 return;
             }
 
@@ -508,7 +508,7 @@ namespace Wasteland2AccessibilityMod.States
                 announcements.Add($"and {results.Count - 5} more");
             }
 
-            ScreenReaderManager.Speak(string.Join(". ", announcements.ToArray()), interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(string.Join(". ", announcements.ToArray()));
         }
 
         private void SelectClosestInCategory()
@@ -518,7 +518,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (results.Count == 0)
             {
-                ScreenReaderManager.Speak($"No {categoryName.ToLower()} to select", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt($"No {categoryName.ToLower()} to select");
                 return;
             }
 
@@ -543,7 +543,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            ScreenReaderManager.Speak($"Selected: {closest.Name}, {closest.Distance:F0} meters {closest.Direction}", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt($"Selected: {closest.Name}, {closest.Distance:F0} meters {closest.Direction}");
 
             // Exit scan mode after selection
             scanInProgress = false;
@@ -556,15 +556,15 @@ namespace Wasteland2AccessibilityMod.States
             {
                 case 0:
                     currentScanRange = SHORT_RANGE;
-                    ScreenReaderManager.Speak($"Short range, {SHORT_RANGE:F0} meters. Press S to rescan.", interrupt: true);
+                    ScreenReaderManager.SpeakInterrupt($"Short range, {SHORT_RANGE:F0} meters. Press S to rescan.");
                     break;
                 case 1:
                     currentScanRange = MEDIUM_RANGE;
-                    ScreenReaderManager.Speak($"Medium range, {MEDIUM_RANGE:F0} meters. Press S to rescan.", interrupt: true);
+                    ScreenReaderManager.SpeakInterrupt($"Medium range, {MEDIUM_RANGE:F0} meters. Press S to rescan.");
                     break;
                 case 2:
                     currentScanRange = LONG_RANGE;
-                    ScreenReaderManager.Speak($"Long range, {LONG_RANGE:F0} meters. Press S to rescan.", interrupt: true);
+                    ScreenReaderManager.SpeakInterrupt($"Long range, {LONG_RANGE:F0} meters. Press S to rescan.");
                     break;
             }
         }
@@ -573,7 +573,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             scanInProgress = false;
             lastScanResults.Clear();
-            ScreenReaderManager.Speak("Scan mode off", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt("Scan mode off");
         }
 
         private PC GetPartyLeader()

@@ -31,7 +31,7 @@ namespace Wasteland2AccessibilityMod.Patches
             string announcement = $"Camera mode: {modeName}";
 
             MelonLogger.Msg($"Camera mode changed from {oldMode} to {newMode}");
-            ScreenReaderManager.Speak(announcement, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
         private static string GetCameraModeName(GamepadCameraMode mode)

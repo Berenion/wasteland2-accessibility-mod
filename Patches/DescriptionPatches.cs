@@ -35,7 +35,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 // Use non-interrupting speech so we don't cut off previous descriptions
                 // that might be part of a multi-line examine
-                ScreenReaderManager.Speak(announcement, interrupt: false);
+                ScreenReaderManager.Speak(announcement);
             }
             catch (System.Exception ex)
             {

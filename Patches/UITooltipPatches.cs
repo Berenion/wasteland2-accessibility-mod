@@ -34,7 +34,7 @@ namespace Wasteland2AccessibilityMod.Patches
             {
                 MelonLogger.Msg($"[Tooltip] {cleanedText}");
                 // Tooltips should NOT interrupt - they're informational
-                ScreenReaderManager.Speak(cleanedText, interrupt: false);
+                ScreenReaderManager.Speak(cleanedText);
             }
         }
     }
@@ -58,7 +58,7 @@ namespace Wasteland2AccessibilityMod.Patches
             {
                 MelonLogger.Msg($"[TextTooltip] {cleanedText}");
                 // Tooltips should NOT interrupt - they're informational
-                ScreenReaderManager.Speak(cleanedText, interrupt: false);
+                ScreenReaderManager.Speak(cleanedText);
             }
         }
     }
@@ -112,7 +112,7 @@ namespace Wasteland2AccessibilityMod.Patches
                         UITooltipPatches.lastTooltipTime = currentTime;
 
                         // Tooltips should NOT interrupt - they're informational
-                        ScreenReaderManager.Speak(cleanedText, interrupt: false);
+                        ScreenReaderManager.Speak(cleanedText);
                     }
                 }
             }

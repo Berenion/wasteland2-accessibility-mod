@@ -45,7 +45,7 @@ namespace Wasteland2AccessibilityMod.Patches
             string stateText = state ? "On" : "Off";
             string announcement = $"{labelText}: {stateText}";
 
-            ScreenReaderManager.Speak(announcement, interrupt: false);
+            ScreenReaderManager.Speak(announcement);
         }
     }
 }

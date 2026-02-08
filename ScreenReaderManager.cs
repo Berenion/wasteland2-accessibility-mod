@@ -58,37 +58,40 @@ namespace Wasteland2AccessibilityMod
         }
 
         /// <summary>
-        /// Sends text to the screen reader with audio-aware queueing
-        /// This is the recommended method for most announcements - it will queue the announcement
-        /// if voiceover is playing, or speak immediately if no voiceover is active
+        /// Queues text for the screen reader without interrupting current speech.
+        /// Use this for sequential announcements, automatic notifications, and follow-up context.
+        /// This is the default and recommended method for most announcements.
         /// </summary>
-        /// <param name="text">Text to speak</param>
-        /// <param name="interrupt">If true, interrupts current speech. Use true for focus changes, false for informational updates like tooltips.</param>
-        public static void Speak(string text, bool interrupt = true)
+        public static void Speak(string text)
         {
-            // Clean text before speaking (removes NGUI codes, special symbols, etc.)
             text = UITextExtractor.CleanText(text);
             if (string.IsNullOrEmpty(text)) return;
-
-            // Route through the audio-aware announcement manager
-            AudioAwareAnnouncementManager.Instance.QueueAnnouncement(text, interrupt);
+            AudioAwareAnnouncementManager.Instance.QueueAnnouncement(text, false);
         }
 
         /// <summary>
-        /// Sends text directly to the screen reader, bypassing the audio-aware queue
-        /// Use this only when you need to speak immediately regardless of voiceover state
-        /// (e.g., for critical system messages or debugging)
+        /// Speaks text immediately, interrupting any current speech.
+        /// Use this for direct user actions (navigation, key presses) where old speech is stale
+        /// and the user expects immediate feedback on what they just did.
         /// </summary>
-        /// <param name="text">Text to speak</param>
-        /// <param name="interrupt">If true, interrupts current speech</param>
-        public static void SpeakDirect(string text, bool interrupt = true)
+        public static void SpeakInterrupt(string text)
+        {
+            text = UITextExtractor.CleanText(text);
+            if (string.IsNullOrEmpty(text)) return;
+            AudioAwareAnnouncementManager.Instance.QueueAnnouncement(text, true);
+        }
+
+        /// <summary>
+        /// Sends text directly to the screen reader, bypassing the audio-aware queue.
+        /// Use this only when you need to speak immediately regardless of voiceover state
+        /// (e.g., for critical system messages or debugging).
+        /// </summary>
+        public static void SpeakDirect(string text, bool interrupt = false)
         {
             if (screenReader != null && isLoaded)
             {
-                // Clean text before speaking (removes NGUI codes, special symbols, etc.)
                 text = UITextExtractor.CleanText(text);
                 if (string.IsNullOrEmpty(text)) return;
-
                 screenReader.Speak(text, interrupt: interrupt);
             }
         }

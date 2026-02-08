@@ -32,7 +32,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 string name = GetCharacterName(__instance);
 
                 MelonLogger.Msg($"Character selected: {name}");
-                ScreenReaderManager.Speak(name, interrupt: true);
+                ScreenReaderManager.SpeakInterrupt(name);
             }
             catch (System.Exception ex)
             {

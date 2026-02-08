@@ -253,7 +253,7 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
 
-                ScreenReaderManager.Speak(announcement, interrupt: true);
+                ScreenReaderManager.SpeakInterrupt(announcement);
                 return;
             }
 
@@ -280,7 +280,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (!string.IsNullOrEmpty(title)) announcement += title + ". ";
                     if (!string.IsNullOrEmpty(message)) announcement += message;
 
-                    ScreenReaderManager.Speak(announcement, interrupt: true);
+                    ScreenReaderManager.SpeakInterrupt(announcement);
                 }
             }
         }
@@ -295,7 +295,7 @@ namespace Wasteland2AccessibilityMod.States
                 announcement += $", {selectedButtonIndex + 1} of {buttons.Count}";
             }
 
-            ScreenReaderManager.Speak(announcement, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
         private void ActivateButton()
@@ -304,7 +304,7 @@ namespace Wasteland2AccessibilityMod.States
 
             var btn = buttons[selectedButtonIndex];
 
-            ScreenReaderManager.Speak($"{btn.Label} pressed", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt($"{btn.Label} pressed");
 
             MelonLogger.Msg($"[DialogState] Pressed: {btn.Label}");
 

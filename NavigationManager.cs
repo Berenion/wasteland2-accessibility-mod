@@ -64,7 +64,7 @@ namespace Wasteland2AccessibilityMod
             UpdateFilteredList();
             string categoryName = GetCategoryDisplayName(currentCategory);
             int count = filteredInteractables.Count;
-            ScreenReaderManager.Speak($"{categoryName}, {count} found", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt($"{categoryName}, {count} found");
 
             MelonLogger.Msg($"Category changed to: {categoryName} ({count} items)");
         }
@@ -87,7 +87,7 @@ namespace Wasteland2AccessibilityMod
             UpdateFilteredList();
             string categoryName = GetCategoryDisplayName(currentCategory);
             int count = filteredInteractables.Count;
-            ScreenReaderManager.Speak($"{categoryName}, {count} found", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt($"{categoryName}, {count} found");
 
             MelonLogger.Msg($"Category changed to: {categoryName} ({count} items)");
         }
@@ -115,7 +115,7 @@ namespace Wasteland2AccessibilityMod
             if (filteredInteractables.Count == 0)
             {
                 string categoryName = GetCategoryDisplayName(currentCategory);
-                ScreenReaderManager.Speak($"No {categoryName.ToLower()} nearby", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt($"No {categoryName.ToLower()} nearby");
                 currentIndex = -1;
                 return;
             }
@@ -133,7 +133,7 @@ namespace Wasteland2AccessibilityMod
             if (filteredInteractables.Count == 0)
             {
                 string categoryName = GetCategoryDisplayName(currentCategory);
-                ScreenReaderManager.Speak($"No {categoryName.ToLower()} nearby", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt($"No {categoryName.ToLower()} nearby");
                 currentIndex = -1;
                 return;
             }
@@ -150,7 +150,7 @@ namespace Wasteland2AccessibilityMod
             // Use selectedInteractable (from cycling) NOT lastAnnouncedInteractable (from proximity)
             if (selectedInteractable == null)
             {
-                ScreenReaderManager.Speak("No interactable selected", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("No interactable selected");
                 return;
             }
 
@@ -169,7 +169,7 @@ namespace Wasteland2AccessibilityMod
             else
             {
                 // Interactable no longer available (out of range or not visible)
-                ScreenReaderManager.Speak("Previously selected interactable is no longer available", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("Previously selected interactable is no longer available");
                 selectedInteractable = null;
                 lastAnnouncedInteractable = null;
                 lastAnnouncement = "";
@@ -209,7 +209,7 @@ namespace Wasteland2AccessibilityMod
             }
 
             MelonLogger.Msg($"Announcing: {lastAnnouncement} (fromCycling: {isFromCycling})");
-            ScreenReaderManager.Speak(lastAnnouncement, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
         }
 
         private static void SelectAndAnnounce(int index)

@@ -31,11 +31,12 @@ namespace Wasteland2AccessibilityMod.States
                 var guiManager = MonoBehaviourSingleton<GUIManager>.GetInstance();
                 if (!guiManager.IsAnyMenuActive()) return false;
 
-                // Check for CharacterScreen with inventory panel active
-                var charScreen = UnityEngine.Object.FindObjectOfType<CharacterScreen>();
+                // Check for CharacterScreen - only active if inventory panel is actually showing
+                var charScreen = CharacterScreen.instance;
                 if (charScreen != null && charScreen.gameObject.activeInHierarchy)
                 {
-                    return true;
+                    var chaInvPanel = UnityEngine.Object.FindObjectOfType<CHA_InventoryPanel>();
+                    return chaInvPanel != null && chaInvPanel.gameObject.activeInHierarchy;
                 }
 
                 // Check for PopupInventoryMenu (loot containers)
@@ -107,7 +108,7 @@ namespace Wasteland2AccessibilityMod.States
                 announcement = "Loot container";
             }
 
-            ScreenReaderManager.Speak(announcement, interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(announcement);
             MelonLogger.Msg($"[InventoryState] Activated: {announcement}");
         }
 
@@ -153,7 +154,7 @@ namespace Wasteland2AccessibilityMod.States
                     string text = UITextExtractor.CleanText(label.text);
                     if (!string.IsNullOrEmpty(text))
                     {
-                        ScreenReaderManager.Speak($"{text}, button", interrupt: true);
+                        ScreenReaderManager.SpeakInterrupt($"{text}, button");
                     }
                 }
             }
@@ -204,7 +205,7 @@ namespace Wasteland2AccessibilityMod.States
                 parts.Add("new");
             }
 
-            ScreenReaderManager.Speak(string.Join(", ", parts.ToArray()), interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(string.Join(", ", parts.ToArray()));
         }
 
         private void AnnounceEquipmentSlot(INV_EquipmentSlot slot)
@@ -220,12 +221,12 @@ namespace Wasteland2AccessibilityMod.States
                 if (item != null && item.template != null)
                 {
                     string itemName = UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty));
-                    ScreenReaderManager.Speak($"{slotName}: {itemName}", interrupt: true);
+                    ScreenReaderManager.SpeakInterrupt($"{slotName}: {itemName}");
                     return;
                 }
             }
 
-            ScreenReaderManager.Speak($"{slotName}: empty", interrupt: true);
+            ScreenReaderManager.SpeakInterrupt($"{slotName}: empty");
         }
 
         private void AnnounceCurrentItemDetails()
@@ -275,7 +276,7 @@ namespace Wasteland2AccessibilityMod.States
                 parts.Add($"tier {item.template.tier}");
             }
 
-            ScreenReaderManager.Speak(string.Join(", ", parts.ToArray()), interrupt: true);
+            ScreenReaderManager.SpeakInterrupt(string.Join(", ", parts.ToArray()));
         }
 
         private void AnnounceItemDescription()
@@ -292,11 +293,11 @@ namespace Wasteland2AccessibilityMod.States
             string description = UITextExtractor.CleanText(Language.Localize(item.template.description, false, false, string.Empty));
             if (string.IsNullOrEmpty(description))
             {
-                ScreenReaderManager.Speak("No description available", interrupt: true);
+                ScreenReaderManager.SpeakInterrupt("No description available");
             }
             else
             {
-                ScreenReaderManager.Speak(description, interrupt: true);
+                ScreenReaderManager.SpeakInterrupt(description);
             }
         }
 
