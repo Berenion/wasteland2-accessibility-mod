@@ -35,13 +35,13 @@ namespace Wasteland2AccessibilityMod.States
                 var charScreen = CharacterScreen.instance;
                 if (charScreen != null && charScreen.gameObject.activeInHierarchy)
                 {
-                    var chaInvPanel = UnityEngine.Object.FindObjectOfType<CHA_InventoryPanel>();
+                    var chaInvPanel = charScreen.GetComponentInChildren<CHA_InventoryPanel>();
                     return chaInvPanel != null && chaInvPanel.gameObject.activeInHierarchy;
                 }
 
-                // Check for PopupInventoryMenu (loot containers)
-                var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
-                if (popupInv != null && popupInv.gameObject.activeInHierarchy)
+                // Check for PopupInventoryMenu (loot containers) via GUIManager's hierarchy
+                var popupInv = guiManager.GetComponentInChildren<PopupInventoryMenu>();
+                if (popupInv != null)
                 {
                     return true;
                 }
@@ -90,7 +90,7 @@ namespace Wasteland2AccessibilityMod.States
             // Announce the screen type
             string announcement = "Inventory";
 
-            var charScreen = UnityEngine.Object.FindObjectOfType<CharacterScreen>();
+            var charScreen = CharacterScreen.instance;
             if (charScreen != null && charScreen.gameObject.activeInHierarchy)
             {
                 // Try to get current character name

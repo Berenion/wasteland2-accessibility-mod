@@ -22,6 +22,13 @@ namespace Wasteland2AccessibilityMod.States
         private int controlIndex = -1;
         private CharacterScreen.EditorPanel lastPanelType = (CharacterScreen.EditorPanel)(-1);
         private bool skillsFocused = false;
+        private bool isEditingTextField = false;
+
+        /// <summary>
+        /// When true, UIInput.ProcessEvent is blocked by Harmony patch.
+        /// Set true when CharacterState is active and not editing a text field.
+        /// </summary>
+        internal static bool blockUIInput = false;
 
         // Announcement tracking
         private string lastAnnouncedText = null;
@@ -54,7 +61,7 @@ namespace Wasteland2AccessibilityMod.States
                     return false;
 
                 // Not active if inventory panel is showing (InventoryState handles that)
-                var chaInvPanel = UnityEngine.Object.FindObjectOfType<CHA_InventoryPanel>();
+                var chaInvPanel = charScreen.GetComponentInChildren<CHA_InventoryPanel>();
                 if (chaInvPanel != null && chaInvPanel.gameObject.activeInHierarchy)
                     return false;
 
@@ -66,6 +73,35 @@ namespace Wasteland2AccessibilityMod.States
         {
             var charScreen = CharacterScreen.instance;
             if (charScreen == null) return false;
+
+            // If user has entered editing mode on a text field, pass keys through
+            // except Escape (cancel) and Enter (confirm) which exit editing mode
+            if (isEditingTextField)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    isEditingTextField = false;
+                    blockUIInput = true;
+                    if (UIInput.selection != null)
+                        UIInput.selection.isSelected = false;
+                    MelonLogger.Msg("[CharacterState] Exited editing (Escape)");
+                    ScreenReaderManager.SpeakInterrupt("Cancelled editing");
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    isEditingTextField = false;
+                    blockUIInput = true;
+                    string value = UIInput.selection != null ? UIInput.selection.value : "";
+                    MelonLogger.Msg($"[CharacterState] Exited editing (Enter), value='{value}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}");
+                    if (UIInput.selection != null)
+                        UIInput.selection.isSelected = false;
+                    ScreenReaderManager.SpeakInterrupt(!string.IsNullOrEmpty(value) ? $"Confirmed, {value}" : "Confirmed");
+                    return true;
+                }
+                // Let all other keys pass through to the text field
+                return false;
+            }
 
             // Cache reflection if needed
             if (!reflectionCached) CacheReflection();
@@ -110,7 +146,7 @@ namespace Wasteland2AccessibilityMod.States
 
         public void OnActivated()
         {
-
+            blockUIInput = true;
             lastAnnouncedText = null;
             lastPanelType = (CharacterScreen.EditorPanel)(-1);
             controlList.Clear();
@@ -133,7 +169,8 @@ namespace Wasteland2AccessibilityMod.States
 
         public void OnDeactivated()
         {
-
+            blockUIInput = false;
+            isEditingTextField = false;
             lastAnnouncedText = null;
             controlList.Clear();
             controlIndex = -1;
@@ -211,6 +248,8 @@ namespace Wasteland2AccessibilityMod.States
         {
             lastPanelType = newPanel;
             skillsFocused = false;
+            isEditingTextField = false;
+            blockUIInput = true;
             controlList.Clear();
             controlIndex = -1;
 
@@ -246,7 +285,7 @@ namespace Wasteland2AccessibilityMod.States
             if (controlList.Count > 0)
             {
                 controlIndex = 0;
-                UICamera.selectedObject = controlList[0];
+                SelectControl(controlList[0]);
             }
 
             // Reset announcement tracking
@@ -330,17 +369,22 @@ namespace Wasteland2AccessibilityMod.States
             // This panel has 2 main buttons: Use Default and Create Custom
             if (screen.usePremadePartyPanel == null) return;
 
+            var seenNames = new HashSet<string>();
             var buttons = screen.usePremadePartyPanel.GetComponentsInChildren<UIButton>(false);
             foreach (var btn in buttons)
             {
                 if (btn == null || !btn.gameObject.activeInHierarchy) continue;
+
+                // Skip duplicate buttons (nested UIButton components on children)
+                if (seenNames.Contains(btn.name)) continue;
+                seenNames.Add(btn.name);
 
                 // Only include buttons that have meaningful labels
                 UILabel label = btn.GetComponentInChildren<UILabel>();
                 if (label == null) continue;
 
                 string text = UITextExtractor.CleanText(label.text);
-                if (string.IsNullOrEmpty(text) || text.Length <= 2) continue; // Skip "or", empty labels, etc.
+                if (string.IsNullOrEmpty(text) || text.Length <= 2) continue;
 
                 controlList.Add(btn.gameObject);
             }
@@ -532,35 +576,81 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (screen.dossierPanel == null) return;
 
-            // Dossier has gender buttons + flavor panel inputs
-            // Gender buttons (Male/Female)
-            var buttons = screen.dossierPanel.GetComponentsInChildren<UIButton>(false);
-            foreach (var btn in buttons)
+            var genderPanel = screen.dossierPanel;
+            // Use the flavor panel from the gender panel (NOT screen.flavorPanel which may be different)
+            var flavor = genderPanel.flavorPanel;
+
+            // Gender buttons - find by name recursively
+            var maleBtn = FindChildRecursive(genderPanel.transform, "MaleButton");
+            var femaleBtn = FindChildRecursive(genderPanel.transform, "FemaleButton");
+            if (maleBtn != null) controlList.Add(maleBtn.gameObject);
+            if (femaleBtn != null) controlList.Add(femaleBtn.gameObject);
+
+            // Flavor panel inputs - add in logical order
+            if (flavor != null)
             {
-                if (btn != null && btn.gameObject.activeInHierarchy)
+                MelonLogger.Msg($"[CharacterState] FlavorPanel found: {flavor.name}, active={flavor.gameObject.activeInHierarchy}");
+                if (flavor.nameInput != null)
                 {
-                    controlList.Add(btn.gameObject);
+                    MelonLogger.Msg($"[CharacterState]   nameInput: {flavor.nameInput.name}, active={flavor.nameInput.gameObject.activeInHierarchy}");
+                    controlList.Add(flavor.nameInput.gameObject);
                 }
+                if (flavor.ageInput != null)
+                {
+                    MelonLogger.Msg($"[CharacterState]   ageInput: {flavor.ageInput.name}, active={flavor.ageInput.gameObject.activeInHierarchy}");
+                    controlList.Add(flavor.ageInput.gameObject);
+                }
+                if (flavor.ethnicityList != null)
+                    controlList.Add(flavor.ethnicityList.gameObject);
+                if (flavor.religionList != null)
+                    controlList.Add(flavor.religionList.gameObject);
+                if (flavor.smokesList != null)
+                    controlList.Add(flavor.smokesList.gameObject);
+                if (flavor.biographyInput != null)
+                    controlList.Add(flavor.biographyInput.gameObject);
+            }
+            else
+            {
+                MelonLogger.Msg("[CharacterState] FlavorPanel is null on dossierPanel!");
             }
 
-            // Add flavor panel inputs if visible
-            if (screen.flavorPanel != null)
+            // Portrait and Appearance buttons - find unique labeled buttons not already added
+            var seenObjects = new HashSet<GameObject>(controlList);
+            var seenNames = new HashSet<string>();
+            var allButtons = genderPanel.GetComponentsInChildren<UIButton>(false);
+            foreach (var btn in allButtons)
             {
-                if (screen.flavorPanel.nameInput != null && screen.flavorPanel.nameInput.gameObject.activeInHierarchy)
-                    controlList.Add(screen.flavorPanel.nameInput.gameObject);
-                if (screen.flavorPanel.ageInput != null && screen.flavorPanel.ageInput.gameObject.activeInHierarchy)
-                    controlList.Add(screen.flavorPanel.ageInput.gameObject);
-                if (screen.flavorPanel.religionList != null && screen.flavorPanel.religionList.gameObject.activeInHierarchy)
-                    controlList.Add(screen.flavorPanel.religionList.gameObject);
-                if (screen.flavorPanel.smokesList != null && screen.flavorPanel.smokesList.gameObject.activeInHierarchy)
-                    controlList.Add(screen.flavorPanel.smokesList.gameObject);
-                if (screen.flavorPanel.ethnicityList != null && screen.flavorPanel.ethnicityList.gameObject.activeInHierarchy)
-                    controlList.Add(screen.flavorPanel.ethnicityList.gameObject);
-                if (screen.flavorPanel.biographyInput != null && screen.flavorPanel.biographyInput.gameObject.activeInHierarchy)
-                    controlList.Add(screen.flavorPanel.biographyInput.gameObject);
+                if (btn == null || !btn.gameObject.activeInHierarchy) continue;
+                if (seenObjects.Contains(btn.gameObject)) continue;
+                if (seenNames.Contains(btn.name)) continue;
+                seenNames.Add(btn.name);
+
+                // Skip gender buttons and container objects
+                if (btn.name.Contains("Male") || btn.name.Contains("Female")) continue;
+                if (btn.name.Contains("Container")) continue;
+
+                UILabel btnLabel = btn.GetComponentInChildren<UILabel>();
+                if (btnLabel == null) continue;
+                string text = UITextExtractor.CleanText(btnLabel.text);
+                if (string.IsNullOrEmpty(text) || text.Length <= 2) continue;
+
+                controlList.Add(btn.gameObject);
             }
 
             MelonLogger.Msg($"[CharacterState] Dossier controls: {controlList.Count}");
+        }
+
+        private Transform FindChildRecursive(Transform parent, string name)
+        {
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                var child = parent.GetChild(i);
+                if (child.name == name && child.gameObject.activeInHierarchy)
+                    return child;
+                var found = FindChildRecursive(child, name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         private void BuildFlavorControls(CharacterScreen screen)
@@ -584,9 +674,18 @@ namespace Wasteland2AccessibilityMod.States
             if (newIndex != controlIndex)
             {
                 controlIndex = newIndex;
-                UICamera.selectedObject = controlList[controlIndex];
+                SelectControl(controlList[controlIndex]);
                 AnnounceCurrentControl();
             }
+        }
+
+        /// <summary>
+        /// Sets UICamera.selectedObject and ensures UIInput fields don't auto-enter editing mode.
+        /// Users must press Enter to start editing text fields - prevents keyboard traps.
+        /// </summary>
+        private void SelectControl(GameObject obj)
+        {
+            UICamera.selectedObject = obj;
         }
 
         private void AnnounceCurrentControl(bool interrupt = true)
@@ -655,7 +754,29 @@ namespace Wasteland2AccessibilityMod.States
             if (button != null)
             {
                 UILabel btnLabel = obj.GetComponentInChildren<UILabel>();
-                string text = btnLabel != null ? UITextExtractor.CleanText(btnLabel.text) : obj.name;
+                string text = btnLabel != null ? UITextExtractor.CleanText(btnLabel.text) : "";
+
+                // Handle gender buttons with selected state
+                if (string.IsNullOrEmpty(text))
+                {
+                    if (obj.name.Contains("Male") && !obj.name.Contains("Female"))
+                    {
+                        bool selected = CharacterScreen.instance != null &&
+                            CharacterScreen.instance.dossierPanel != null &&
+                            CharacterScreen.instance.dossierPanel.gender == Gender.Masculine;
+                        return selected ? "Male, selected, button" : "Male, button";
+                    }
+                    if (obj.name.Contains("Female"))
+                    {
+                        bool selected = CharacterScreen.instance != null &&
+                            CharacterScreen.instance.dossierPanel != null &&
+                            CharacterScreen.instance.dossierPanel.gender == Gender.Feminine;
+                        return selected ? "Female, selected, button" : "Female, button";
+                    }
+                    // Clean up generic button names: remove "Button" suffix
+                    text = obj.name.Replace("Button", "").Replace("button", "").Trim();
+                    if (string.IsNullOrEmpty(text)) text = obj.name;
+                }
                 return $"{text}, button";
             }
 
@@ -1072,7 +1193,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (controlList.Count > 0)
                 {
                     controlIndex = 0;
-                    UICamera.selectedObject = controlList[0];
+                    SelectControl(controlList[0]);
                 }
 
                 string category = GetActiveSkillCategory(screen);
@@ -1166,7 +1287,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (controlList.Count > 0)
                 {
                     controlIndex = 0;
-                    UICamera.selectedObject = controlList[0];
+                    SelectControl(controlList[0]);
                 }
                 ScreenReaderManager.SpeakInterrupt("Attributes");
                 AnnounceCurrentControl(interrupt: false);
@@ -1292,8 +1413,12 @@ namespace Wasteland2AccessibilityMod.States
                     var input = obj.GetComponent<UIInput>();
                     if (input != null)
                     {
-                        input.isSelected = !input.isSelected;
-                        ScreenReaderManager.SpeakInterrupt(input.isSelected ? "Editing" : "Done editing");
+                        isEditingTextField = true;
+                        blockUIInput = false;
+                        input.isSelected = true;
+                        string label = FindLabelText(obj);
+                        MelonLogger.Msg($"[CharacterState] Entered editing mode: label='{label}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}, isSelected={input.isSelected}, blockUIInput={blockUIInput}");
+                        ScreenReaderManager.SpeakInterrupt($"Editing {label}. Press Enter to confirm or Escape to cancel.");
                     }
                     else
                     {
@@ -1373,7 +1498,7 @@ namespace Wasteland2AccessibilityMod.States
             if (controlList.Count > 0)
             {
                 controlIndex = 0;
-                UICamera.selectedObject = controlList[0];
+                SelectControl(controlList[0]);
             }
 
             string[] categories = { "Combat", "Knowledge", "General" };

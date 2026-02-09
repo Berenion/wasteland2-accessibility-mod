@@ -1,6 +1,7 @@
 using HarmonyLib;
 using UnityEngine;
 using System;
+using Wasteland2AccessibilityMod.States;
 
 namespace Wasteland2AccessibilityMod.Patches
 {
@@ -200,6 +201,36 @@ namespace Wasteland2AccessibilityMod.Patches
                     ScreenReaderManager.Speak(announcement);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Blocks UIInput keyboard processing when CharacterState is navigating
+    /// but not actively editing a text field. ProcessEvent handles special keys
+    /// (Backspace, Delete, arrows, Return, Ctrl combos) via UIInputOnGUI.OnGUI.
+    /// </summary>
+    [HarmonyPatch(typeof(UIInput), "ProcessEvent")]
+    public class UIInput_ProcessEvent_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            return !CharacterState.blockUIInput;
+        }
+    }
+
+    /// <summary>
+    /// Blocks UIInput.Update() when CharacterState is navigating.
+    /// Update() handles regular character input via Input.inputString (line 527 of UIInput.cs).
+    /// Without this patch, characters typed during navigation would silently enter text fields.
+    /// </summary>
+    [HarmonyPatch(typeof(UIInput), "Update")]
+    public class UIInput_Update_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            return !CharacterState.blockUIInput;
         }
     }
 }
