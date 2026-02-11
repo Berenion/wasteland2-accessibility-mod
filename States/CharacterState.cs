@@ -32,6 +32,7 @@ namespace Wasteland2AccessibilityMod.States
 
         // Announcement tracking
         private string lastAnnouncedText = null;
+        private int lastAnnouncedIndex = -1;
         private float activationTime = 0f;
         private bool initialAnnouncementDone = false;
         private const float ANNOUNCEMENT_DELAY = 0.3f;
@@ -148,6 +149,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             blockUIInput = true;
             lastAnnouncedText = null;
+            lastAnnouncedIndex = -1;
             lastPanelType = (CharacterScreen.EditorPanel)(-1);
             controlList.Clear();
             controlIndex = -1;
@@ -172,6 +174,7 @@ namespace Wasteland2AccessibilityMod.States
             blockUIInput = false;
             isEditingTextField = false;
             lastAnnouncedText = null;
+            lastAnnouncedIndex = -1;
             controlList.Clear();
             controlIndex = -1;
             skillsFocused = false;
@@ -696,9 +699,10 @@ namespace Wasteland2AccessibilityMod.States
             if (obj == null) return;
 
             string announcement = GetControlAnnouncement(obj);
-            if (!string.IsNullOrEmpty(announcement) && announcement != lastAnnouncedText)
+            if (!string.IsNullOrEmpty(announcement) && (announcement != lastAnnouncedText || controlIndex != lastAnnouncedIndex))
             {
                 lastAnnouncedText = announcement;
+                lastAnnouncedIndex = controlIndex;
                 if (interrupt) ScreenReaderManager.SpeakInterrupt(announcement); else ScreenReaderManager.Speak(announcement);
                 MelonLogger.Msg($"[CharacterState] Announce [{controlIndex}]: {announcement}");
             }
