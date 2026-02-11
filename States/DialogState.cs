@@ -20,6 +20,7 @@ namespace Wasteland2AccessibilityMod.States
         private readonly List<DialogButton> buttons = new List<DialogButton>();
         private string currentDialogId = "";
 
+
         private class DialogButton
         {
             public string Label;

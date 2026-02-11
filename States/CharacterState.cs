@@ -297,7 +297,12 @@ namespace Wasteland2AccessibilityMod.States
                     break;
             }
 
-            ScreenReaderManager.SpeakInterrupt(announcement);
+            // Queue after tutorial if one appeared with this panel change, otherwise interrupt
+            var tutPopup = UnityEngine.Object.FindObjectOfType<TutorialPopupMenu>();
+            if (tutPopup != null && tutPopup.gameObject.activeInHierarchy)
+                ScreenReaderManager.Speak(announcement);
+            else
+                ScreenReaderManager.SpeakInterrupt(announcement);
             MelonLogger.Msg($"[CharacterState] Panel changed to: {newPanel} ({controlList.Count} controls)");
 
             // Select first control
