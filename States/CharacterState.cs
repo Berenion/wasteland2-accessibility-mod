@@ -23,6 +23,7 @@ namespace Wasteland2AccessibilityMod.States
         private CharacterScreen.EditorPanel lastPanelType = (CharacterScreen.EditorPanel)(-1);
         private bool skillsFocused = false;
         private bool isEditingTextField = false;
+        private bool isEditingValue = false;
 
         /// <summary>
         /// When true, UIInput.ProcessEvent is blocked by Harmony patch.
@@ -51,6 +52,10 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo attrEditorCurrentValueField;
         private static FieldInfo traitEditorTraitField;
         private static MethodInfo onDoneClickedMethod;
+        private static MethodInfo skillOnPlusClickedMethod;
+        private static MethodInfo skillOnMinusClickedMethod;
+        private static MethodInfo attrOnPlusClickedMethod;
+        private static MethodInfo attrOnMinusClickedMethod;
         private static bool reflectionCached = false;
 
         public bool IsActive
@@ -74,6 +79,10 @@ namespace Wasteland2AccessibilityMod.States
         {
             var charScreen = CharacterScreen.instance;
             if (charScreen == null) return false;
+
+            // Suppress NGUI's native arrow key navigation (UIButtonKeys grid linking)
+            // so our handler controls all navigation exclusively
+            InputSuppressor.ShouldSuppressUINavigation = true;
 
             // If user has entered editing mode on a text field, pass keys through
             // except Escape (cancel) and Enter (confirm) which exit editing mode
@@ -154,6 +163,7 @@ namespace Wasteland2AccessibilityMod.States
             controlList.Clear();
             controlIndex = -1;
             skillsFocused = false;
+            isEditingValue = false;
             activationTime = Time.time;
             initialAnnouncementDone = false;
 
@@ -173,6 +183,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             blockUIInput = false;
             isEditingTextField = false;
+            isEditingValue = false;
             lastAnnouncedText = null;
             lastAnnouncedIndex = -1;
             controlList.Clear();
@@ -203,6 +214,10 @@ namespace Wasteland2AccessibilityMod.States
             addCharCurrentEntryField = typeof(CHA_AddCharacterPanel).GetField("currentEntry", flags);
 
             skillEditorCurrentValueField = typeof(CHA_SkillEditor).GetField("currentValue", flags);
+            skillOnPlusClickedMethod = typeof(CHA_SkillEditor).GetMethod("OnPlusClicked", flags);
+            skillOnMinusClickedMethod = typeof(CHA_SkillEditor).GetMethod("OnMinusClicked", flags);
+            attrOnPlusClickedMethod = typeof(CHA_AttributeEditor).GetMethod("OnPlusClicked", flags);
+            attrOnMinusClickedMethod = typeof(CHA_AttributeEditor).GetMethod("OnMinusClicked", flags);
             attrEditorCurrentValueField = typeof(CHA_AttributeEditor).GetField("currentValue", flags);
             traitEditorTraitField = typeof(CHA_TraitEditor).GetField("trait", flags);
 
@@ -252,6 +267,7 @@ namespace Wasteland2AccessibilityMod.States
             lastPanelType = newPanel;
             skillsFocused = false;
             isEditingTextField = false;
+            isEditingValue = false;
             blockUIInput = true;
             controlList.Clear();
             controlIndex = -1;
@@ -959,6 +975,66 @@ namespace Wasteland2AccessibilityMod.States
             return obj.name;
         }
 
+        // ========== Value Adjustment Helpers ==========
+
+        private void AdjustCurrentAttribute(int direction)
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+            var editor = controlList[controlIndex].GetComponent<CHA_AttributeEditor>();
+            if (editor == null) return;
+
+            if (direction > 0)
+            {
+                if (editor.CanIncreaseValue())
+                {
+                    if (attrOnPlusClickedMethod != null)
+                        attrOnPlusClickedMethod.Invoke(editor, new object[] { null });
+                    AnnounceCurrentControl();
+                }
+                else
+                {
+                    ScreenReaderManager.SpeakInterrupt("Maximum");
+                }
+            }
+            else
+            {
+                if (editor.CanDecreaseValue())
+                {
+                    if (attrOnMinusClickedMethod != null)
+                        attrOnMinusClickedMethod.Invoke(editor, new object[] { null });
+                    AnnounceCurrentControl();
+                }
+                else
+                {
+                    ScreenReaderManager.SpeakInterrupt("Minimum");
+                }
+            }
+        }
+
+        private void AdjustCurrentSkill(int direction)
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+            var editor = controlList[controlIndex].GetComponent<CHA_SkillEditor>();
+            if (editor == null) return;
+
+            if (direction > 0)
+            {
+                if (skillOnPlusClickedMethod != null)
+                {
+                    skillOnPlusClickedMethod.Invoke(editor, new object[] { null });
+                    AnnounceCurrentControl();
+                }
+            }
+            else
+            {
+                if (skillOnMinusClickedMethod != null)
+                {
+                    skillOnMinusClickedMethod.Invoke(editor, new object[] { null });
+                    AnnounceCurrentControl();
+                }
+            }
+        }
+
         // ========== Panel-Specific Input Handlers ==========
 
         private bool HandleCommonInput(CharacterScreen screen)
@@ -1161,6 +1237,32 @@ namespace Wasteland2AccessibilityMod.States
 
         private bool HandleAttributesInput(CharacterScreen screen)
         {
+            // Edit mode: +/- and Left/Right adjust, Enter exits, all arrows blocked
+            if (isEditingValue)
+            {
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Escape))
+                {
+                    isEditingValue = false;
+                    ScreenReaderManager.SpeakInterrupt("Done editing");
+                    AnnounceCurrentControl(interrupt: false);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+                {
+                    AdjustCurrentAttribute(-1);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals))
+                {
+                    AdjustCurrentAttribute(1);
+                    return true;
+                }
+                // Block all other arrow keys while editing
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+                    return true;
+                return false;
+            }
+
             if (HandleCommonInput(screen)) return true;
 
             if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
@@ -1170,47 +1272,42 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Left/Right to adjust attribute value
-            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+            // +/- to adjust value directly
+            if (Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals))
+            {
+                AdjustCurrentAttribute(1);
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+            {
+                AdjustCurrentAttribute(-1);
+                return true;
+            }
+
+            // Enter to start editing (left/right adjustment mode)
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 if (controlIndex >= 0 && controlIndex < controlList.Count)
                 {
                     var editor = controlList[controlIndex].GetComponent<CHA_AttributeEditor>();
                     if (editor != null)
                     {
-                        if (Input.GetKeyDown(KeyCode.RightArrow))
-                        {
-                            if (editor.plusButton != null && editor.plusButton.isEnabled)
-                            {
-                                editor.plusButton.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-                                // Re-announce with new value
-                                AnnounceCurrentControl();
-                            }
-                            else
-                            {
-                                ScreenReaderManager.SpeakInterrupt("Maximum");
-                            }
-                        }
-                        else
-                        {
-                            if (editor.minusButton != null && editor.minusButton.isEnabled)
-                            {
-                                editor.minusButton.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-                                AnnounceCurrentControl();
-                            }
-                            else
-                            {
-                                ScreenReaderManager.SpeakInterrupt("Minimum");
-                            }
-                        }
+                        isEditingValue = true;
+                        string name = editor.nameLabel != null ? UITextExtractor.CleanText(editor.nameLabel.text) : editor.attribute;
+                        ScreenReaderManager.SpeakInterrupt($"Editing {name}. Left and Right to adjust, Enter to confirm");
                     }
                 }
                 return true;
             }
 
+            // Block Left/Right in normal mode
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                return true;
+
             // F to toggle to skills
             if (Input.GetKeyDown(KeyCode.F))
             {
+                isEditingValue = false;
                 skillsFocused = true;
                 BuildControlList(screen, lastPanelType);
                 if (controlList.Count > 0)
@@ -1237,6 +1334,32 @@ namespace Wasteland2AccessibilityMod.States
 
         private bool HandleSkillsInput(CharacterScreen screen)
         {
+            // Edit mode: +/- and Left/Right adjust, Enter exits, all arrows blocked
+            if (isEditingValue)
+            {
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Escape))
+                {
+                    isEditingValue = false;
+                    ScreenReaderManager.SpeakInterrupt("Done editing");
+                    AnnounceCurrentControl(interrupt: false);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+                {
+                    AdjustCurrentSkill(-1);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals))
+                {
+                    AdjustCurrentSkill(1);
+                    return true;
+                }
+                // Block all other arrow keys while editing
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+                    return true;
+                return false;
+            }
+
             if (HandleCommonInput(screen)) return true;
 
             if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
@@ -1246,58 +1369,42 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Left/Right to adjust skill value
-            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+            // +/- to adjust value directly
+            if (Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals))
+            {
+                AdjustCurrentSkill(1);
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+            {
+                AdjustCurrentSkill(-1);
+                return true;
+            }
+
+            // Enter to start editing (left/right adjustment mode)
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 if (controlIndex >= 0 && controlIndex < controlList.Count)
                 {
                     var editor = controlList[controlIndex].GetComponent<CHA_SkillEditor>();
                     if (editor != null)
                     {
-                        // Use the plus/minus buttons by finding them
-                        var buttons = editor.GetComponentsInChildren<UIButton>(true);
-                        UIButton plusBtn = null;
-                        UIButton minusBtn = null;
-                        foreach (var btn in buttons)
-                        {
-                            if (btn.gameObject.name.ToLower().Contains("plus") || btn.gameObject.name.ToLower().Contains("add"))
-                                plusBtn = btn;
-                            else if (btn.gameObject.name.ToLower().Contains("minus") || btn.gameObject.name.ToLower().Contains("sub"))
-                                minusBtn = btn;
-                        }
-
-                        if (Input.GetKeyDown(KeyCode.RightArrow))
-                        {
-                            if (plusBtn != null && plusBtn.isEnabled)
-                            {
-                                plusBtn.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-                                AnnounceCurrentControl();
-                            }
-                            else
-                            {
-                                ScreenReaderManager.SpeakInterrupt("Cannot increase");
-                            }
-                        }
-                        else
-                        {
-                            if (minusBtn != null && minusBtn.isEnabled)
-                            {
-                                minusBtn.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-                                AnnounceCurrentControl();
-                            }
-                            else
-                            {
-                                ScreenReaderManager.SpeakInterrupt("Cannot decrease");
-                            }
-                        }
+                        isEditingValue = true;
+                        string name = editor.nameLabel != null ? UITextExtractor.CleanText(editor.nameLabel.text) : editor.skillName;
+                        ScreenReaderManager.SpeakInterrupt($"Editing {name}. Left and Right to adjust, Enter to confirm");
                     }
                 }
                 return true;
             }
 
+            // Block Left/Right in normal mode
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                return true;
+
             // Page Up/Down to switch skill category
             if (Input.GetKeyDown(KeyCode.PageUp) || Input.GetKeyDown(KeyCode.PageDown))
             {
+                isEditingValue = false;
                 SwitchSkillCategory(screen, Input.GetKeyDown(KeyCode.PageDown) ? 1 : -1);
                 return true;
             }
@@ -1305,6 +1412,7 @@ namespace Wasteland2AccessibilityMod.States
             // F to toggle back to attributes (only if we're in the attributes panel with skills focused)
             if (Input.GetKeyDown(KeyCode.F) && lastPanelType == CharacterScreen.EditorPanel.Attributes)
             {
+                isEditingValue = false;
                 skillsFocused = false;
                 BuildControlList(screen, lastPanelType);
                 if (controlList.Count > 0)
