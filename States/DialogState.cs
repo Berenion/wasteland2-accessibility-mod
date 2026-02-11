@@ -31,7 +31,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             get
             {
-                return IsModalDialogOpen() || IsTutorialOpen();
+                return IsModalDialogOpen() || IsTutorialOpen() || IsTutorialPopupMenuOpen();
             }
         }
 
@@ -126,6 +126,12 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
+        private bool IsTutorialPopupMenuOpen()
+        {
+            var popup = UnityEngine.Object.FindObjectOfType<TutorialPopupMenu>();
+            return popup != null && popup.gameObject.activeInHierarchy;
+        }
+
         private void RefreshButtons()
         {
             buttons.Clear();
@@ -180,7 +186,35 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            // Check for TutorialPopup
+            // Check for TutorialPopupMenu (GUIScreen-based tutorials, e.g. character creation)
+            var tutorialPopupMenu = UnityEngine.Object.FindObjectOfType<TutorialPopupMenu>();
+            if (tutorialPopupMenu != null && tutorialPopupMenu.gameObject.activeInHierarchy)
+            {
+                string dialogId = "tutmenu_" + (tutorialPopupMenu.titleLabel != null ? tutorialPopupMenu.titleLabel.text : "unknown");
+
+                string continueText = "Continue";
+                if (tutorialPopupMenu.clickToContinueLabel != null && !string.IsNullOrEmpty(tutorialPopupMenu.clickToContinueLabel.text))
+                {
+                    continueText = UITextExtractor.CleanText(tutorialPopupMenu.clickToContinueLabel.text);
+                }
+
+                buttons.Add(new DialogButton
+                {
+                    Label = continueText,
+                    ButtonObject = tutorialPopupMenu.gameObject,
+                    ClickAction = () => tutorialPopupMenu.Close()
+                });
+
+                if (dialogId != currentDialogId)
+                {
+                    currentDialogId = dialogId;
+                    selectedButtonIndex = 0;
+                }
+
+                return;
+            }
+
+            // Check for TutorialPopup (TUT_TutorialPopup)
             if (IsTutorialOpen())
             {
                 var tutScreen = MonoBehaviourSingleton<TutorialScreen>.GetInstance();
@@ -253,7 +287,33 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            // Tutorial popup
+            // TutorialPopupMenu (GUIScreen-based)
+            var tutorialPopupMenu = UnityEngine.Object.FindObjectOfType<TutorialPopupMenu>();
+            if (tutorialPopupMenu != null && tutorialPopupMenu.gameObject.activeInHierarchy)
+            {
+                string title = "";
+                string message = "";
+
+                if (tutorialPopupMenu.titleLabel != null)
+                {
+                    title = UITextExtractor.CleanText(tutorialPopupMenu.titleLabel.text);
+                }
+
+                if (tutorialPopupMenu.tutorialLabel != null)
+                {
+                    message = UITextExtractor.CleanText(tutorialPopupMenu.tutorialLabel.text);
+                }
+
+                string announcement = "Tutorial. ";
+                if (!string.IsNullOrEmpty(title)) announcement += title + ". ";
+                if (!string.IsNullOrEmpty(message)) announcement += message + ". ";
+                announcement += "Press Enter to continue";
+
+                ScreenReaderManager.SpeakInterrupt(announcement);
+                return;
+            }
+
+            // TUT_TutorialPopup
             if (IsTutorialOpen())
             {
                 var tutScreen = MonoBehaviourSingleton<TutorialScreen>.GetInstance();
