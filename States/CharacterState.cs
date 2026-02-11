@@ -25,6 +25,14 @@ namespace Wasteland2AccessibilityMod.States
         private bool isEditingTextField = false;
         private bool isEditingValue = false;
 
+        // Derived stats browsing mode
+        private int derivedStatsIndex = -1;
+
+        /// <summary>
+        /// When true, the derived stats browser is open.
+        /// </summary>
+        internal static bool derivedStatsBrowsing = false;
+
         /// <summary>
         /// When true, UIInput.ProcessEvent is blocked by Harmony patch.
         /// Set true when CharacterState is active and not editing a text field.
@@ -51,6 +59,7 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo skillEditorCurrentValueField;
         private static FieldInfo attrEditorCurrentValueField;
         private static FieldInfo traitEditorTraitField;
+        private static FieldInfo statDisplayListField;
         private static MethodInfo onDoneClickedMethod;
         private static MethodInfo skillOnPlusClickedMethod;
         private static MethodInfo skillOnMinusClickedMethod;
@@ -130,6 +139,10 @@ namespace Wasteland2AccessibilityMod.States
                 AnnounceCurrentControl(interrupt: false);
             }
 
+            // Derived stats browsing mode intercepts all input
+            if (derivedStatsBrowsing)
+                return HandleDerivedStatsInput(charScreen);
+
             // Route input based on panel type
             switch (lastPanelType)
             {
@@ -164,6 +177,8 @@ namespace Wasteland2AccessibilityMod.States
             controlIndex = -1;
             skillsFocused = false;
             isEditingValue = false;
+            derivedStatsBrowsing = false;
+            derivedStatsIndex = -1;
             activationTime = Time.time;
             initialAnnouncementDone = false;
 
@@ -184,6 +199,8 @@ namespace Wasteland2AccessibilityMod.States
             blockUIInput = false;
             isEditingTextField = false;
             isEditingValue = false;
+            derivedStatsBrowsing = false;
+            derivedStatsIndex = -1;
             lastAnnouncedText = null;
             lastAnnouncedIndex = -1;
             controlList.Clear();
@@ -209,6 +226,7 @@ namespace Wasteland2AccessibilityMod.States
             traitCurrentEditorField = typeof(CHA_TraitsPanel).GetField("currentEditor", flags);
 
             attrEditorsField = typeof(CHA_AttributePanel).GetField("attributeEditors", flags);
+            statDisplayListField = typeof(CHA_AttributePanel).GetField("statDisplayList", flags);
 
             addCharEntryListField = typeof(CHA_AddCharacterPanel).GetField("entryList", flags);
             addCharCurrentEntryField = typeof(CHA_AddCharacterPanel).GetField("currentEntry", flags);
@@ -268,6 +286,8 @@ namespace Wasteland2AccessibilityMod.States
             skillsFocused = false;
             isEditingTextField = false;
             isEditingValue = false;
+            derivedStatsBrowsing = false;
+            derivedStatsIndex = -1;
             blockUIInput = true;
             controlList.Clear();
             controlIndex = -1;
@@ -287,10 +307,10 @@ namespace Wasteland2AccessibilityMod.States
                     announcement += $". {GetPartyCount(screen)} rangers";
                     break;
                 case CharacterScreen.EditorPanel.Attributes:
-                    announcement += ". F to switch to skills, P for points remaining, I for description";
+                    announcement += ". F to switch to skills, P for points remaining, I for description, C for derived stats";
                     break;
                 case CharacterScreen.EditorPanel.Skills:
-                    announcement += ". F to switch to attributes, Left and Right for categories, P for points remaining, I for description";
+                    announcement += ". F to switch to attributes, Left and Right for categories, P for points remaining, I for description, C for derived stats";
                     break;
                 case CharacterScreen.EditorPanel.Traits:
                     announcement += ". Enter to toggle, R for description";
@@ -1117,10 +1137,18 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // C to announce character summary
+            // C to open derived stats browser (on panels that have them) or announce character summary
             if (Input.GetKeyDown(KeyCode.C))
             {
-                AnnounceCharacterSummary(screen);
+                if (lastPanelType == CharacterScreen.EditorPanel.Attributes ||
+                    lastPanelType == CharacterScreen.EditorPanel.Skills)
+                {
+                    OpenDerivedStatsBrowser(screen);
+                }
+                else
+                {
+                    AnnounceCharacterSummary(screen);
+                }
                 return true;
             }
 
@@ -1798,6 +1826,200 @@ namespace Wasteland2AccessibilityMod.States
             {
                 MelonLogger.Warning($"[CharacterState] Error getting trait description: {ex.Message}");
                 return null;
+            }
+        }
+
+        // ========== Derived Stats Browser ==========
+
+        /// <summary>
+        /// The 10 derived stat names in the same order the game displays them.
+        /// </summary>
+        private static readonly string[] DerivedStatNames = new string[]
+        {
+            PCStatsManager.actionPoints,
+            PCStatsManager.bonusRangedHitChance,
+            PCStatsManager.criticalHitChance,
+            PCStatsManager.actionRechargeRate,
+            PCStatsManager.chanceToEvade,
+            PCStatsManager.hitPoints,
+            PCStatsManager.combatSpeed,
+            PCStatsManager.skillPointsPerLevel,
+            PCStatsManager.maxWeight,
+            PCStatsManager.conPerLevel
+        };
+
+        private void OpenDerivedStatsBrowser(CharacterScreen screen)
+        {
+            derivedStatsBrowsing = true;
+            derivedStatsIndex = 0;
+            ScreenReaderManager.SpeakInterrupt("Derived stats. Up and Down to navigate, I for description, Escape to close");
+            AnnounceDerivedStat(screen, interrupt: false);
+            MelonLogger.Msg("[CharacterState] Derived stats browser opened");
+        }
+
+        private void CloseDerivedStatsBrowser()
+        {
+            derivedStatsBrowsing = false;
+            derivedStatsIndex = -1;
+            EventManager.ignoreNextBack = true; // Game's native mechanism to suppress the next Back event
+            ScreenReaderManager.SpeakInterrupt("Derived stats closed");
+            // Re-announce current control so user knows where they are
+            lastAnnouncedText = null;
+            AnnounceCurrentControl(interrupt: false);
+            MelonLogger.Msg("[CharacterState] Derived stats browser closed");
+        }
+
+        private bool HandleDerivedStatsInput(CharacterScreen screen)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CloseDerivedStatsBrowser();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                derivedStatsIndex--;
+                if (derivedStatsIndex < 0) derivedStatsIndex = DerivedStatNames.Length - 1;
+                AnnounceDerivedStat(screen);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                derivedStatsIndex++;
+                if (derivedStatsIndex >= DerivedStatNames.Length) derivedStatsIndex = 0;
+                AnnounceDerivedStat(screen);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                AnnounceDerivedStatDescription(screen);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                derivedStatsIndex = 0;
+                AnnounceDerivedStat(screen);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                derivedStatsIndex = DerivedStatNames.Length - 1;
+                AnnounceDerivedStat(screen);
+                return true;
+            }
+
+            // Block all other keys while in derived stats mode
+            return true;
+        }
+
+        private void AnnounceDerivedStat(CharacterScreen screen, bool interrupt = true)
+        {
+            if (derivedStatsIndex < 0 || derivedStatsIndex >= DerivedStatNames.Length) return;
+
+            string statName = DerivedStatNames[derivedStatsIndex];
+            PC pc = GetCurrentPC(screen);
+
+            try
+            {
+                var statsManager = MonoBehaviourSingleton<PCStatsManager>.GetInstance();
+                DerivedStat stat = statsManager.GetStat(statName);
+                if (stat == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt($"Unknown stat");
+                    return;
+                }
+
+                string displayName = UITextExtractor.CleanText(
+                    Language.Localize(stat.displayName, false, false, string.Empty));
+
+                // Get the current value from the PC's stats
+                string valueText = "unknown";
+                if (pc != null)
+                {
+                    int rawValue = pc.pcStats.GetDerivedStat(statName);
+                    valueText = FormatDerivedStatValue(rawValue, stat.displayType);
+                }
+
+                string announcement = $"{displayName}, {valueText}, {derivedStatsIndex + 1} of {DerivedStatNames.Length}";
+                if (interrupt)
+                    ScreenReaderManager.SpeakInterrupt(announcement);
+                else
+                    ScreenReaderManager.Speak(announcement);
+                MelonLogger.Msg($"[CharacterState] Derived stat [{derivedStatsIndex}]: {announcement}");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterState] Error announcing derived stat: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("Error reading stat");
+            }
+        }
+
+        private string FormatDerivedStatValue(int rawValue, DerivedStat.StatDisplayType displayType)
+        {
+            switch (displayType)
+            {
+                case DerivedStat.StatDisplayType.Percent:
+                    return Mathf.Clamp(rawValue, 0, 100) + "%";
+                case DerivedStat.StatDisplayType.ActionPoint:
+                    return rawValue + " AP";
+                case DerivedStat.StatDisplayType.CombatMovement:
+                    float val = (float)rawValue / 100f;
+                    return val.ToString("F1");
+                case DerivedStat.StatDisplayType.Meters:
+                    return rawValue + " meters";
+                case DerivedStat.StatDisplayType.Pounds:
+                    return rawValue + " lbs";
+                default:
+                    return rawValue.ToString();
+            }
+        }
+
+        private void AnnounceDerivedStatDescription(CharacterScreen screen)
+        {
+            if (derivedStatsIndex < 0 || derivedStatsIndex >= DerivedStatNames.Length) return;
+
+            string statName = DerivedStatNames[derivedStatsIndex];
+
+            try
+            {
+                var statsManager = MonoBehaviourSingleton<PCStatsManager>.GetInstance();
+                BaseStat characteristic = statsManager.GetCharacteristic(statName);
+                if (characteristic == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No description available");
+                    return;
+                }
+
+                string name = UITextExtractor.CleanText(
+                    Language.Localize(characteristic.displayName, false, false, string.Empty));
+                string desc = UITextExtractor.CleanText(
+                    Language.Localize(characteristic.description, false, false, string.Empty));
+
+                var parts = new List<string>();
+                parts.Add(name);
+                if (!string.IsNullOrEmpty(desc))
+                    parts.Add(desc);
+
+                // Include trait modifications if available
+                PC pc = GetCurrentPC(screen);
+                if (pc != null && pc.pcTemplate != null)
+                {
+                    string traitInfo = pc.pcTemplate.GetTraitBaseStatTooltipString(characteristic);
+                    if (!string.IsNullOrEmpty(traitInfo))
+                        parts.Add(UITextExtractor.CleanText(traitInfo));
+                }
+
+                ScreenReaderManager.SpeakInterrupt(string.Join(". ", parts.ToArray()));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterState] Error getting derived stat description: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("No description available");
             }
         }
 
