@@ -262,7 +262,7 @@ namespace Wasteland2AccessibilityMod.States
             switch (newPanel)
             {
                 case CharacterScreen.EditorPanel.UseDefaultParty:
-                    announcement += ". Enter for default party, Escape for custom";
+                    announcement += ". Up and Down to choose, Enter to select";
                     break;
                 case CharacterScreen.EditorPanel.Party:
                     announcement += $". {GetPartyCount(screen)} rangers";
