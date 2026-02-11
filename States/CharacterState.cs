@@ -735,7 +735,7 @@ namespace Wasteland2AccessibilityMod.States
             var input = obj.GetComponent<UIInput>();
             if (input != null)
             {
-                string label = FindLabelText(obj);
+                string label = GetInputFieldLabel(obj, input);
                 string value = !string.IsNullOrEmpty(input.value) ? input.value : "empty";
                 return $"{label}, {value}, text field";
             }
@@ -915,6 +915,26 @@ namespace Wasteland2AccessibilityMod.States
                 MelonLogger.Warning($"[CharacterState] Error announcing premade entry: {ex.Message}");
                 return "Character entry";
             }
+        }
+
+        /// <summary>
+        /// Gets a descriptive label for a UIInput field by checking against known flavor panel references.
+        /// Falls back to FindLabelText for unknown inputs.
+        /// </summary>
+        private string GetInputFieldLabel(GameObject obj, UIInput input)
+        {
+            var charScreen = CharacterScreen.instance;
+            if (charScreen != null && charScreen.dossierPanel != null)
+            {
+                var flavor = charScreen.dossierPanel.flavorPanel;
+                if (flavor != null)
+                {
+                    if (flavor.nameInput == input) return "Name";
+                    if (flavor.ageInput == input) return "Age";
+                    if (flavor.biographyInput == input) return "Biography";
+                }
+            }
+            return FindLabelText(obj);
         }
 
         private string FindLabelText(GameObject obj)
@@ -1416,7 +1436,7 @@ namespace Wasteland2AccessibilityMod.States
                         isEditingTextField = true;
                         blockUIInput = false;
                         input.isSelected = true;
-                        string label = FindLabelText(obj);
+                        string label = GetInputFieldLabel(obj, input);
                         MelonLogger.Msg($"[CharacterState] Entered editing mode: label='{label}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}, isSelected={input.isSelected}, blockUIInput={blockUIInput}");
                         ScreenReaderManager.SpeakInterrupt($"Editing {label}. Press Enter to confirm or Escape to cancel.");
                     }
