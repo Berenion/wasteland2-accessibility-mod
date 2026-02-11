@@ -836,10 +836,10 @@ namespace Wasteland2AccessibilityMod.States
             {
                 string name = editor.nameLabel != null ? UITextExtractor.CleanText(editor.nameLabel.text) : editor.skillName;
                 int value = 0;
-                if (skillEditorCurrentValueField != null)
-                    value = (int)skillEditorCurrentValueField.GetValue(editor);
-                else if (editor.levelLabel != null)
+                if (editor.levelLabel != null)
                     int.TryParse(UITextExtractor.CleanText(editor.levelLabel.text), out value);
+                else if (skillEditorCurrentValueField != null)
+                    value = (int)skillEditorCurrentValueField.GetValue(editor);
 
                 return $"{name}, level {value}, skill";
             }
