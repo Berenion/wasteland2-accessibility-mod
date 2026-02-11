@@ -20,7 +20,6 @@ namespace Wasteland2AccessibilityMod.States
         private readonly List<DialogButton> buttons = new List<DialogButton>();
         private string currentDialogId = "";
 
-
         private class DialogButton
         {
             public string Label;
@@ -38,7 +37,14 @@ namespace Wasteland2AccessibilityMod.States
 
         public bool HandleInput()
         {
-            RefreshButtons();
+            bool dialogChanged = RefreshButtons();
+
+            // When the dialog changes while DialogState stays active (e.g. one tutorial
+            // closes revealing another), re-announce the new content
+            if (dialogChanged)
+            {
+                AnnounceDialog();
+            }
 
             if (buttons.Count == 0) return false;
 
@@ -133,9 +139,14 @@ namespace Wasteland2AccessibilityMod.States
             return popup != null && popup.gameObject.activeInHierarchy;
         }
 
-        private void RefreshButtons()
+        /// <summary>
+        /// Refreshes the button list for the current dialog.
+        /// Returns true if the dialog changed (new dialog appeared).
+        /// </summary>
+        private bool RefreshButtons()
         {
             buttons.Clear();
+            bool changed = false;
 
             // Check for ModalMessageMenu
             ModalMessageMenu modal = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
@@ -177,14 +188,14 @@ namespace Wasteland2AccessibilityMod.States
                     });
                 }
 
-                // Detect if dialog changed
                 if (dialogId != currentDialogId)
                 {
                     currentDialogId = dialogId;
                     selectedButtonIndex = 0;
+                    changed = true;
                 }
 
-                return;
+                return changed;
             }
 
             // Check for TutorialPopupMenu (GUIScreen-based tutorials, e.g. character creation)
@@ -210,9 +221,10 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     currentDialogId = dialogId;
                     selectedButtonIndex = 0;
+                    changed = true;
                 }
 
-                return;
+                return changed;
             }
 
             // Check for TutorialPopup (TUT_TutorialPopup)
@@ -241,6 +253,7 @@ namespace Wasteland2AccessibilityMod.States
                     {
                         currentDialogId = dialogId;
                         selectedButtonIndex = 0;
+                        changed = true;
                     }
                 }
             }
@@ -250,6 +263,8 @@ namespace Wasteland2AccessibilityMod.States
             {
                 selectedButtonIndex = buttons.Count - 1;
             }
+
+            return changed;
         }
 
         private void AnnounceDialog()
