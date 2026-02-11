@@ -290,7 +290,7 @@ namespace Wasteland2AccessibilityMod.States
                     announcement += ". F to switch to skills, P for points remaining, I for description";
                     break;
                 case CharacterScreen.EditorPanel.Skills:
-                    announcement += ". F to switch to attributes, Page Up and Page Down for categories, P for points remaining, I for description";
+                    announcement += ". F to switch to attributes, Left and Right for categories, P for points remaining, I for description";
                     break;
                 case CharacterScreen.EditorPanel.Traits:
                     announcement += ". Enter to toggle, R for description";
@@ -1397,7 +1397,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
 
                 string category = GetActiveSkillCategory(screen);
-                ScreenReaderManager.SpeakInterrupt($"Skills, {category} category. Page Up and Page Down to switch");
+                ScreenReaderManager.SpeakInterrupt($"Skills, {category} category. Left and Right to switch");
                 AnnounceCurrentControl(interrupt: false);
                 return true;
             }
@@ -1483,22 +1483,18 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Block Left/Right in normal mode
+            // Left/Right to switch skill category
             if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                isEditingValue = false;
+                SwitchSkillCategory(screen, Input.GetKeyDown(KeyCode.RightArrow) ? 1 : -1);
                 return true;
+            }
 
             // I for description
             if (Input.GetKeyDown(KeyCode.I))
             {
                 AnnounceCurrentStatDescription();
-                return true;
-            }
-
-            // Page Up/Down to switch skill category
-            if (Input.GetKeyDown(KeyCode.PageUp) || Input.GetKeyDown(KeyCode.PageDown))
-            {
-                isEditingValue = false;
-                SwitchSkillCategory(screen, Input.GetKeyDown(KeyCode.PageDown) ? 1 : -1);
                 return true;
             }
 
@@ -1700,20 +1696,17 @@ namespace Wasteland2AccessibilityMod.States
 
             int newCategory = (current + direction + 3) % 3;
 
-            // Use the ShowCategory method via the mode buttons
+            // Call the public category switch methods directly
             switch (newCategory)
             {
                 case 0:
-                    if (screen.skillPanel.combatButton != null)
-                        screen.skillPanel.combatButton.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    screen.skillPanel.OnCombatSkillsClicked();
                     break;
                 case 1:
-                    if (screen.skillPanel.knowledgeButton != null)
-                        screen.skillPanel.knowledgeButton.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    screen.skillPanel.OnKnowledgeSkillsClicked();
                     break;
                 case 2:
-                    if (screen.skillPanel.generalButton != null)
-                        screen.skillPanel.generalButton.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    screen.skillPanel.OnGeneralSkillsClicked();
                     break;
             }
 
