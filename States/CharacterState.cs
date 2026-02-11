@@ -287,10 +287,10 @@ namespace Wasteland2AccessibilityMod.States
                     announcement += $". {GetPartyCount(screen)} rangers";
                     break;
                 case CharacterScreen.EditorPanel.Attributes:
-                    announcement += ". F to switch to skills, P for points remaining";
+                    announcement += ". F to switch to skills, P for points remaining, I for description";
                     break;
                 case CharacterScreen.EditorPanel.Skills:
-                    announcement += ". F to switch to attributes, Page Up and Page Down for categories, P for points remaining";
+                    announcement += ". F to switch to attributes, Page Up and Page Down for categories, P for points remaining, I for description";
                     break;
                 case CharacterScreen.EditorPanel.Traits:
                     announcement += ". Enter to toggle, R for description";
@@ -975,6 +975,68 @@ namespace Wasteland2AccessibilityMod.States
             return obj.name;
         }
 
+        // ========== Stat Description Helper ==========
+
+        private void AnnounceCurrentStatDescription()
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+            var obj = controlList[controlIndex];
+
+            string characteristicName = null;
+            string levelText = null;
+            string shortDesc = null;
+
+            var attrEditor = obj.GetComponent<CHA_AttributeEditor>();
+            if (attrEditor != null)
+            {
+                characteristicName = attrEditor.attribute;
+                levelText = attrEditor.valueLabel != null ? UITextExtractor.CleanText(attrEditor.valueLabel.text) : null;
+                shortDesc = attrEditor.descriptionLabel != null ? UITextExtractor.CleanText(attrEditor.descriptionLabel.text) : null;
+            }
+
+            var skillEditor = obj.GetComponent<CHA_SkillEditor>();
+            if (skillEditor != null)
+            {
+                characteristicName = skillEditor.skillName;
+                levelText = skillEditor.levelLabel != null ? "Level " + UITextExtractor.CleanText(skillEditor.levelLabel.text) : null;
+            }
+
+            if (string.IsNullOrEmpty(characteristicName))
+            {
+                ScreenReaderManager.SpeakInterrupt("No description available");
+                return;
+            }
+
+            try
+            {
+                var baseStat = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetCharacteristic(characteristicName);
+                if (baseStat == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No description available");
+                    return;
+                }
+
+                string name = UITextExtractor.CleanText(Language.Localize(baseStat.displayName, false, false, string.Empty));
+                string fullDesc = UITextExtractor.CleanText(Language.Localize(baseStat.description, false, false, string.Empty));
+
+                var parts = new List<string>();
+                parts.Add(name);
+                if (!string.IsNullOrEmpty(levelText))
+                    parts.Add(levelText);
+                if (!string.IsNullOrEmpty(shortDesc))
+                    parts.Add(shortDesc);
+                if (!string.IsNullOrEmpty(fullDesc))
+                    parts.Add(fullDesc);
+
+                ScreenReaderManager.SpeakInterrupt(string.Join(". ", parts.ToArray()));
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterState] Error getting stat description: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("No description available");
+            }
+        }
+
         // ========== Value Adjustment Helpers ==========
 
         private void AdjustCurrentAttribute(int direction)
@@ -1257,6 +1319,12 @@ namespace Wasteland2AccessibilityMod.States
                     AdjustCurrentAttribute(1);
                     return true;
                 }
+                // I for description in edit mode
+                if (Input.GetKeyDown(KeyCode.I))
+                {
+                    AnnounceCurrentStatDescription();
+                    return true;
+                }
                 // Block all other arrow keys while editing
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
                     return true;
@@ -1303,6 +1371,13 @@ namespace Wasteland2AccessibilityMod.States
             // Block Left/Right in normal mode
             if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
                 return true;
+
+            // I for description
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                AnnounceCurrentStatDescription();
+                return true;
+            }
 
             // F to toggle to skills
             if (Input.GetKeyDown(KeyCode.F))
@@ -1354,6 +1429,12 @@ namespace Wasteland2AccessibilityMod.States
                     AdjustCurrentSkill(1);
                     return true;
                 }
+                // I for description in edit mode
+                if (Input.GetKeyDown(KeyCode.I))
+                {
+                    AnnounceCurrentStatDescription();
+                    return true;
+                }
                 // Block all other arrow keys while editing
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
                     return true;
@@ -1400,6 +1481,13 @@ namespace Wasteland2AccessibilityMod.States
             // Block Left/Right in normal mode
             if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
                 return true;
+
+            // I for description
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                AnnounceCurrentStatDescription();
+                return true;
+            }
 
             // Page Up/Down to switch skill category
             if (Input.GetKeyDown(KeyCode.PageUp) || Input.GetKeyDown(KeyCode.PageDown))
