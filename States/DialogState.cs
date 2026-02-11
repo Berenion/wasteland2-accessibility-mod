@@ -104,9 +104,10 @@ namespace Wasteland2AccessibilityMod.States
             var guiManager = MonoBehaviourSingleton<GUIManager>.GetInstance();
             if (!guiManager.IsAnyMenuActive()) return false;
 
-            // Look for an active ModalMessageMenu via GUIManager's hierarchy
-            var modal = guiManager.GetComponentInChildren<ModalMessageMenu>();
-            return modal != null;
+            // ModalMessageMenu is created as a child of menuRoot, not GUIManager,
+            // so GetComponentInChildren on GUIManager won't find it. Use FindObjectOfType instead.
+            var modal = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
+            return modal != null && modal.gameObject.activeInHierarchy;
         }
 
         private bool IsTutorialOpen()

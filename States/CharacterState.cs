@@ -988,13 +988,12 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Escape for back
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                screen.OnBackClicked();
-                MelonLogger.Msg("[CharacterState] OnBackClicked called via Escape");
-                return true;
-            }
+            // Escape: let the game's native event system handle Back navigation.
+            // We must NOT call OnBackClicked() ourselves - the game already dispatches
+            // the "Back" button event to CharacterScreen.OnButtonDown, which calls
+            // OnBackClicked(). Calling it twice causes modals to be created and
+            // immediately destroyed (PopupMenu.OnButtonDown("Back") calls Close()
+            // on the newly-created modal before it's ready for input).
 
             return false;
         }
