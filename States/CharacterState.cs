@@ -1540,34 +1540,11 @@ namespace Wasteland2AccessibilityMod.States
 
             try
             {
-                // Look for a points label in the attribute panel
-                var labels = screen.attributePanel.GetComponentsInChildren<UILabel>();
-                foreach (var label in labels)
-                {
-                    string text = label.text;
-                    if (text != null && (text.Contains("point") || text.Contains("Point") || text.Contains("remaining") || text.Contains("Remaining")))
-                    {
-                        ScreenReaderManager.SpeakInterrupt(UITextExtractor.CleanText(text));
-                        return;
-                    }
-                }
-
-                // Fallback: try the description panel's points display
-                if (screen.attributePanel.descriptionPanel != null)
-                {
-                    var descLabels = screen.attributePanel.descriptionPanel.GetComponentsInChildren<UILabel>();
-                    foreach (var label in descLabels)
-                    {
-                        string text = UITextExtractor.CleanText(label.text);
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            ScreenReaderManager.SpeakInterrupt(text);
-                            return;
-                        }
-                    }
-                }
-
-                ScreenReaderManager.SpeakInterrupt("Points information not available");
+                int points = screen.attributePanel.GetPointsRemaining();
+                string title = screen.attributePanel.pointsRemainingTitleLabel != null
+                    ? UITextExtractor.CleanText(screen.attributePanel.pointsRemainingTitleLabel.text)
+                    : "Attribute points remaining";
+                ScreenReaderManager.SpeakInterrupt($"{points} {title}");
             }
             catch (Exception ex)
             {
@@ -1581,18 +1558,11 @@ namespace Wasteland2AccessibilityMod.States
 
             try
             {
-                var labels = screen.skillPanel.GetComponentsInChildren<UILabel>();
-                foreach (var label in labels)
-                {
-                    string text = label.text;
-                    if (text != null && (text.Contains("point") || text.Contains("Point") || text.Contains("remaining") || text.Contains("Remaining")))
-                    {
-                        ScreenReaderManager.SpeakInterrupt(UITextExtractor.CleanText(text));
-                        return;
-                    }
-                }
-
-                ScreenReaderManager.SpeakInterrupt("Points information not available");
+                int points = screen.skillPanel.GetPointsRemaining();
+                string title = screen.skillPanel.pointsRemainingTitleLabel != null
+                    ? UITextExtractor.CleanText(screen.skillPanel.pointsRemainingTitleLabel.text)
+                    : "Skill points remaining";
+                ScreenReaderManager.SpeakInterrupt($"{points} {title}");
             }
             catch (Exception ex)
             {
