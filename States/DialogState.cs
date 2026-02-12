@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
@@ -19,6 +20,9 @@ namespace Wasteland2AccessibilityMod.States
         private int selectedButtonIndex = 0;
         private readonly List<DialogButton> buttons = new List<DialogButton>();
         private string currentDialogId = "";
+        private DifficultySelectionMenu currentDifficultyMenu;
+        private int difficultyIndex;
+        private static readonly string[] DifficultyNames = { "Rookie", "Seasoned", "Ranger", "Legend" };
 
         private class DialogButton
         {
@@ -48,25 +52,76 @@ namespace Wasteland2AccessibilityMod.States
 
             if (buttons.Count == 0) return false;
 
-            // Left or Up - previous button
-            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.UpArrow))
+            // Difficulty selection: Left/Right changes difficulty, Up/Down navigates Play/Back
+            if (currentDifficultyMenu != null)
             {
-                selectedButtonIndex--;
-                if (selectedButtonIndex < 0) selectedButtonIndex = buttons.Count - 1;
-                AnnounceButton();
-                InputSuppressor.ShouldSuppressUINavigation = true;
-                InputSuppressor.ShouldSuppressGameInput = true;
-                return true;
-            }
+                if (Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    if (difficultyIndex > 0)
+                    {
+                        difficultyIndex--;
+                        currentDifficultyMenu.SelectDifficulty(difficultyIndex);
+                        // Harmony patch announces the result
+                    }
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
 
-            // Right or Down - next button
-            if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+                if (Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    if (difficultyIndex < 3)
+                    {
+                        difficultyIndex++;
+                        currentDifficultyMenu.SelectDifficulty(difficultyIndex);
+                    }
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                // Up - previous button (Play/Back)
+                if (Input.GetKeyDown(KeyCode.UpArrow))
+                {
+                    selectedButtonIndex--;
+                    if (selectedButtonIndex < 0) selectedButtonIndex = buttons.Count - 1;
+                    AnnounceButton();
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                // Down - next button (Play/Back)
+                if (Input.GetKeyDown(KeyCode.DownArrow))
+                {
+                    selectedButtonIndex = (selectedButtonIndex + 1) % buttons.Count;
+                    AnnounceButton();
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+            }
+            else
             {
-                selectedButtonIndex = (selectedButtonIndex + 1) % buttons.Count;
-                AnnounceButton();
-                InputSuppressor.ShouldSuppressUINavigation = true;
-                InputSuppressor.ShouldSuppressGameInput = true;
-                return true;
+                // Standard dialog: Left/Up previous, Right/Down next
+                if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.UpArrow))
+                {
+                    selectedButtonIndex--;
+                    if (selectedButtonIndex < 0) selectedButtonIndex = buttons.Count - 1;
+                    AnnounceButton();
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+                {
+                    selectedButtonIndex = (selectedButtonIndex + 1) % buttons.Count;
+                    AnnounceButton();
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
             }
 
             // Enter - activate selected button
@@ -99,6 +154,7 @@ namespace Wasteland2AccessibilityMod.States
             selectedButtonIndex = 0;
             buttons.Clear();
             currentDialogId = "";
+            currentDifficultyMenu = null;
 
             MelonLogger.Msg("[DialogState] Deactivated");
         }
@@ -148,10 +204,27 @@ namespace Wasteland2AccessibilityMod.States
             buttons.Clear();
             bool changed = false;
 
-            // Check for ModalMessageMenu
+            // Check for ModalMessageMenu (includes DifficultySelectionMenu which inherits from it)
             ModalMessageMenu modal = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
             if (modal != null && modal.gameObject.activeInHierarchy)
             {
+                // Check if this is the difficulty selection screen
+                var diffMenu = modal as DifficultySelectionMenu;
+                if (diffMenu != null)
+                {
+                    currentDifficultyMenu = diffMenu;
+                    // Sync difficulty index via reflection (gameDifficultyIndex is private)
+                    var field = typeof(DifficultySelectionMenu).GetField("gameDifficultyIndex", BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (field != null)
+                    {
+                        difficultyIndex = (int)field.GetValue(diffMenu);
+                    }
+                }
+                else
+                {
+                    currentDifficultyMenu = null;
+                }
+
                 string dialogId = "modal_" + (modal.titleLabel != null ? modal.titleLabel.text : "unknown");
 
                 // Yes button
@@ -273,6 +346,27 @@ namespace Wasteland2AccessibilityMod.States
             ModalMessageMenu modal = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
             if (modal != null && modal.gameObject.activeInHierarchy)
             {
+                // DifficultySelectionMenu gets a specialized announcement
+                if (currentDifficultyMenu != null)
+                {
+                    string diffName = DifficultyNames[difficultyIndex];
+                    string description = "";
+                    if (currentDifficultyMenu.descriptionLabel != null)
+                    {
+                        description = UITextExtractor.CleanText(currentDifficultyMenu.descriptionLabel.text);
+                    }
+
+                    string announcement = $"Difficulty Selection. {diffName}, {difficultyIndex + 1} of 4";
+                    if (!string.IsNullOrEmpty(description))
+                    {
+                        announcement += ". " + description;
+                    }
+                    announcement += ". Left and Right to change difficulty, Up and Down for Play or Back";
+
+                    ScreenReaderManager.SpeakInterrupt(announcement);
+                    return;
+                }
+
                 string title = "";
                 string message = "";
 
@@ -286,20 +380,20 @@ namespace Wasteland2AccessibilityMod.States
                     message = UITextExtractor.CleanText(modal.messageLabel.text);
                 }
 
-                string announcement = "";
-                if (!string.IsNullOrEmpty(title)) announcement += title + ". ";
-                if (!string.IsNullOrEmpty(message)) announcement += message + ". ";
+                string announcement2 = "";
+                if (!string.IsNullOrEmpty(title)) announcement2 += title + ". ";
+                if (!string.IsNullOrEmpty(message)) announcement2 += message + ". ";
 
                 if (buttons.Count > 0)
                 {
-                    announcement += $"Button: {buttons[0].Label}";
+                    announcement2 += $"Button: {buttons[0].Label}";
                     if (buttons.Count > 1)
                     {
-                        announcement += $", 1 of {buttons.Count}";
+                        announcement2 += $", 1 of {buttons.Count}";
                     }
                 }
 
-                ScreenReaderManager.SpeakInterrupt(announcement);
+                ScreenReaderManager.SpeakInterrupt(announcement2);
                 return;
             }
 

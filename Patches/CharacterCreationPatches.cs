@@ -36,8 +36,8 @@ namespace Wasteland2AccessibilityMod.Patches
                         _ => "Unknown"
                     };
 
-                    string announcement = $"{difficultyName}. {cleanedText}";
-                    ScreenReaderManager.Speak(announcement);
+                    string announcement = $"{difficultyName}, {difficultyLevel + 1} of 4. {cleanedText}";
+                    ScreenReaderManager.SpeakInterrupt(announcement);
                 }
             }
         }
