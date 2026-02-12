@@ -74,7 +74,7 @@ namespace Wasteland2AccessibilityMod.States
             CheckAndAnnounceSelection();
 
             // Force an initial announcement after activation delay
-            if (!initialAnnouncementDone && Time.time - activationTime >= ANNOUNCEMENT_DELAY)
+            if (!initialAnnouncementDone && Time.realtimeSinceStartup - activationTime >= ANNOUNCEMENT_DELAY)
             {
                 initialAnnouncementDone = true;
                 ForceAnnounceCurrentSelection();
@@ -149,7 +149,7 @@ namespace Wasteland2AccessibilityMod.States
             MelonLogger.Msg("[GenericMenuState] Activated");
             lastSelectedObject = null;
             lastAnnouncedText = null;
-            activationTime = Time.time;
+            activationTime = Time.realtimeSinceStartup;
             selectionEnsured = false;
             initialAnnouncementDone = false;
             optionsControls = null;
@@ -159,6 +159,10 @@ namespace Wasteland2AccessibilityMod.States
             // Detect OptionsMenu
             GUIScreen topScreen = FindTopScreen();
             cachedOptionsMenu = topScreen as OptionsMenu;
+
+            // For non-OptionsMenu screens, build a button list from UIGrid children
+            if (cachedOptionsMenu == null)
+                BuildGridButtonList(topScreen);
 
             // Announce the menu type
             AnnounceMenu(topScreen);
@@ -187,14 +191,37 @@ namespace Wasteland2AccessibilityMod.States
 
             string menuName = topScreen.name;
 
+            // Strip "(Clone)" suffix from instantiated prefabs
+            if (menuName.EndsWith("(Clone)"))
+                menuName = menuName.Substring(0, menuName.Length - 7).Trim();
+
             if (cachedOptionsMenu != null)
             {
                 menuName = "Options, " + GetActiveTabName(cachedOptionsMenu);
                 menuName += ". Page Up and Page Down to switch tabs";
             }
+            else
+            {
+                // Insert spaces before capitals for readability (e.g., "PauseMenu" → "Pause Menu")
+                menuName = FormatCamelCase(menuName);
+            }
 
             MelonLogger.Msg($"[GenericMenuState] Menu: {menuName}");
             ScreenReaderManager.SpeakInterrupt(menuName);
+        }
+
+        private string FormatCamelCase(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            var sb = new System.Text.StringBuilder();
+            sb.Append(text[0]);
+            for (int i = 1; i < text.Length; i++)
+            {
+                if (char.IsUpper(text[i]) && i > 0 && char.IsLower(text[i - 1]))
+                    sb.Append(' ');
+                sb.Append(text[i]);
+            }
+            return sb.ToString();
         }
 
         private string GetActiveTabName(OptionsMenu menu)
@@ -247,7 +274,7 @@ namespace Wasteland2AccessibilityMod.States
 
             // Force re-announce after switching
             initialAnnouncementDone = false;
-            activationTime = Time.time;
+            activationTime = Time.realtimeSinceStartup;
         }
 
         private void SwitchToTab(int tabIndex)
@@ -283,7 +310,13 @@ namespace Wasteland2AccessibilityMod.States
 
         private void ForceAnnounceCurrentSelection()
         {
-            GameObject current = UICamera.selectedObject;
+            // Use tracked control list element if available (UICamera.selectedObject may be overridden by the game)
+            GameObject current;
+            if (optionsControls != null && optionsControlIndex >= 0 && optionsControlIndex < optionsControls.Count)
+                current = optionsControls[optionsControlIndex];
+            else
+                current = UICamera.selectedObject;
+
             if (current == null)
             {
                 MelonLogger.Msg("[GenericMenuState] ForceAnnounce: No selection");
@@ -312,17 +345,36 @@ namespace Wasteland2AccessibilityMod.States
             if (cachedOptionsMenu != null)
             {
                 BuildOptionsControlList();
-                if (optionsControls != null && optionsControls.Count > 0)
+            }
+
+            // If we have a control list (from OptionsMenu or BuildGridButtonList), select first item
+            if (optionsControls != null && optionsControls.Count > 0)
+            {
+                optionsControlIndex = 0;
+                UICamera.selectedObject = optionsControls[0];
+                lastSelectedObject = optionsControls[0];
+                MelonLogger.Msg($"[GenericMenuState] Selected first control: {optionsControls[0].name} (of {optionsControls.Count})");
+                return;
+            }
+
+            // Validate existing selection - clear it if it's not an interactive element
+            if (UICamera.selectedObject != null)
+            {
+                bool isInteractive = UICamera.selectedObject.GetComponent<UIButtonKeys>() != null
+                                  || UICamera.selectedObject.GetComponent<UIButton>() != null
+                                  || UICamera.selectedObject.GetComponent<UIToggle>() != null
+                                  || UICamera.selectedObject.GetComponent<UISlider>() != null
+                                  || UICamera.selectedObject.GetComponent<UIPopupList>() != null
+                                  || UICamera.selectedObject.GetComponent<UIInput>() != null;
+
+                if (!isInteractive)
                 {
-                    optionsControlIndex = 0;
-                    UICamera.selectedObject = optionsControls[0];
-                    lastSelectedObject = optionsControls[0];
-                    MelonLogger.Msg($"[GenericMenuState] Options selected first: {optionsControls[0].name} (of {optionsControls.Count} controls)");
-                    return;
+                    MelonLogger.Msg($"[GenericMenuState] Selected '{UICamera.selectedObject.name}' not interactive, clearing");
+                    UICamera.selectedObject = null;
                 }
             }
 
-            // If nothing is selected, try to find and select something
+            // If nothing useful is selected, try to find and select something
             if (UICamera.selectedObject == null)
             {
                 // Find UIButtonKeys within the top screen (fallback)
@@ -342,10 +394,48 @@ namespace Wasteland2AccessibilityMod.States
                     break;
                 }
             }
-            else
+
+            if (UICamera.selectedObject != null)
             {
                 lastSelectedObject = UICamera.selectedObject;
-                MelonLogger.Msg($"[GenericMenuState] Already selected: {UICamera.selectedObject.name}");
+                MelonLogger.Msg($"[GenericMenuState] Final selection: {UICamera.selectedObject.name}");
+            }
+        }
+
+        // ========== General Button List ==========
+
+        /// <summary>
+        /// Builds a control list from UIGrid children for menus without OptionsMenu-style panels.
+        /// Works for PauseMenu, and any other menu with a UIGrid of buttons.
+        /// </summary>
+        private void BuildGridButtonList(GUIScreen screen)
+        {
+            if (screen == null) return;
+
+            // Look for UIGrid containing buttons
+            UIGrid[] grids = screen.GetComponentsInChildren<UIGrid>();
+            foreach (var grid in grids)
+            {
+                var buttons = new List<GameObject>();
+                for (int i = 0; i < grid.transform.childCount; i++)
+                {
+                    Transform child = grid.transform.GetChild(i);
+                    if (child == null || !child.gameObject.activeInHierarchy) continue;
+
+                    UIButton btn = child.GetComponent<UIButton>();
+                    if (btn != null)
+                        buttons.Add(child.gameObject);
+                }
+
+                if (buttons.Count > 0)
+                {
+                    optionsControls = buttons;
+                    optionsControlIndex = 0;
+                    MelonLogger.Msg($"[GenericMenuState] Built button list from UIGrid: {buttons.Count} buttons");
+                    for (int i = 0; i < buttons.Count; i++)
+                        MelonLogger.Msg($"  [{i}] {buttons[i].name}");
+                    return;
+                }
             }
         }
 
@@ -423,18 +513,18 @@ namespace Wasteland2AccessibilityMod.States
 
         private void Navigate(KeyCode direction)
         {
-            // Use custom Options navigation if we have a control list
-            if (cachedOptionsMenu != null && optionsControls != null && optionsControls.Count > 0)
+            // Use indexed navigation if we have a control list (Options, Pause, etc.)
+            if (optionsControls != null && optionsControls.Count > 0)
             {
-                NavigateOptionsMenu(direction);
+                NavigateControlList(direction);
                 return;
             }
 
-            // Fallback: UIButtonKeys-based navigation for non-Options menus
+            // Fallback: UIButtonKeys-based navigation for menus with proper nav links
             NavigateGeneric(direction);
         }
 
-        private void NavigateOptionsMenu(KeyCode direction)
+        private void NavigateControlList(KeyCode direction)
         {
             // Find current index if we lost track
             if (optionsControlIndex < 0 || optionsControlIndex >= optionsControls.Count)
@@ -509,10 +599,17 @@ namespace Wasteland2AccessibilityMod.States
             {
                 optionsControlIndex = newIndex;
                 UICamera.selectedObject = optionsControls[newIndex];
-                MelonLogger.Msg($"[GenericMenuState] Options nav to [{newIndex}]: {optionsControls[newIndex].name}");
-            }
 
-            CheckAndAnnounceSelection();
+                // Announce directly from the control list (UICamera.selectedObject may be overridden by the game)
+                string announcement = GetElementAnnouncement(optionsControls[newIndex]);
+                if (!string.IsNullOrEmpty(announcement))
+                {
+                    lastAnnouncedText = announcement;
+                    lastSelectedObject = optionsControls[newIndex];
+                    ScreenReaderManager.SpeakInterrupt(announcement);
+                }
+                MelonLogger.Msg($"[GenericMenuState] Nav to [{newIndex}]: {optionsControls[newIndex].name} - {announcement}");
+            }
         }
 
         private void CycleDropdownValue(OPT_Dropdown dropdown, int direction)
@@ -642,7 +739,7 @@ namespace Wasteland2AccessibilityMod.States
         private void CheckAndAnnounceSelection()
         {
             // Don't announce during the initial delay after activation
-            if (Time.time - activationTime < ANNOUNCEMENT_DELAY)
+            if (Time.realtimeSinceStartup - activationTime < ANNOUNCEMENT_DELAY)
             {
                 lastSelectedObject = UICamera.selectedObject;
                 return;
@@ -793,7 +890,13 @@ namespace Wasteland2AccessibilityMod.States
 
         private void ActivateSelected()
         {
-            GameObject current = UICamera.selectedObject;
+            // Use tracked control list element if available (UICamera.selectedObject may be overridden by the game)
+            GameObject current;
+            if (optionsControls != null && optionsControlIndex >= 0 && optionsControlIndex < optionsControls.Count)
+                current = optionsControls[optionsControlIndex];
+            else
+                current = UICamera.selectedObject;
+
             if (current == null) return;
 
             // Check for OPT_Checkbox
