@@ -38,6 +38,9 @@ namespace Wasteland2AccessibilityMod.States
         // Cached OptionsMenu reference
         private OptionsMenu cachedOptionsMenu = null;
 
+        // Track the current top screen to detect when a new menu opens on top
+        private GUIScreen cachedTopScreen = null;
+
         // Tab order for OptionsMenu
         private static readonly string[] tabOrder = { "gameplay", "display", "controls", "audio" };
 
@@ -70,6 +73,14 @@ namespace Wasteland2AccessibilityMod.States
 
         public bool HandleInput()
         {
+            // Detect when a new screen opens on top (e.g., Options over Pause) and reinitialize
+            GUIScreen currentTop = FindTopScreen();
+            if (currentTop != cachedTopScreen)
+            {
+                MelonLogger.Msg($"[GenericMenuState] Top screen changed: {(cachedTopScreen != null ? cachedTopScreen.name : "null")} -> {(currentTop != null ? currentTop.name : "null")}");
+                ReinitializeForScreen(currentTop);
+            }
+
             // Check for selection changes and announce (only for menus without a control list;
             // control-list menus announce directly in NavigateControlList to avoid the game's
             // UICamera.selectedObject overrides causing spurious announcements)
@@ -150,28 +161,8 @@ namespace Wasteland2AccessibilityMod.States
         public void OnActivated()
         {
             MelonLogger.Msg("[GenericMenuState] Activated");
-            lastSelectedObject = null;
-            lastAnnouncedText = null;
-            activationTime = Time.realtimeSinceStartup;
-            selectionEnsured = false;
-            initialAnnouncementDone = false;
-            optionsControls = null;
-            optionsControlIndex = -1;
-            cachedOptionsMenu = null;
-
-            // Detect OptionsMenu
             GUIScreen topScreen = FindTopScreen();
-            cachedOptionsMenu = topScreen as OptionsMenu;
-
-            // For non-OptionsMenu screens, build a button list from UIGrid children
-            if (cachedOptionsMenu == null)
-                BuildGridButtonList(topScreen);
-
-            // Announce the menu type
-            AnnounceMenu(topScreen);
-
-            // Ensure something is selected
-            EnsureSelection(topScreen);
+            ReinitializeForScreen(topScreen);
         }
 
         public void OnDeactivated()
@@ -184,6 +175,37 @@ namespace Wasteland2AccessibilityMod.States
             optionsControls = null;
             optionsControlIndex = -1;
             cachedOptionsMenu = null;
+            cachedTopScreen = null;
+        }
+
+        /// <summary>
+        /// Reinitialize state for a new top screen.
+        /// Called on initial activation and when the top screen changes (e.g., Options opening over Pause).
+        /// </summary>
+        private void ReinitializeForScreen(GUIScreen topScreen)
+        {
+            lastSelectedObject = null;
+            lastAnnouncedText = null;
+            activationTime = Time.realtimeSinceStartup;
+            selectionEnsured = false;
+            initialAnnouncementDone = false;
+            optionsControls = null;
+            optionsControlIndex = -1;
+            cachedOptionsMenu = null;
+            cachedTopScreen = topScreen;
+
+            // Detect OptionsMenu
+            cachedOptionsMenu = topScreen as OptionsMenu;
+
+            // For non-OptionsMenu screens, build a button list from UIGrid children
+            if (cachedOptionsMenu == null)
+                BuildGridButtonList(topScreen);
+
+            // Announce the menu type
+            AnnounceMenu(topScreen);
+
+            // Ensure something is selected
+            EnsureSelection(topScreen);
         }
 
         // ========== Menu Announcement ==========
