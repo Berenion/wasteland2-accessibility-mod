@@ -70,8 +70,11 @@ namespace Wasteland2AccessibilityMod.States
 
         public bool HandleInput()
         {
-            // Check for selection changes and announce
-            CheckAndAnnounceSelection();
+            // Check for selection changes and announce (only for menus without a control list;
+            // control-list menus announce directly in NavigateControlList to avoid the game's
+            // UICamera.selectedObject overrides causing spurious announcements)
+            if (optionsControls == null || optionsControls.Count == 0)
+                CheckAndAnnounceSelection();
 
             // Force an initial announcement after activation delay
             if (!initialAnnouncementDone && Time.realtimeSinceStartup - activationTime >= ANNOUNCEMENT_DELAY)
