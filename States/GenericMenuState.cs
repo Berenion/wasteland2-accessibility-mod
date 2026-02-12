@@ -73,6 +73,13 @@ namespace Wasteland2AccessibilityMod.States
 
         public bool HandleInput()
         {
+            // Suppress game input to prevent double-processing of keys.
+            // EventManager.Update() dispatches "Attack Current Target" (Enter) and "Back" (Escape)
+            // to GUIScreens via buttonDownEventHandlers, causing double-fire when we handle these keys.
+            InputSuppressor.ShouldSuppressGameInput = true;
+            InputSuppressor.ShouldSuppressUINavigation = true;
+            InputSuppressor.ShouldSuppressButtonEvents = true;
+
             // Detect when a new screen opens on top (e.g., Options over Pause) and reinitialize
             GUIScreen currentTop = FindTopScreen();
             if (currentTop != cachedTopScreen)
@@ -742,6 +749,18 @@ namespace Wasteland2AccessibilityMod.States
                 UICamera.selectedObject = target.gameObject;
                 target.gameObject.SendMessage("OnHover", true, SendMessageOptions.DontRequireReceiver);
                 MelonLogger.Msg($"[GenericMenuState] Navigated to: {target.gameObject.name}");
+
+                // For SaveLoadScreen: entry selection callback only fires in gamepad mode,
+                // so we need to manually select entries during navigation
+                SaveLoadScreen saveLoadScreen = cachedTopScreen as SaveLoadScreen;
+                if (saveLoadScreen != null)
+                {
+                    SaveGameListEntry entry = target.GetComponent<SaveGameListEntry>();
+                    if (entry != null)
+                    {
+                        saveLoadScreen.OnEntrySelected(entry);
+                    }
+                }
             }
 
             CheckAndAnnounceSelection();
@@ -793,6 +812,23 @@ namespace Wasteland2AccessibilityMod.States
         private string GetElementAnnouncement(GameObject element)
         {
             if (element == null) return null;
+
+            // Check for SaveGameListEntry - announce name, location, and time
+            SaveGameListEntry saveEntry = element.GetComponent<SaveGameListEntry>();
+            if (saveEntry == null) saveEntry = element.GetComponentInParent<SaveGameListEntry>();
+            if (saveEntry != null)
+            {
+                string name = saveEntry.nameLabel != null ? UITextExtractor.CleanText(saveEntry.nameLabel.text) : element.name;
+                string loc = saveEntry.locationLabel != null ? UITextExtractor.CleanText(saveEntry.locationLabel.text) : "";
+                string time = saveEntry.timeLabel != null ? UITextExtractor.CleanText(saveEntry.timeLabel.text) : "";
+
+                string result = name;
+                if (!string.IsNullOrEmpty(loc))
+                    result += $", {loc}";
+                if (!string.IsNullOrEmpty(time))
+                    result += $", {time}";
+                return result;
+            }
 
             string announcement = "";
             string controlType = "";
@@ -923,6 +959,28 @@ namespace Wasteland2AccessibilityMod.States
                 current = UICamera.selectedObject;
 
             if (current == null) return;
+
+            // Check for SaveGameListEntry - call SaveLoadScreen methods directly
+            // since we suppress EventManager.Update() which normally dispatches "Attack Current Target"
+            SaveGameListEntry saveEntry = current.GetComponent<SaveGameListEntry>();
+            if (saveEntry == null) saveEntry = current.GetComponentInParent<SaveGameListEntry>();
+            if (saveEntry != null)
+            {
+                SaveLoadScreen saveLoadScreen = cachedTopScreen as SaveLoadScreen;
+                if (saveLoadScreen != null)
+                {
+                    // Ensure this entry is selected (OnSelect callback only fires in gamepad mode)
+                    saveLoadScreen.OnEntrySelected(saveEntry);
+
+                    if (saveLoadScreen.IsLoading())
+                        saveLoadScreen.OnLoadClicked();
+                    else
+                        saveLoadScreen.OnSaveClicked();
+
+                    MelonLogger.Msg($"[GenericMenuState] SaveLoad activated: {(saveEntry.nameLabel != null ? saveEntry.nameLabel.text : current.name)}");
+                }
+                return;
+            }
 
             // Check for OPT_Checkbox
             OPT_Checkbox optCheckbox = current.GetComponent<OPT_Checkbox>();

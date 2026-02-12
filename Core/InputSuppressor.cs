@@ -23,6 +23,13 @@ namespace Wasteland2AccessibilityMod.Core
         public static bool ShouldSuppressUINavigation { get; set; }
 
         /// <summary>
+        /// When true, EventManager.Update() is skipped entirely.
+        /// Prevents button events (Enter="Attack Current Target", Escape="Back")
+        /// from being dispatched to GUIScreens via their registered buttonDownEventHandlers.
+        /// </summary>
+        public static bool ShouldSuppressButtonEvents { get; set; }
+
+        /// <summary>
         /// Reset all suppression flags. Called at the start of each frame
         /// by InputRouter.ProcessInput().
         /// </summary>
@@ -30,6 +37,7 @@ namespace Wasteland2AccessibilityMod.Core
         {
             ShouldSuppressGameInput = false;
             ShouldSuppressUINavigation = false;
+            ShouldSuppressButtonEvents = false;
         }
     }
 
@@ -64,6 +72,27 @@ namespace Wasteland2AccessibilityMod.Core
             if (InputSuppressor.ShouldSuppressUINavigation)
             {
                 return false; // Skip NGUI navigation processing
+            }
+            return true; // Let original run
+        }
+    }
+
+    /// <summary>
+    /// PREFIX patch on EventManager.Update() - prevents button events (Enter, Escape, etc.)
+    /// from being dispatched to GUIScreens when accessibility states are handling input.
+    /// EventManager.Update() uses cInput.GetButtonDown() to detect key presses and dispatches
+    /// them to registered buttonDownEventHandlers (GUIScreen.OnButtonDown), causing double
+    /// processing when our states already handle these keys via Input.GetKeyDown().
+    /// </summary>
+    [HarmonyPatch(typeof(EventManager), "Update")]
+    public class EventManager_Update_Suppressor
+    {
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            if (InputSuppressor.ShouldSuppressButtonEvents)
+            {
+                return false; // Skip EventManager button dispatch
             }
             return true; // Let original run
         }
