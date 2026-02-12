@@ -313,7 +313,7 @@ namespace Wasteland2AccessibilityMod.States
                     announcement += ". F to switch to attributes, Left and Right for categories, P for points remaining, I for description, C for derived stats";
                     break;
                 case CharacterScreen.EditorPanel.Traits:
-                    announcement += ". Enter to toggle, R for description";
+                    announcement += ". Enter to toggle, I for description";
                     break;
             }
 
@@ -1586,8 +1586,8 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // R to read trait description
-            if (Input.GetKeyDown(KeyCode.R))
+            // I for trait description (consistent with attributes/skills)
+            if (Input.GetKeyDown(KeyCode.I))
             {
                 if (controlIndex >= 0 && controlIndex < controlList.Count)
                 {
@@ -1801,23 +1801,89 @@ namespace Wasteland2AccessibilityMod.States
                 if (traitEditorTraitField != null)
                 {
                     var trait = traitEditorTraitField.GetValue(editor) as Trait;
-                    if (trait != null && !string.IsNullOrEmpty(trait.description))
+                    if (trait != null)
                     {
-                        return UITextExtractor.CleanText(Language.Localize(trait.description, false, false, string.Empty));
+                        var parts = new List<string>();
+
+                        // Flavour text
+                        if (!string.IsNullOrEmpty(trait.description))
+                        {
+                            string desc = UITextExtractor.CleanText(
+                                Language.Localize(trait.description, false, false, string.Empty));
+                            if (!string.IsNullOrEmpty(desc))
+                                parts.Add(desc);
+                        }
+
+                        // Mechanical effects
+                        if (!string.IsNullOrEmpty(trait.effectsDescription))
+                        {
+                            string effects = UITextExtractor.CleanText(
+                                Language.Localize(trait.effectsDescription, false, false, string.Empty));
+                            if (!string.IsNullOrEmpty(effects))
+                                parts.Add(effects);
+                        }
+
+                        // Stat requirements
+                        if (trait.requiredStatValues != null && trait.requiredStatValues.Count > 0)
+                        {
+                            var reqParts = new List<string>();
+                            reqParts.Add("Requirements:");
+                            foreach (var kvp in trait.requiredStatValues)
+                            {
+                                string statDisplayName = MonoBehaviourSingleton<PCStatsManager>.GetInstance()
+                                    .GetCharacteristicDisplayName(kvp.Key);
+                                string localized = UITextExtractor.CleanText(
+                                    Language.Localize(statDisplayName, false, false, string.Empty));
+                                reqParts.Add($"{kvp.Value} {localized}");
+                            }
+                            parts.Add(string.Join(", ", reqParts.ToArray()));
+                        }
+
+                        // Required traits
+                        if (trait.requiredTraits != null && trait.requiredTraits.Length > 0)
+                        {
+                            var traitNames = new List<string>();
+                            foreach (var reqTrait in trait.requiredTraits)
+                            {
+                                if (reqTrait != null)
+                                {
+                                    string name = UITextExtractor.CleanText(
+                                        Language.Localize(reqTrait.displayName, false, false, string.Empty));
+                                    traitNames.Add(name);
+                                }
+                            }
+                            if (traitNames.Count > 0)
+                                parts.Add("Requires: " + string.Join(", ", traitNames.ToArray()));
+                        }
+
+                        // Unlocks
+                        if (trait.subTraits != null && trait.subTraits.Length > 0)
+                        {
+                            var unlockNames = new List<string>();
+                            foreach (var subTrait in trait.subTraits)
+                            {
+                                if (subTrait != null)
+                                {
+                                    string name = UITextExtractor.CleanText(
+                                        Language.Localize(subTrait.displayName, false, false, string.Empty));
+                                    unlockNames.Add(name);
+                                }
+                            }
+                            if (unlockNames.Count > 0)
+                                parts.Add("Unlocks: " + string.Join(", ", unlockNames.ToArray()));
+                        }
+
+                        if (parts.Count > 0)
+                            return string.Join(". ", parts.ToArray());
                     }
                 }
 
-                // Fallback: look for tooltip on the editor
-                var tooltip = editor.GetComponent<UITooltip>();
-                if (tooltip != null)
+                // Fallback: read the pre-built tooltip text from the editor
+                if (editor.tooltip != null)
                 {
-                    var textField = typeof(UITooltip).GetField("text", BindingFlags.Public | BindingFlags.Instance);
-                    if (textField != null)
-                    {
-                        string text = textField.GetValue(tooltip) as string;
-                        if (!string.IsNullOrEmpty(text))
-                            return UITextExtractor.CleanText(text);
-                    }
+                    string tooltipText = editor.tooltip.text;
+                    if (!string.IsNullOrEmpty(tooltipText))
+                        return UITextExtractor.CleanText(tooltipText);
                 }
 
                 return null;
