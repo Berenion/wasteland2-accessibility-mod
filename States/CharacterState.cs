@@ -305,7 +305,7 @@ namespace Wasteland2AccessibilityMod.States
                     announcement += ". Up and Down to choose, Enter to select";
                     break;
                 case CharacterScreen.EditorPanel.Party:
-                    announcement += $". {GetPartyCount(screen)} rangers";
+                    announcement += $". {GetPartyCount(screen)} rangers. Up and Down to navigate, Enter to edit, Delete to remove, I for details";
                     break;
                 case CharacterScreen.EditorPanel.Attributes:
                     announcement += ". F to switch to skills, P for points remaining, I for description, C for derived stats";
@@ -918,29 +918,71 @@ namespace Wasteland2AccessibilityMod.States
                     return "Empty slot, press Enter to add a ranger";
                 }
 
-                // Get character name from labels
-                var labels = entry.GetComponentsInChildren<UILabel>();
-                string name = "Unknown";
-                foreach (var label in labels)
+                var parts = new System.Collections.Generic.List<string>();
+
+                // Name
+                string name = entry.nameLabel != null ? UITextExtractor.CleanText(entry.nameLabel.text) : "";
+                if (string.IsNullOrEmpty(name)) name = "Unknown";
+
+                // Role/specialization
+                string role = entry.specializationLabel != null ? UITextExtractor.CleanText(entry.specializationLabel.text) : "";
+                if (!string.IsNullOrEmpty(role))
+                    parts.Add($"{name}, {role}");
+                else
+                    parts.Add(name);
+
+                // Attributes - newline-separated parallel labels
+                string attrAnnouncement = BuildPairedLabelText(entry.attributeNameLabel, entry.attributeValueLabel);
+                if (!string.IsNullOrEmpty(attrAnnouncement))
+                    parts.Add(attrAnnouncement);
+
+                // Skills - newline-separated parallel labels, only non-zero
+                string skillAnnouncement = BuildPairedLabelText(entry.skillNameLabel, entry.skillValueLabel);
+                if (!string.IsNullOrEmpty(skillAnnouncement))
+                    parts.Add("Skills: " + skillAnnouncement);
+
+                // Quirk/trait
+                if (entry.traitLabel != null && !string.IsNullOrEmpty(entry.traitLabel.text))
                 {
-                    if (label != null && !string.IsNullOrEmpty(label.text))
-                    {
-                        string text = UITextExtractor.CleanText(label.text);
-                        if (!string.IsNullOrEmpty(text))
-                        {
-                            name = text;
-                            break;
-                        }
-                    }
+                    string trait = UITextExtractor.CleanText(entry.traitLabel.text);
+                    if (!string.IsNullOrEmpty(trait))
+                        parts.Add(trait);
                 }
 
-                return $"{name}, party member. Enter to edit, Delete to remove";
+                parts.Add("Enter to edit, Delete to remove");
+
+                return string.Join(". ", parts.ToArray());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[CharacterState] Error announcing party entry: {ex.Message}");
                 return "Party slot";
             }
+        }
+
+        private string BuildPairedLabelText(UILabel nameLabel, UILabel valueLabel)
+        {
+            if (nameLabel == null || valueLabel == null) return "";
+            string namesText = nameLabel.text;
+            string valuesText = valueLabel.text;
+            if (string.IsNullOrEmpty(namesText) || string.IsNullOrEmpty(valuesText)) return "";
+
+            string[] names = namesText.Split('\n');
+            string[] values = valuesText.Split('\n');
+
+            var pairs = new System.Collections.Generic.List<string>();
+            int count = Math.Min(names.Length, values.Length);
+            for (int i = 0; i < count; i++)
+            {
+                string n = UITextExtractor.CleanText(names[i]).Trim();
+                string v = UITextExtractor.CleanText(values[i]).Trim();
+                if (string.IsNullOrEmpty(n) || string.IsNullOrEmpty(v)) continue;
+                // Skip skills with 0 value
+                if (v == "0") continue;
+                pairs.Add($"{n} {v}");
+            }
+
+            return string.Join(", ", pairs.ToArray());
         }
 
         private string GetPremadeEntryAnnouncement(CHA_PremadeCharacterEntry entry)
@@ -1237,6 +1279,21 @@ namespace Wasteland2AccessibilityMod.States
                     {
                         // It's a button (Start Playing, etc.)
                         obj.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    }
+                }
+                return true;
+            }
+
+            // I to re-announce current character details
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var partyEntry = controlList[controlIndex].GetComponent<CHA_PartyEntry>();
+                    if (partyEntry != null)
+                    {
+                        string announcement = GetPartyEntryAnnouncement(partyEntry);
+                        ScreenReaderManager.SpeakInterrupt(announcement);
                     }
                 }
                 return true;
