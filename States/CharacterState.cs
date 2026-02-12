@@ -60,6 +60,7 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo attrEditorCurrentValueField;
         private static FieldInfo traitEditorTraitField;
         private static FieldInfo statDisplayListField;
+        private static FieldInfo pressedCallbackField;
         private static MethodInfo onDoneClickedMethod;
         private static MethodInfo skillOnPlusClickedMethod;
         private static MethodInfo skillOnMinusClickedMethod;
@@ -1577,9 +1578,30 @@ namespace Wasteland2AccessibilityMod.States
                         }
                         else
                         {
-                            editor.checkbox.value = !editor.checkbox.value;
-                            string state = editor.checkbox.value ? "selected" : "not selected";
-                            ScreenReaderManager.SpeakInterrupt(state);
+                            // Must call pressedCallback BEFORE toggling checkbox.
+                            // In the game's normal flow, OnSelect/OnHover/OnPress calls pressedCallback
+                            // to set currentEditor in CHA_TraitsPanel BEFORE the checkbox changes.
+                            // OnTraitChanged then uses currentEditor to enforce single-selection.
+                            if (pressedCallbackField == null)
+                                pressedCallbackField = typeof(CHA_TraitEditor).GetField("pressedCallback", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            if (pressedCallbackField != null)
+                            {
+                                var callback = pressedCallbackField.GetValue(editor) as System.Delegate;
+                                callback?.DynamicInvoke(editor);
+                            }
+
+                            bool before = editor.checkbox.value;
+                            editor.checkbox.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                            bool after = editor.checkbox.value;
+                            if (before != after)
+                            {
+                                string state = after ? "selected" : "not selected";
+                                ScreenReaderManager.SpeakInterrupt(state);
+                            }
+                            else
+                            {
+                                ScreenReaderManager.SpeakInterrupt("Cannot select");
+                            }
                         }
                     }
                 }
