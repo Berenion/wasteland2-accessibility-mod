@@ -80,8 +80,12 @@ namespace Wasteland2AccessibilityMod.States
             InputSuppressor.ShouldSuppressUINavigation = true;
             InputSuppressor.ShouldSuppressButtonEvents = true;
 
-            // Detect when a new screen opens on top (e.g., Options over Pause) and reinitialize
+            // Detect when a new screen opens on top (e.g., Options over Pause) and reinitialize.
+            // Skip ModalMessageMenu screens - DialogState handles modal dialogs.
             GUIScreen currentTop = FindTopScreen();
+            if (currentTop is ModalMessageMenu)
+                return false;
+
             if (currentTop != cachedTopScreen)
             {
                 MelonLogger.Msg($"[GenericMenuState] Top screen changed: {(cachedTopScreen != null ? cachedTopScreen.name : "null")} -> {(currentTop != null ? currentTop.name : "null")}");
