@@ -28,6 +28,9 @@ namespace Wasteland2AccessibilityMod.States
         private readonly List<ConversationOption> currentOptions = new List<ConversationOption>();
         private int lastKnownButtonCount = 0;
 
+        // Used to cancel pending queued announcements when user navigates manually
+        private static int announcementGeneration = 0;
+
         // Reflection cache
         private static FieldInfo buttonListField;
         private static bool fieldsCached = false;
@@ -43,35 +46,75 @@ namespace Wasteland2AccessibilityMod.States
             public GameObject ButtonObject;
         }
 
-        public bool IsActive
+        /// <summary>
+        /// True when in ForAdvance state (voiceover/text displaying, Enter to skip)
+        /// </summary>
+        private bool IsInAdvanceMode
         {
             get
             {
                 if (!Drama.isConversationOn || Drama.isCutsceneOn) return false;
                 if (!MonoBehaviourSingleton<ConversationHUD>.HasInstance()) return false;
+                return DramaGUI.waitState == DramaGUI.WaitState.ForAdvance;
+            }
+        }
 
-                // Only active when waiting for player input (buttons are enabled)
+        /// <summary>
+        /// True when in ForInput state with options available (full navigation)
+        /// </summary>
+        private bool IsInInputMode
+        {
+            get
+            {
+                if (!Drama.isConversationOn || Drama.isCutsceneOn) return false;
+                if (!MonoBehaviourSingleton<ConversationHUD>.HasInstance()) return false;
                 if (DramaGUI.waitState != DramaGUI.WaitState.ForInput) return false;
 
                 var hud = MonoBehaviourSingleton<ConversationHUD>.GetInstance();
                 if (hud == null) return false;
 
-                // Don't activate while "Click to Continue" is showing - NPC text is still displaying
+                // Don't activate while "Click to Continue" is showing
                 if (hud.clickToContinue != null && hud.clickToContinue.activeSelf) return false;
 
-                // Don't activate while any conversation bubble text is active in BubbleTextManager.
-                // This covers description text, voiced audio, and all conversation text types.
-                // Prevents the 1-frame race where buttons are added before clickToContinue
-                // is set active by BubbleTextManager.Update().
-                if (VoiceoverHelper.HasActiveConversationBubbles()) return false;
+                // Don't activate while description bubble text is active (1-frame race fix)
+                if (VoiceoverHelper.HasActiveDescriptionBubbles()) return false;
 
                 int count = GetButtonCount();
                 return count > 0;
             }
         }
 
+        public bool IsActive
+        {
+            get
+            {
+                return IsInAdvanceMode || IsInInputMode;
+            }
+        }
+
         public bool HandleInput()
         {
+            // === Advance mode: voiceover/text playing, Enter to skip ===
+            if (IsInAdvanceMode)
+            {
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    SkipCurrentDialogue();
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    return true;
+                }
+
+                // Suppress UI navigation during voiceover to prevent interference
+                if (Input.anyKeyDown)
+                {
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                }
+
+                return false;
+            }
+
+            // === Input mode: full option navigation ===
             RefreshOptions();
 
             if (currentOptions.Count == 0) return false;
@@ -84,7 +127,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (selectedIndex < 0)
                 {
                     selectedIndex = 0;
-                    AnnounceCurrentOption();
+                    AnnounceCurrentOptionQueued();
                 }
             }
 
@@ -147,15 +190,25 @@ namespace Wasteland2AccessibilityMod.States
             IsManagingNavigation = true;
             selectedIndex = 0;
             lastKnownButtonCount = 0;
-            RefreshOptions();
 
-            if (currentOptions.Count > 0)
+            // Only refresh options if in input mode (buttons exist)
+            if (IsInInputMode)
             {
-                lastKnownButtonCount = currentOptions.Count;
-                AnnounceCurrentOption();
-            }
+                RefreshOptions();
 
-            MelonLogger.Msg($"[ConversationState] Activated with {currentOptions.Count} options");
+                if (currentOptions.Count > 0)
+                {
+                    lastKnownButtonCount = currentOptions.Count;
+                    // Queue the first option so it plays after any pending subtitle TTS
+                    AnnounceCurrentOptionQueued();
+                }
+
+                MelonLogger.Msg($"[ConversationState] Activated with {currentOptions.Count} options");
+            }
+            else
+            {
+                MelonLogger.Msg("[ConversationState] Activated in advance mode (Enter to skip)");
+            }
         }
 
         public void OnDeactivated()
@@ -284,12 +337,79 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
+        /// <summary>
+        /// Skips current voiceover/text by flushing the current bubble text.
+        /// Stops audio and advances the conversation.
+        /// </summary>
+        private void SkipCurrentDialogue()
+        {
+            if (MonoBehaviourSingleton<BubbleTextManager>.HasInstance())
+            {
+                MonoBehaviourSingleton<BubbleTextManager>.GetInstance().FlushCurrentBark();
+                ScreenReaderManager.SpeakInterrupt("Skipped");
+                MelonLogger.Msg("[ConversationState] Skipped current dialogue");
+            }
+        }
+
+        /// <summary>
+        /// Announces the current option with queued speech (doesn't interrupt).
+        /// If voiceover is still playing, polls until it finishes before speaking.
+        /// Used for auto-focus when options first appear.
+        /// </summary>
+        private void AnnounceCurrentOptionQueued()
+        {
+            if (selectedIndex < 0 || selectedIndex >= currentOptions.Count) return;
+            string announcement = BuildOptionAnnouncement(currentOptions[selectedIndex]);
+
+            if (VoiceoverHelper.IsVoiceoverPlaying() || VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+            {
+                int gen = ++announcementGeneration;
+                MelonCoroutines.Start(SpeakOptionAfterVoiceover(announcement, gen));
+            }
+            else
+            {
+                // No voiceover — queue with Tolk (plays after any current TTS)
+                ScreenReaderManager.SpeakDirect(announcement, false);
+            }
+        }
+
+        /// <summary>
+        /// Announces the current option with interrupt (cuts off current speech).
+        /// Used for manual navigation (Up/Down/Home/End).
+        /// </summary>
         private void AnnounceCurrentOption()
         {
             if (selectedIndex < 0 || selectedIndex >= currentOptions.Count) return;
+            announcementGeneration++; // Cancel any pending queued announcement
+            string announcement = BuildOptionAnnouncement(currentOptions[selectedIndex]);
+            ScreenReaderManager.SpeakInterrupt(announcement);
+        }
 
-            var opt = currentOptions[selectedIndex];
+        /// <summary>
+        /// Polls until voiceover finishes, then speaks the option announcement.
+        /// Cancels itself if the user navigates manually (generation mismatch).
+        /// </summary>
+        private static IEnumerator SpeakOptionAfterVoiceover(string text, int generation)
+        {
+            float maxWait = 30f;
+            float waited = 0f;
+            while (waited < maxWait)
+            {
+                if (announcementGeneration != generation) yield break;
+                if (!VoiceoverHelper.IsVoiceoverPlaying() && !VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+                    break;
+                yield return new WaitForSeconds(0.2f);
+                waited += 0.2f;
+            }
+            if (announcementGeneration != generation) yield break;
+            yield return new WaitForSeconds(0.3f);
+            if (announcementGeneration != generation) yield break;
+            // Queue with Tolk (don't interrupt any subtitle TTS that may be speaking)
+            ScreenReaderManager.SpeakDirect(text, false);
+        }
 
+        private string BuildOptionAnnouncement(ConversationOption opt)
+        {
             // Build announcement: "1 of 3: response text, skill info"
             string announcement = $"{selectedIndex + 1} of {currentOptions.Count}: ";
 
@@ -315,7 +435,7 @@ namespace Wasteland2AccessibilityMod.States
                 announcement += ", ends conversation";
             }
 
-            ScreenReaderManager.SpeakInterrupt(announcement);
+            return announcement;
         }
 
         private void SelectCurrentOption()
@@ -335,12 +455,6 @@ namespace Wasteland2AccessibilityMod.States
                 MelonLogger.Warning("[ConversationState] Selected option has null button object");
                 return;
             }
-
-            // Announce selection
-            string selText = !string.IsNullOrEmpty(opt.FullResponseText)
-                ? opt.FullResponseText
-                : opt.DisplayText;
-            ScreenReaderManager.Speak($"Selected: {selText}");
 
             // Call OnTopicPressed on the ConversationHUD with the button's GameObject
             var hud = MonoBehaviourSingleton<ConversationHUD>.GetInstance();
