@@ -53,6 +53,18 @@ namespace Wasteland2AccessibilityMod.States
                 // Only active when waiting for player input (buttons are enabled)
                 if (DramaGUI.waitState != DramaGUI.WaitState.ForInput) return false;
 
+                var hud = MonoBehaviourSingleton<ConversationHUD>.GetInstance();
+                if (hud == null) return false;
+
+                // Don't activate while "Click to Continue" is showing - NPC text is still displaying
+                if (hud.clickToContinue != null && hud.clickToContinue.activeSelf) return false;
+
+                // Don't activate while any conversation bubble text is active in BubbleTextManager.
+                // This covers description text, voiced audio, and all conversation text types.
+                // Prevents the 1-frame race where buttons are added before clickToContinue
+                // is set active by BubbleTextManager.Update().
+                if (VoiceoverHelper.HasActiveConversationBubbles()) return false;
+
                 int count = GetButtonCount();
                 return count > 0;
             }

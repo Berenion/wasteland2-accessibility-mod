@@ -173,10 +173,7 @@ namespace Wasteland2AccessibilityMod
                         return false;
                     }
 
-                    bool hasAnyBubbleText = false;
-                    bool hasAudioBubbleText = false;
-
-                    // Check each bubble text for active audio or audio that will play
+                    // Check each bubble text for audio that is ACTUALLY playing right now
                     foreach (var btInfo in bubbleTextInfos)
                     {
                         if (btInfo == null) continue;
@@ -193,51 +190,31 @@ namespace Wasteland2AccessibilityMod
                         string textKindName = textKindValue.ToString();
 
                         // Only consider actual conversation dialogue, not barks or radio
-                        // Ignore: Bark, BarkSpecial, AudioBark, PositionedAudioBark, Radio, RadioBark, Label
                         if (textKindName.Contains("Bark") || textKindName == "Radio" || textKindName == "RadioBark" || textKindName == "Label")
                         {
-                            continue; // Skip barks, radio messages, and labels
+                            continue;
                         }
 
-                        hasAnyBubbleText = true;
-
-                        // Check if this is a subtitle to audio (has voiceover)
-                        FieldInfo isSubtitleField = btInfoType.GetField("isSubtitleToAudio");
-                        if (isSubtitleField != null)
-                        {
-                            bool isSubtitle = (bool)isSubtitleField.GetValue(btInfo);
-                            if (isSubtitle)
-                            {
-                                // This text has associated audio
-                                hasAudioBubbleText = true;
-                                MelonLogger.Msg($"[AudioAware] Detected voiceover dialogue (textKind: {textKindName})");
-                                return true;
-                            }
-                        }
-
-                        // Also check if any audio is currently playing
+                        // Check if audio is ACTUALLY playing via audioRef
                         FieldInfo audioRefField = btInfoType.GetField("audioRef");
                         if (audioRefField != null)
                         {
                             var audioRef = audioRefField.GetValue(btInfo);
                             if (audioRef != null)
                             {
-                                // Get the AudioObject from the PoolableReference
                                 MethodInfo getMethod = audioRef.GetType().GetMethod("Get");
                                 if (getMethod != null)
                                 {
                                     var audioObject = getMethod.Invoke(audioRef, null);
                                     if (audioObject != null)
                                     {
-                                        // Check if audio is playing
                                         MethodInfo isPlayingMethod = audioObject.GetType().GetMethod("IsPlaying");
                                         if (isPlayingMethod != null)
                                         {
                                             bool isPlaying = (bool)isPlayingMethod.Invoke(audioObject, null);
                                             if (isPlaying)
                                             {
-                                                hasAudioBubbleText = true;
-                                                MelonLogger.Msg($"[AudioAware] Detected playing dialogue audio (textKind: {textKindName})");
+                                                MelonLogger.Msg($"[AudioAware] Audio playing: textKind={textKindName}");
                                                 return true;
                                             }
                                         }
@@ -246,24 +223,9 @@ namespace Wasteland2AccessibilityMod
                             }
                         }
 
-                        // Check if there's an audioName set (audio will play)
-                        FieldInfo audioNameField = btInfoType.GetField("audioName");
-                        if (audioNameField != null)
-                        {
-                            string audioName = audioNameField.GetValue(btInfo) as string;
-                            if (!string.IsNullOrEmpty(audioName) && audioName.Length > 0)
-                            {
-                                hasAudioBubbleText = true;
-                                MelonLogger.Msg($"[AudioAware] Detected pending dialogue audio (textKind: {textKindName}, audioName: {audioName})");
-                                return true;
-                            }
-                        }
-                    }
-
-                    // If we're in a conversation and have bubble texts but none have audio, it's text-only
-                    if (hasAnyBubbleText && !hasAudioBubbleText)
-                    {
-                        return false;
+                        // Note: We intentionally do NOT check for pending audio (timeStarted == -1).
+                        // Pending bubble texts may wait many seconds behind other bubbles from the
+                        // same owner, and blocking TTS for that long is wrong.
                     }
                 }
 

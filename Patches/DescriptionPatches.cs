@@ -17,9 +17,12 @@ namespace Wasteland2AccessibilityMod.Patches
                 // Skip empty text
                 if (string.IsNullOrEmpty(newText)) return;
 
-                // Skip if audio is already playing for this text (game handles it)
-                // Actually, we want to speak even if hasAudio is true, since our screen reader
-                // is separate from the game's audio system
+                // During active conversations, ConversationPatches.AddText handles dialogue text
+                // to avoid duplicate announcements (both patches fire from EmitToTextWindow)
+                if (Drama.isConversationOn && textType == HUD_Controller.TextType.Conversation)
+                {
+                    return;
+                }
 
                 // Clean and speak the text
                 string cleanedText = UITextExtractor.CleanText(newText);

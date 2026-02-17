@@ -71,6 +71,7 @@ namespace Wasteland2AccessibilityMod
 
         /// <summary>
         /// Speaks text immediately, interrupting any current speech.
+        /// Bypasses the audio-aware queue entirely for instant feedback.
         /// Use this for direct user actions (navigation, key presses) where old speech is stale
         /// and the user expects immediate feedback on what they just did.
         /// </summary>
@@ -78,7 +79,9 @@ namespace Wasteland2AccessibilityMod
         {
             text = UITextExtractor.CleanText(text);
             if (string.IsNullOrEmpty(text)) return;
-            AudioAwareAnnouncementManager.Instance.QueueAnnouncement(text, true);
+            // User-initiated actions always speak immediately - clear stale queue and speak directly
+            AudioAwareAnnouncementManager.Instance.ClearQueue();
+            SpeakDirect(text, true);
         }
 
         /// <summary>

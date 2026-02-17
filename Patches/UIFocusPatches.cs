@@ -35,6 +35,12 @@ namespace Wasteland2AccessibilityMod.Patches
                 return;
             }
 
+            // Don't announce during conversations - ConversationState/ConversationPatches handle it
+            if (Drama.isConversationOn)
+            {
+                return;
+            }
+
             // Skip non-interactive visual elements (backgrounds, sprites, etc.)
             if (!UITextExtractor.IsInteractiveElement(go))
             {

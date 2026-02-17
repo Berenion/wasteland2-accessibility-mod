@@ -1,7 +1,9 @@
 using HarmonyLib;
 using MelonLoader;
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using UnityEngine;
 using Wasteland2AccessibilityMod.States;
 
 namespace Wasteland2AccessibilityMod.Patches
@@ -52,38 +54,38 @@ namespace Wasteland2AccessibilityMod.Patches
                     return;
                 }
 
-                // Check if this text has italic formatting or is gray (indicates descriptive/flavor text)
-                bool isDescriptiveText = p_value.Contains("[i]") || p_value.Contains("</i>") ||
-                                        p_value.Contains("[222222]") || p_value.Contains("[888888]");
-
-                // If this is NPC dialogue and voiceover is playing,
-                // skip TTS announcement for voiced dialogue but keep it for descriptive text
-                if (!isDescriptiveText && VoiceoverHelper.IsVoiceoverPlaying())
-                {
-                    MelonLogger.Msg($"[Conversation] Skipping TTS for voiced dialogue: {cleanedText}");
-                    return;
-                }
-
                 // Avoid duplicate announcements within 0.5 seconds
-                float currentTime = UnityEngine.Time.time;
+                float currentTime = Time.time;
                 if (cleanedText == lastAnnouncedText && (currentTime - lastAnnouncedTime) < 0.5f)
                 {
                     return;
                 }
 
-                // Build announcement with speaker context
-                string announcement;
-                if (isDescriptiveText)
+                // Determine whether to speak immediately or wait for voiceover.
+                // Three cases:
+                // 1. Voiceover actively playing → wait (polling coroutine)
+                // 2. Voiced audio pending BUT description bubbles exist → this IS the
+                //    description text, speak immediately (audio won't start until user
+                //    dismisses the description via click-to-continue)
+                // 3. Voiced audio pending, NO description bubbles → this is a subtitle
+                //    for upcoming voiceover, wait
+                bool voiceoverPlaying = VoiceoverHelper.IsVoiceoverPlaying();
+                bool voicedAudioPending = VoiceoverHelper.HasPendingOrActiveVoicedAudio();
+                bool descriptionShowing = VoiceoverHelper.HasActiveDescriptionBubbles();
+
+                if (voiceoverPlaying || (voicedAudioPending && !descriptionShowing))
                 {
-                    // Descriptive/flavor text - announce immediately so it's not delayed
-                    announcement = cleanedText;
-                    ScreenReaderManager.Speak(announcement);
+                    MelonCoroutines.Start(SpeakAfterVoiceoverFinishes(cleanedText));
                 }
                 else
                 {
-                    // NPC dialogue (unvoiced) - wait for any voiceover to finish
-                    announcement = cleanedText;
-                    VoiceoverHelper.SpeakWithVoiceoverDelay(announcement, additionalDelay: 0.2f);
+                    ScreenReaderManager.SpeakDirect(cleanedText);
+
+                    // If description is showing, prompt to continue
+                    if (Drama.isConversationOn && !Drama.isCutsceneOn && descriptionShowing)
+                    {
+                        ScreenReaderManager.SpeakDirect("Press Enter to continue");
+                    }
                 }
 
                 // Update tracking
@@ -96,6 +98,31 @@ namespace Wasteland2AccessibilityMod.Patches
             {
                 MelonLogger.Error($"Error in ConversationHUD.AddText patch: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Polls until voiced audio finishes, then speaks the text.
+        /// Handles the case where audio hasn't started yet (pending behind other bubble texts).
+        /// </summary>
+        private static IEnumerator SpeakAfterVoiceoverFinishes(string text)
+        {
+            // Wait until no voiced audio is playing or pending
+            float maxWait = 30f; // Safety timeout
+            float waited = 0f;
+            while (waited < maxWait)
+            {
+                if (!VoiceoverHelper.IsVoiceoverPlaying() && !VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+                {
+                    break;
+                }
+                yield return new WaitForSeconds(0.2f);
+                waited += 0.2f;
+            }
+
+            // Small extra delay for natural pacing after audio stops
+            yield return new WaitForSeconds(0.3f);
+
+            ScreenReaderManager.SpeakDirect(text);
         }
     }
 
@@ -115,8 +142,8 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             try
             {
-                // Skip announcements when ConversationState is managing navigation
-                if (ConversationState.IsManagingNavigation)
+                // Skip announcements during conversations - ConversationState handles option navigation
+                if (Drama.isConversationOn)
                 {
                     return;
                 }
