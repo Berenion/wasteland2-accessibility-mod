@@ -10,8 +10,7 @@ namespace Wasteland2AccessibilityMod.States
 {
     /// <summary>
     /// Keyboard navigation and screen reader support for the in-game CharacterInfoMenu
-    /// on non-Inventory tabs: Attributes, Skills, Traits, Dossier.
-    /// Logbook tab is not yet supported.
+    /// on non-Inventory tabs: Attributes, Skills, Traits, Dossier, Logbook.
     /// Priority 50 - same level as InventoryState/CharacterState.
     /// </summary>
     public class CharacterInfoState : IAccessibilityState
@@ -61,6 +60,13 @@ namespace Wasteland2AccessibilityMod.States
         // Dossier info browsing
         private List<string> dossierLines = new List<string>();
 
+        // Logbook browsing
+        private bool logbookDetailMode = false;
+        private List<string> logbookDetailLines = new List<string>();
+        private int logbookDetailIndex = -1;
+        private string currentLogbookEntryName = null;
+        private JournalManager.EntrySortType currentLogbookSort = JournalManager.EntrySortType.Ongoing;
+
         // Reflection caches
         private static bool reflectionCached = false;
         private static FieldInfo charInfoCurrentPanelField;
@@ -84,10 +90,9 @@ namespace Wasteland2AccessibilityMod.States
 
                 var currentPanel = GetCurrentPanel(charInfoMenu);
 
-                // Only active for non-Inventory, non-Logbook, non-None panels
+                // Only active for non-Inventory, non-None panels
                 if (currentPanel == CharacterInfoMenu.InfoPanel.None ||
-                    currentPanel == CharacterInfoMenu.InfoPanel.Inventory ||
-                    currentPanel == CharacterInfoMenu.InfoPanel.Logbook)
+                    currentPanel == CharacterInfoMenu.InfoPanel.Inventory)
                     return false;
 
                 return true;
@@ -124,6 +129,10 @@ namespace Wasteland2AccessibilityMod.States
             if (derivedStatsBrowsing)
                 return HandleDerivedStatsInput(charInfoMenu);
 
+            // Logbook detail mode intercepts all input
+            if (logbookDetailMode)
+                return HandleLogbookDetailInput(charInfoMenu);
+
             // Route by panel
             switch (lastPanel)
             {
@@ -135,6 +144,8 @@ namespace Wasteland2AccessibilityMod.States
                     return HandleTraitsInput(charInfoMenu);
                 case CharacterInfoMenu.InfoPanel.Dossier:
                     return HandleDossierInput(charInfoMenu);
+                case CharacterInfoMenu.InfoPanel.Logbook:
+                    return HandleLogbookInput(charInfoMenu);
                 default:
                     return HandleCommonInput(charInfoMenu);
             }
@@ -153,6 +164,10 @@ namespace Wasteland2AccessibilityMod.States
             derivedStatsIndex = -1;
             activationTime = Time.time;
             initialAnnouncementDone = false;
+            logbookDetailMode = false;
+            logbookDetailIndex = -1;
+            logbookDetailLines.Clear();
+            currentLogbookEntryName = null;
 
             if (!reflectionCached) CacheReflection();
             CharacterAnnouncementHelper.EnsureReflectionCached();
@@ -196,6 +211,8 @@ namespace Wasteland2AccessibilityMod.States
             controlList.Clear();
             isEditingValue = false;
             derivedStatsBrowsing = false;
+            logbookDetailMode = false;
+            logbookDetailLines.Clear();
             MelonLogger.Msg($"[CharacterInfoState] Deactivated (suspended panel={suspendedPanel}, index={suspendedIndex})");
         }
 
@@ -255,6 +272,10 @@ namespace Wasteland2AccessibilityMod.States
             isEditingValue = false;
             derivedStatsBrowsing = false;
             derivedStatsIndex = -1;
+            logbookDetailMode = false;
+            logbookDetailIndex = -1;
+            logbookDetailLines.Clear();
+            currentLogbookEntryName = null;
             controlList.Clear();
             controlIndex = -1;
             lastAnnouncedText = null;
@@ -282,6 +303,9 @@ namespace Wasteland2AccessibilityMod.States
                     break;
                 case CharacterInfoMenu.InfoPanel.Dossier:
                     hint = ". Up and Down to browse";
+                    break;
+                case CharacterInfoMenu.InfoPanel.Logbook:
+                    hint = ". Up and Down to navigate entries, Enter for details, Left and Right to switch category";
                     break;
             }
 
@@ -324,6 +348,9 @@ namespace Wasteland2AccessibilityMod.States
                     break;
                 case CharacterInfoMenu.InfoPanel.Dossier:
                     BuildDossierControls(menu);
+                    break;
+                case CharacterInfoMenu.InfoPanel.Logbook:
+                    BuildLogbookControls(menu);
                     break;
             }
         }
@@ -466,6 +493,23 @@ namespace Wasteland2AccessibilityMod.States
             MelonLogger.Msg($"[CharacterInfoState] Dossier lines: {dossierLines.Count}");
         }
 
+        private void BuildLogbookControls(CharacterInfoMenu menu)
+        {
+            if (menu.journalPanel == null || menu.journalPanel.mainPanel == null) return;
+
+            var mainPanel = menu.journalPanel.mainPanel;
+            var entries = mainPanel.GetComponentsInChildren<JNL_JournalEntry>(false);
+            if (entries == null) return;
+
+            foreach (var entry in entries)
+            {
+                if (entry != null && entry.gameObject.activeInHierarchy)
+                    controlList.Add(entry.gameObject);
+            }
+
+            MelonLogger.Msg($"[CharacterInfoState] Logbook controls ({GetLogbookSortName()}): {controlList.Count}");
+        }
+
         private void AddDossierLabel(string prefix, UILabel label)
         {
             if (label == null) return;
@@ -504,6 +548,7 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
+            // Logbook uses controlList but has custom announcement
             if (controlList.Count == 0) return;
 
             int newIndex = controlIndex + direction;
@@ -559,6 +604,12 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
+            if (lastPanel == CharacterInfoMenu.InfoPanel.Logbook)
+            {
+                AnnounceLogbookEntry(interrupt);
+                return;
+            }
+
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
 
             var obj = controlList[controlIndex];
@@ -586,7 +637,10 @@ namespace Wasteland2AccessibilityMod.States
             {
                 string panelName = GetPanelDisplayName(lastPanel);
                 int total = lastPanel == CharacterInfoMenu.InfoPanel.Dossier ? dossierLines.Count : controlList.Count;
-                ScreenReaderManager.SpeakInterrupt($"{panelName}, {controlIndex + 1} of {total}");
+                string extra = "";
+                if (lastPanel == CharacterInfoMenu.InfoPanel.Logbook)
+                    extra = $", {GetLogbookSortName()}";
+                ScreenReaderManager.SpeakInterrupt($"{panelName}{extra}, {controlIndex + 1} of {total}");
                 return true;
             }
 
@@ -1100,6 +1154,341 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             return false;
+        }
+
+        #endregion
+
+        #region Logbook Input
+
+        private bool HandleLogbookInput(CharacterInfoMenu menu)
+        {
+            if (HandleCommonInput(menu)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+                return true;
+            }
+
+            // Enter or Right to view details of selected entry
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                OpenLogbookDetails(menu);
+                return true;
+            }
+
+            // Left/Right to switch sort category
+            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                SwitchLogbookCategory(menu, -1);
+                return true;
+            }
+
+            // F to cycle sort category (alternative to Left/Right)
+            if (Input.GetKeyDown(KeyCode.F))
+            {
+                SwitchLogbookCategory(menu, 1);
+                return true;
+            }
+
+            // X to toggle flagged on current entry
+            if (Input.GetKeyDown(KeyCode.X))
+            {
+                ToggleLogbookFlag();
+                return true;
+            }
+
+            // I to announce entry location/originator
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                AnnounceLogbookEntryInfo();
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HandleLogbookDetailInput(CharacterInfoMenu menu)
+        {
+            // Escape or Left to return to entry list
+            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                CloseLogbookDetails();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                logbookDetailIndex--;
+                if (logbookDetailIndex < 0) logbookDetailIndex = logbookDetailLines.Count - 1;
+                AnnounceLogbookDetail();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                logbookDetailIndex++;
+                if (logbookDetailIndex >= logbookDetailLines.Count) logbookDetailIndex = 0;
+                AnnounceLogbookDetail();
+                return true;
+            }
+
+            // Tab to announce position
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                if (logbookDetailIndex >= 0 && logbookDetailIndex < logbookDetailLines.Count)
+                    ScreenReaderManager.SpeakInterrupt($"Detail {logbookDetailIndex + 1} of {logbookDetailLines.Count}");
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                logbookDetailIndex = 0;
+                AnnounceLogbookDetail();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                logbookDetailIndex = logbookDetailLines.Count - 1;
+                AnnounceLogbookDetail();
+                return true;
+            }
+
+            return true; // Block all other keys in detail mode
+        }
+
+        private void OpenLogbookDetails(CharacterInfoMenu menu)
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+
+            var entryObj = controlList[controlIndex];
+            var journalEntry = entryObj.GetComponent<JNL_JournalEntry>();
+            if (journalEntry == null) return;
+
+            currentLogbookEntryName = journalEntry.entryName;
+            if (string.IsNullOrEmpty(currentLogbookEntryName)) return;
+
+            if (!MonoBehaviourSingleton<JournalManager>.HasInstance()) return;
+            var entryInstance = MonoBehaviourSingleton<JournalManager>.GetInstance().GetEntry(currentLogbookEntryName);
+            if (entryInstance == null) return;
+
+            // Build detail lines
+            logbookDetailLines.Clear();
+            int numDetails = entryInstance.GetNumVisibleDetails();
+            for (int i = numDetails - 1; i >= 0; i--)
+            {
+                string detailText = entryInstance.GetDetail(i);
+                if (string.IsNullOrEmpty(detailText)) continue;
+
+                string cleanDetail = UITextExtractor.CleanText(detailText);
+                if (string.IsNullOrEmpty(cleanDetail)) continue;
+
+                // Check if this is a completed objective (not the last/current one)
+                bool isComplete = i < numDetails - 1;
+                string prefix = isComplete ? "Complete: " : "";
+
+                string note = entryInstance.GetDetailNote(i);
+                string noteSuffix = "";
+                if (!string.IsNullOrEmpty(note))
+                    noteSuffix = $". Note: {note}";
+
+                logbookDetailLines.Add($"{prefix}{cleanDetail}{noteSuffix}");
+            }
+
+            if (logbookDetailLines.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No details available");
+                return;
+            }
+
+            logbookDetailMode = true;
+            logbookDetailIndex = 0;
+
+            string entryName = UITextExtractor.CleanText(
+                Language.Localize(entryInstance.GetDescription(), false, false, string.Empty));
+            ScreenReaderManager.SpeakInterrupt(
+                $"{entryName}, {logbookDetailLines.Count} detail{(logbookDetailLines.Count == 1 ? "" : "s")}. Up and Down to navigate, Escape to go back");
+            AnnounceLogbookDetail(interrupt: false);
+            MelonLogger.Msg($"[CharacterInfoState] Logbook details opened for {currentLogbookEntryName}, {logbookDetailLines.Count} details");
+        }
+
+        private void CloseLogbookDetails()
+        {
+            logbookDetailMode = false;
+            logbookDetailIndex = -1;
+            logbookDetailLines.Clear();
+            currentLogbookEntryName = null;
+            EventManager.ignoreNextBack = true;
+            lastAnnouncedText = null;
+            ScreenReaderManager.SpeakInterrupt("Back to entries");
+            AnnounceCurrentControl(interrupt: false);
+            MelonLogger.Msg("[CharacterInfoState] Logbook details closed");
+        }
+
+        private void AnnounceLogbookDetail(bool interrupt = true)
+        {
+            if (logbookDetailIndex < 0 || logbookDetailIndex >= logbookDetailLines.Count) return;
+            string line = logbookDetailLines[logbookDetailIndex];
+            if (interrupt)
+                ScreenReaderManager.SpeakInterrupt(line);
+            else
+                ScreenReaderManager.Speak(line);
+        }
+
+        private void AnnounceLogbookEntry(bool interrupt = true)
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+
+            var entryObj = controlList[controlIndex];
+            var journalEntry = entryObj.GetComponent<JNL_JournalEntry>();
+            if (journalEntry == null) return;
+
+            // Get the description text from the label
+            string text = "";
+            if (journalEntry.descriptionLabel != null)
+                text = UITextExtractor.CleanText(journalEntry.descriptionLabel.text);
+
+            if (string.IsNullOrEmpty(text))
+                text = journalEntry.entryName;
+
+            // Build status indicators
+            string status = "";
+            if (!string.IsNullOrEmpty(journalEntry.entryName) && MonoBehaviourSingleton<JournalManager>.HasInstance())
+            {
+                var entryInstance = MonoBehaviourSingleton<JournalManager>.GetInstance().GetEntry(journalEntry.entryName);
+                if (entryInstance != null)
+                {
+                    if (entryInstance.updated)
+                        status = ", new";
+                    if (entryInstance.edited)
+                        status += ", flagged";
+                    if (entryInstance.resolved)
+                        status += ", resolved";
+                }
+            }
+
+            string announcement = $"{text}{status}";
+            if (announcement != lastAnnouncedText || controlIndex != lastAnnouncedIndex)
+            {
+                lastAnnouncedText = announcement;
+                lastAnnouncedIndex = controlIndex;
+                if (interrupt) ScreenReaderManager.SpeakInterrupt(announcement);
+                else ScreenReaderManager.Speak(announcement);
+                MelonLogger.Msg($"[CharacterInfoState] Logbook entry [{controlIndex}]: {announcement}");
+            }
+        }
+
+        private void AnnounceLogbookEntryInfo()
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+
+            var journalEntry = controlList[controlIndex].GetComponent<JNL_JournalEntry>();
+            if (journalEntry == null || string.IsNullOrEmpty(journalEntry.entryName)) return;
+
+            if (!MonoBehaviourSingleton<JournalManager>.HasInstance()) return;
+            var entryInstance = MonoBehaviourSingleton<JournalManager>.GetInstance().GetEntry(journalEntry.entryName);
+            if (entryInstance == null) return;
+
+            string location = Language.Localize(entryInstance.GetLocation(), false, false, string.Empty);
+            string originator = Language.Localize(entryInstance.GetOriginator(), false, false, string.Empty);
+
+            string info = "";
+            if (!string.IsNullOrEmpty(location))
+                info += $"Location: {UITextExtractor.CleanText(location)}";
+            if (!string.IsNullOrEmpty(originator))
+            {
+                if (!string.IsNullOrEmpty(info)) info += ". ";
+                info += $"From: {UITextExtractor.CleanText(originator)}";
+            }
+
+            int numDetails = entryInstance.GetNumVisibleDetails();
+            if (!string.IsNullOrEmpty(info)) info += ". ";
+            info += $"{numDetails} objective{(numDetails == 1 ? "" : "s")}";
+
+            if (string.IsNullOrEmpty(info))
+                info = "No additional information";
+
+            ScreenReaderManager.SpeakInterrupt(info);
+        }
+
+        private void SwitchLogbookCategory(CharacterInfoMenu menu, int direction)
+        {
+            if (menu.journalPanel == null) return;
+
+            JournalManager.EntrySortType[] categories = {
+                JournalManager.EntrySortType.Flagged,
+                JournalManager.EntrySortType.Ongoing,
+                JournalManager.EntrySortType.Resolved
+            };
+
+            int currentIdx = Array.IndexOf(categories, currentLogbookSort);
+            if (currentIdx < 0) currentIdx = 1; // Default to Ongoing
+            int newIdx = (currentIdx + direction + categories.Length) % categories.Length;
+            currentLogbookSort = categories[newIdx];
+
+            // Call the appropriate method on JournalScreen
+            switch (currentLogbookSort)
+            {
+                case JournalManager.EntrySortType.Flagged:
+                    menu.journalPanel.OnFlaggedClicked(null);
+                    break;
+                case JournalManager.EntrySortType.Ongoing:
+                    menu.journalPanel.OnOngoingClicked(null);
+                    break;
+                case JournalManager.EntrySortType.Resolved:
+                    menu.journalPanel.OnResolvedClicked(null);
+                    break;
+            }
+
+            // Rebuild controls
+            controlList.Clear();
+            controlIndex = -1;
+            lastAnnouncedText = null;
+            lastAnnouncedIndex = -1;
+            BuildLogbookControls(menu);
+
+            if (controlList.Count > 0)
+                controlIndex = 0;
+
+            string sortName = GetLogbookSortName();
+            ScreenReaderManager.SpeakInterrupt($"{sortName}, {controlList.Count} entr{(controlList.Count == 1 ? "y" : "ies")}");
+            AnnounceCurrentControl(interrupt: false);
+
+            MelonLogger.Msg($"[CharacterInfoState] Logbook category: {currentLogbookSort}, entries={controlList.Count}");
+        }
+
+        private void ToggleLogbookFlag()
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+
+            var journalEntry = controlList[controlIndex].GetComponent<JNL_JournalEntry>();
+            if (journalEntry == null) return;
+
+            journalEntry.ToggleFlagged();
+
+            // Announce the new state
+            if (!string.IsNullOrEmpty(journalEntry.entryName) && MonoBehaviourSingleton<JournalManager>.HasInstance())
+            {
+                var entryInstance = MonoBehaviourSingleton<JournalManager>.GetInstance().GetEntry(journalEntry.entryName);
+                if (entryInstance != null)
+                {
+                    string state = entryInstance.edited ? "Flagged" : "Unflagged";
+                    ScreenReaderManager.SpeakInterrupt(state);
+                }
+            }
+        }
+
+        private string GetLogbookSortName()
+        {
+            switch (currentLogbookSort)
+            {
+                case JournalManager.EntrySortType.Flagged: return "Flagged";
+                case JournalManager.EntrySortType.Ongoing: return "Ongoing";
+                case JournalManager.EntrySortType.Resolved: return "Resolved";
+                default: return "Logbook";
+            }
         }
 
         #endregion
