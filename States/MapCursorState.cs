@@ -40,8 +40,39 @@ namespace Wasteland2AccessibilityMod.States
         // Camera follow
         private bool cameraFollowsCursor = true;
 
+        // Context menu state
+        private bool contextMenuActive = false;
+        private List<ContextMenuOption> contextMenuOptions = new List<ContextMenuOption>();
+        private int contextMenuIndex = -1;
+        private InteractableNexus contextMenuTarget = null;
+
         // Layer masks for floor detection raycasting
         private static int floorLayerMask = -1;
+
+        // Context menu option
+        private struct ContextMenuOption
+        {
+            public string DisplayName;
+            public string ASIName; // null = "Poked" (normal interact), "move" = move to
+        }
+
+        // Skill ASI to display name mapping
+        private static readonly Dictionary<string, string> SKILL_DISPLAY_NAMES = new Dictionary<string, string>
+        {
+            { "Poked", "Interact" },
+            { "bruteForce", "Brute Force" },
+            { "pickLock", "Pick Lock" },
+            { "alarmDisarm", "Alarm Disarm" },
+            { "safecrack", "Safecrack" },
+            { "animalWhisperer", "Animal Whisperer" },
+            { "demolitions", "Demolitions" },
+            { "fieldMedic", "Field Medic" },
+            { "outdoorsman", "Outdoorsman" },
+            { "mechanicalRepair", "Mechanical Repair" },
+            { "doctor", "Doctor" },
+            { "toasterRepair", "Toaster Repair" },
+            { "computerTech", "Computer Tech" },
+        };
 
         // Cover direction names (indices 0-3: forward/right/back/left = N/E/S/W)
         private static readonly string[] COVER_DIRECTIONS = { "north", "east", "south", "west" };
@@ -87,6 +118,14 @@ namespace Wasteland2AccessibilityMod.States
                 if (!cursorInitialized) return false;
             }
 
+            // --- Context menu mode ---
+            if (contextMenuActive)
+            {
+                return HandleContextMenuInput();
+            }
+
+            // --- Normal cursor mode ---
+
             // Arrow key movement - grid-aligned cardinal directions
             float currentTime = Time.time;
             bool canMove = (currentTime - lastMoveTime) >= MOVE_REPEAT_DELAY;
@@ -130,10 +169,17 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Enter to interact with nearest object on tile
+            // Enter to open context menu for objects on tile
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
-                InteractAtCursor();
+                OpenContextMenu();
+                return true;
+            }
+
+            // ] to move party to cursor position
+            if (Input.GetKeyDown(KeyCode.RightBracket))
+            {
+                MovePartyToCursor();
                 return true;
             }
 
@@ -685,27 +731,256 @@ namespace Wasteland2AccessibilityMod.States
             return "Object";
         }
 
-        // --- Interaction ---
+        // --- Context Menu ---
 
-        private void InteractAtCursor()
+        private void OpenContextMenu()
         {
-            var nearbyInteractables = FindInteractablesOnTile();
+            var interactables = FindInteractablesOnTile();
 
-            if (nearbyInteractables.Count == 0)
+            if (interactables.Count == 0)
             {
                 ScreenReaderManager.SpeakInterrupt("Nothing to interact with");
                 return;
             }
 
-            var target = nearbyInteractables[0];
+            contextMenuOptions.Clear();
 
+            // If multiple interactables on tile, add each as an interact option
+            if (interactables.Count > 1)
+            {
+                foreach (var nexus in interactables)
+                {
+                    string name = GetInteractableName(nexus);
+                    if (string.IsNullOrEmpty(name)) name = "Object";
+                    // Store the interactable index so we can identify it later
+                    contextMenuOptions.Add(new ContextMenuOption
+                    {
+                        DisplayName = name,
+                        ASIName = "select_" + interactables.IndexOf(nexus)
+                    });
+                }
+
+                contextMenuTarget = null; // Multiple targets — selection first
+                contextMenuActive = true;
+                contextMenuIndex = 0;
+
+                string announcement = contextMenuOptions.Count + " objects. " + contextMenuOptions[0].DisplayName;
+                ScreenReaderManager.SpeakInterrupt(announcement);
+                MelonLogger.Msg($"[MapCursorState] Context menu opened with {contextMenuOptions.Count} objects");
+                return;
+            }
+
+            // Single interactable — build action menu from allowed interactions
+            var target = interactables[0];
+            contextMenuTarget = target;
+            BuildActionMenu(target);
+        }
+
+        private void BuildActionMenu(InteractableNexus target)
+        {
+            contextMenuOptions.Clear();
+            string targetName = GetInteractableName(target) ?? "Object";
+
+            if (target.drama != null)
+            {
+                var interactions = target.drama.GetAllowedInteractions();
+                if (interactions != null)
+                {
+                    // Add "Interact" (Poked) first if available
+                    if (interactions.ContainsKey("Poked") && interactions["Poked"] == 1)
+                    {
+                        contextMenuOptions.Add(new ContextMenuOption
+                        {
+                            DisplayName = "Interact",
+                            ASIName = null // null = Poked (default interaction)
+                        });
+                    }
+
+                    // Add skill interactions
+                    foreach (var kvp in interactions)
+                    {
+                        if (kvp.Key == "Poked") continue;
+                        if (kvp.Value != 1) continue; // Only available skills
+
+                        string displayName;
+                        if (!SKILL_DISPLAY_NAMES.TryGetValue(kvp.Key, out displayName))
+                            displayName = kvp.Key;
+
+                        contextMenuOptions.Add(new ContextMenuOption
+                        {
+                            DisplayName = displayName,
+                            ASIName = kvp.Key
+                        });
+                    }
+                }
+            }
+
+            if (contextMenuOptions.Count == 0)
+            {
+                // No actions available — just try default interact
+                ExecuteInteraction(target, null);
+                return;
+            }
+
+            if (contextMenuOptions.Count == 1)
+            {
+                // Only one action — execute immediately
+                var option = contextMenuOptions[0];
+                MelonLogger.Msg($"[MapCursorState] Single action for {targetName}: {option.DisplayName}");
+                ExecuteInteraction(target, option.ASIName);
+                return;
+            }
+
+            // Multiple actions — open menu
+            contextMenuActive = true;
+            contextMenuIndex = 0;
+
+            string announcement = targetName + ". " + contextMenuOptions[0].DisplayName +
+                ". " + contextMenuOptions.Count + " options";
+            ScreenReaderManager.SpeakInterrupt(announcement);
+            MelonLogger.Msg($"[MapCursorState] Context menu for {targetName}: {contextMenuOptions.Count} options");
+        }
+
+        private bool HandleContextMenuInput()
+        {
+            // Up/Down to cycle options
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                contextMenuIndex--;
+                if (contextMenuIndex < 0) contextMenuIndex = contextMenuOptions.Count - 1;
+                ScreenReaderManager.SpeakInterrupt(contextMenuOptions[contextMenuIndex].DisplayName);
+                SuppressInput();
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                contextMenuIndex = (contextMenuIndex + 1) % contextMenuOptions.Count;
+                ScreenReaderManager.SpeakInterrupt(contextMenuOptions[contextMenuIndex].DisplayName);
+                SuppressInput();
+                return true;
+            }
+
+            // Enter to select
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                var option = contextMenuOptions[contextMenuIndex];
+
+                // If this was a multi-object selection menu, drill into that object
+                if (option.ASIName != null && option.ASIName.StartsWith("select_"))
+                {
+                    int objIndex;
+                    if (int.TryParse(option.ASIName.Substring(7), out objIndex))
+                    {
+                        var interactables = FindInteractablesOnTile();
+                        if (objIndex >= 0 && objIndex < interactables.Count)
+                        {
+                            contextMenuTarget = interactables[objIndex];
+                            BuildActionMenu(contextMenuTarget);
+                            return true;
+                        }
+                    }
+                }
+
+                // Execute the action
+                if (contextMenuTarget != null)
+                {
+                    ExecuteInteraction(contextMenuTarget, option.ASIName);
+                }
+                CloseContextMenu();
+                return true;
+            }
+
+            // Escape to close
+            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+            {
+                CloseContextMenu();
+                ScreenReaderManager.SpeakInterrupt("Cancelled");
+                return true;
+            }
+
+            // Suppress all other keys while menu is open
+            SuppressInput();
+            return true;
+        }
+
+        private void CloseContextMenu()
+        {
+            contextMenuActive = false;
+            contextMenuOptions.Clear();
+            contextMenuIndex = -1;
+            contextMenuTarget = null;
+        }
+
+        private void ExecuteInteraction(InteractableNexus target, string asiName)
+        {
+            if (target == null || target.drama == null) return;
+
+            PC pc = GetPartyLeader();
+            if (pc == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No party leader");
+                return;
+            }
+
+            // Set the active ASI if this is a skill interaction
+            if (!string.IsNullOrEmpty(asiName))
+            {
+                UseASIManager.SetActiveASIName(asiName);
+            }
+
+            // Set selectedInteractable so the game knows what we're targeting
             if (MonoBehaviourSingleton<InputManager>.HasInstance())
             {
                 MonoBehaviourSingleton<InputManager>.GetInstance().selectedInteractable = target;
             }
 
-            string name = GetInteractableName(target);
-            ScreenReaderManager.SpeakInterrupt("Selected: " + (name ?? "Object"));
+            string name = GetInteractableName(target) ?? "Object";
+            string actionName = string.IsNullOrEmpty(asiName) ? "Interacting with" : asiName;
+
+            string displayAction;
+            if (string.IsNullOrEmpty(asiName))
+            {
+                displayAction = "Interacting with";
+            }
+            else if (SKILL_DISPLAY_NAMES.TryGetValue(asiName, out displayAction))
+            {
+                displayAction = "Using " + displayAction + " on";
+            }
+            else
+            {
+                displayAction = "Using " + asiName + " on";
+            }
+
+            MelonLogger.Msg($"[MapCursorState] {displayAction} {name}");
+            ScreenReaderManager.SpeakInterrupt(displayAction + " " + name);
+
+            // Trigger the game's interaction system — PC will walk to object and interact
+            Drama.CheckInstigate(target.drama, pc, false);
+        }
+
+        // --- Move Party ---
+
+        private void MovePartyToCursor()
+        {
+            if (!MonoBehaviourSingleton<InputManager>.HasInstance()) return;
+
+            var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+            PC pc = GetPartyLeader();
+            if (pc == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No party leader");
+                return;
+            }
+
+            inputManager.MoveInFormation(inputManager.formation, cursorPosition,
+                false, null, 0f, null, true);
+
+            int tileDistX = Mathf.Abs((int)cursorGridId.x - Mathf.RoundToInt(pc.transform.position.x / GRID_SQUARE_SIZE));
+            int tileDistZ = Mathf.Abs((int)cursorGridId.z - Mathf.RoundToInt(pc.transform.position.z / GRID_SQUARE_SIZE));
+            int tileDist = Mathf.Max(tileDistX, tileDistZ);
+
+            ScreenReaderManager.SpeakInterrupt("Moving party, " + tileDist + (tileDist == 1 ? " tile" : " tiles"));
+            MelonLogger.Msg($"[MapCursorState] Moving party to cursor position {cursorPosition}");
         }
 
         // --- Camera ---

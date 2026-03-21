@@ -262,11 +262,26 @@ namespace Wasteland2AccessibilityMod
 
             Vector3 playerPos = player.transform.position;
 
+            // Party category: PCs aren't in InteractableNexus.interactables when conscious,
+            // so we build the list directly from Game.party and Game.partyFollowers
+            if (currentCategory == InteractableCategory.Party)
+            {
+                UpdatePartyList(playerPos);
+                return;
+            }
+
+            // For "All" category, also include party members since they're not in the interactables list
+            if (currentCategory == InteractableCategory.All)
+            {
+                UpdatePartyList(playerPos);
+                // Continue below to also add regular interactables
+            }
+
             foreach (var nexus in InteractableNexus.interactables)
             {
                 // Apply visibility filters
                 if (nexus == null) continue;
-                if (!nexus.isVisible) continue; // This checks FOW visibility (minimap visibility)
+                if (!nexus.isVisible) continue;
                 if (nexus.GetHighlight() == null) continue;
                 if (nexus.transform == null) continue;
 
@@ -282,6 +297,68 @@ namespace Wasteland2AccessibilityMod
                 .ToList();
 
             MelonLogger.Msg($"Filtered interactables: {filteredInteractables.Count} found (category: {currentCategory})");
+        }
+
+        private static void UpdatePartyList(Vector3 playerPos)
+        {
+            if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
+            var game = MonoBehaviourSingleton<Game>.GetInstance();
+
+            // Add party PCs
+            if (game.party != null)
+            {
+                foreach (var pc in game.party)
+                {
+                    if (pc == null || pc.gameObject == null) continue;
+                    if (!pc.gameObject.activeInHierarchy) continue;
+
+                    var nexus = pc.gameObject.GetComponent<InteractableNexus>();
+                    if (nexus == null)
+                    {
+                        // Try to find it on a child or via Drama
+                        var drama = pc.gameObject.GetComponent<Drama>();
+                        if (drama != null)
+                        {
+                            nexus = drama.GetComponent<InteractableNexus>();
+                        }
+                    }
+                    if (nexus != null)
+                    {
+                        filteredInteractables.Add(nexus);
+                    }
+                }
+            }
+
+            // Add party followers (CNPCs like Angela Deth)
+            if (game.partyFollowers != null)
+            {
+                foreach (var follower in game.partyFollowers)
+                {
+                    if (follower == null || follower.gameObject == null) continue;
+                    if (!follower.gameObject.activeInHierarchy) continue;
+
+                    var nexus = follower.gameObject.GetComponent<InteractableNexus>();
+                    if (nexus == null)
+                    {
+                        var drama = follower.gameObject.GetComponent<Drama>();
+                        if (drama != null)
+                        {
+                            nexus = drama.GetComponent<InteractableNexus>();
+                        }
+                    }
+                    if (nexus != null)
+                    {
+                        filteredInteractables.Add(nexus);
+                    }
+                }
+            }
+
+            // Sort by distance
+            filteredInteractables = filteredInteractables
+                .OrderBy(n => Vector3.Distance(n.transform.position, playerPos))
+                .ToList();
+
+            MelonLogger.Msg($"Filtered party members: {filteredInteractables.Count} found");
         }
 
         private static bool MatchesCategory(InteractableNexus nexus, InteractableCategory category)
