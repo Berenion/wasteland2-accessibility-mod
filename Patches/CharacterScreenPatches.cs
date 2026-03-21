@@ -205,7 +205,7 @@ namespace Wasteland2AccessibilityMod.Patches
     }
 
     /// <summary>
-    /// Blocks UIInput keyboard processing when CharacterState is navigating
+    /// Blocks UIInput keyboard processing when CharacterState or CharacterInfoState is navigating
     /// but not actively editing a text field. ProcessEvent handles special keys
     /// (Backspace, Delete, arrows, Return, Ctrl combos) via UIInputOnGUI.OnGUI.
     /// </summary>
@@ -215,12 +215,12 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPrefix]
         public static bool Prefix()
         {
-            return !CharacterState.blockUIInput;
+            return !CharacterState.blockUIInput && !CharacterInfoState.blockUIInput;
         }
     }
 
     /// <summary>
-    /// Blocks UIInput.Update() when CharacterState is navigating.
+    /// Blocks UIInput.Update() when CharacterState or CharacterInfoState is navigating.
     /// Update() handles regular character input via Input.inputString (line 527 of UIInput.cs).
     /// Without this patch, characters typed during navigation would silently enter text fields.
     /// </summary>
@@ -230,7 +230,7 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPrefix]
         public static bool Prefix()
         {
-            return !CharacterState.blockUIInput;
+            return !CharacterState.blockUIInput && !CharacterInfoState.blockUIInput;
         }
     }
 }

@@ -4,6 +4,7 @@ using System.Reflection;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod.States
 {
@@ -46,7 +47,7 @@ namespace Wasteland2AccessibilityMod.States
         private bool initialAnnouncementDone = false;
         private const float ANNOUNCEMENT_DELAY = 0.3f;
 
-        // Reflection caches
+        // Reflection caches (CharacterScreen-specific fields)
         private static FieldInfo panelTypeField;
         private static FieldInfo currentPCField;
         private static FieldInfo skillEditorsField;
@@ -56,16 +57,8 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo addCharEntryListField;
         private static FieldInfo addCharCurrentEntryField;
         private static FieldInfo traitCurrentEditorField;
-        private static FieldInfo skillEditorCurrentValueField;
-        private static FieldInfo attrEditorCurrentValueField;
-        private static FieldInfo traitEditorTraitField;
         private static FieldInfo statDisplayListField;
-        private static FieldInfo pressedCallbackField;
         private static MethodInfo onDoneClickedMethod;
-        private static MethodInfo skillOnPlusClickedMethod;
-        private static MethodInfo skillOnMinusClickedMethod;
-        private static MethodInfo attrOnPlusClickedMethod;
-        private static MethodInfo attrOnMinusClickedMethod;
         private static bool reflectionCached = false;
 
         public bool IsActive
@@ -232,13 +225,8 @@ namespace Wasteland2AccessibilityMod.States
             addCharEntryListField = typeof(CHA_AddCharacterPanel).GetField("entryList", flags);
             addCharCurrentEntryField = typeof(CHA_AddCharacterPanel).GetField("currentEntry", flags);
 
-            skillEditorCurrentValueField = typeof(CHA_SkillEditor).GetField("currentValue", flags);
-            skillOnPlusClickedMethod = typeof(CHA_SkillEditor).GetMethod("OnPlusClicked", flags);
-            skillOnMinusClickedMethod = typeof(CHA_SkillEditor).GetMethod("OnMinusClicked", flags);
-            attrOnPlusClickedMethod = typeof(CHA_AttributeEditor).GetMethod("OnPlusClicked", flags);
-            attrOnMinusClickedMethod = typeof(CHA_AttributeEditor).GetMethod("OnMinusClicked", flags);
-            attrEditorCurrentValueField = typeof(CHA_AttributeEditor).GetField("currentValue", flags);
-            traitEditorTraitField = typeof(CHA_TraitEditor).GetField("trait", flags);
+            // Editor-level reflection is cached in CharacterAnnouncementHelper
+            CharacterAnnouncementHelper.EnsureReflectionCached();
 
             reflectionCached = true;
             MelonLogger.Msg("[CharacterState] Reflection cached");
@@ -838,72 +826,17 @@ namespace Wasteland2AccessibilityMod.States
 
         private string GetAttributeEditorAnnouncement(CHA_AttributeEditor editor)
         {
-            try
-            {
-                string name = editor.nameLabel != null ? UITextExtractor.CleanText(editor.nameLabel.text) : editor.attribute;
-                int value = 0;
-                if (attrEditorCurrentValueField != null)
-                    value = (int)attrEditorCurrentValueField.GetValue(editor);
-                else if (editor.valueLabel != null)
-                    int.TryParse(UITextExtractor.CleanText(editor.valueLabel.text), out value);
-
-                return $"{name}, {value}, attribute";
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[CharacterState] Error announcing attribute: {ex.Message}");
-                return "Attribute";
-            }
+            return CharacterAnnouncementHelper.GetAttributeEditorAnnouncement(editor);
         }
 
         private string GetSkillEditorAnnouncement(CHA_SkillEditor editor)
         {
-            try
-            {
-                string name = editor.nameLabel != null ? UITextExtractor.CleanText(editor.nameLabel.text) : editor.skillName;
-                int value = 0;
-                if (editor.levelLabel != null)
-                    int.TryParse(UITextExtractor.CleanText(editor.levelLabel.text), out value);
-                else if (skillEditorCurrentValueField != null)
-                    value = (int)skillEditorCurrentValueField.GetValue(editor);
-
-                return $"{name}, level {value}, skill";
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[CharacterState] Error announcing skill: {ex.Message}");
-                return "Skill";
-            }
+            return CharacterAnnouncementHelper.GetSkillEditorAnnouncement(editor);
         }
 
         private string GetTraitEditorAnnouncement(CHA_TraitEditor editor)
         {
-            try
-            {
-                // Get trait name
-                string name = editor.traitName;
-                if (string.IsNullOrEmpty(name))
-                {
-                    var nameBtn = editor.nameButton;
-                    if (nameBtn != null)
-                    {
-                        var label = nameBtn.GetComponentInChildren<UILabel>();
-                        if (label != null)
-                            name = UITextExtractor.CleanText(label.text);
-                    }
-                }
-
-                if (string.IsNullOrEmpty(name))
-                    name = "Unknown trait";
-
-                string checkedState = editor.checkbox != null ? (editor.checkbox.value ? "selected" : "not selected") : "";
-                return $"{name}, {checkedState}, quirk";
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[CharacterState] Error announcing trait: {ex.Message}");
-                return "Trait";
-            }
+            return CharacterAnnouncementHelper.GetTraitEditorAnnouncement(editor);
         }
 
         private string GetPartyEntryAnnouncement(CHA_PartyEntry entry)
@@ -1048,61 +981,7 @@ namespace Wasteland2AccessibilityMod.States
         private void AnnounceCurrentStatDescription()
         {
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
-            var obj = controlList[controlIndex];
-
-            string characteristicName = null;
-            string levelText = null;
-            string shortDesc = null;
-
-            var attrEditor = obj.GetComponent<CHA_AttributeEditor>();
-            if (attrEditor != null)
-            {
-                characteristicName = attrEditor.attribute;
-                levelText = attrEditor.valueLabel != null ? UITextExtractor.CleanText(attrEditor.valueLabel.text) : null;
-                shortDesc = attrEditor.descriptionLabel != null ? UITextExtractor.CleanText(attrEditor.descriptionLabel.text) : null;
-            }
-
-            var skillEditor = obj.GetComponent<CHA_SkillEditor>();
-            if (skillEditor != null)
-            {
-                characteristicName = skillEditor.skillName;
-                levelText = skillEditor.levelLabel != null ? "Level " + UITextExtractor.CleanText(skillEditor.levelLabel.text) : null;
-            }
-
-            if (string.IsNullOrEmpty(characteristicName))
-            {
-                ScreenReaderManager.SpeakInterrupt("No description available");
-                return;
-            }
-
-            try
-            {
-                var baseStat = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetCharacteristic(characteristicName);
-                if (baseStat == null)
-                {
-                    ScreenReaderManager.SpeakInterrupt("No description available");
-                    return;
-                }
-
-                string name = UITextExtractor.CleanText(Language.Localize(baseStat.displayName, false, false, string.Empty));
-                string fullDesc = UITextExtractor.CleanText(Language.Localize(baseStat.description, false, false, string.Empty));
-
-                var parts = new List<string>();
-                parts.Add(name);
-                if (!string.IsNullOrEmpty(levelText))
-                    parts.Add(levelText);
-                if (!string.IsNullOrEmpty(shortDesc))
-                    parts.Add(shortDesc);
-                if (!string.IsNullOrEmpty(fullDesc))
-                    parts.Add(fullDesc);
-
-                ScreenReaderManager.SpeakInterrupt(string.Join(". ", parts.ToArray()));
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[CharacterState] Error getting stat description: {ex.Message}");
-                ScreenReaderManager.SpeakInterrupt("No description available");
-            }
+            CharacterAnnouncementHelper.AnnounceStatDescription(controlList[controlIndex]);
         }
 
         // ========== Value Adjustment Helpers ==========
@@ -1112,33 +991,7 @@ namespace Wasteland2AccessibilityMod.States
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
             var editor = controlList[controlIndex].GetComponent<CHA_AttributeEditor>();
             if (editor == null) return;
-
-            if (direction > 0)
-            {
-                if (editor.CanIncreaseValue())
-                {
-                    if (attrOnPlusClickedMethod != null)
-                        attrOnPlusClickedMethod.Invoke(editor, new object[] { null });
-                    AnnounceCurrentControl();
-                }
-                else
-                {
-                    ScreenReaderManager.SpeakInterrupt("Maximum");
-                }
-            }
-            else
-            {
-                if (editor.CanDecreaseValue())
-                {
-                    if (attrOnMinusClickedMethod != null)
-                        attrOnMinusClickedMethod.Invoke(editor, new object[] { null });
-                    AnnounceCurrentControl();
-                }
-                else
-                {
-                    ScreenReaderManager.SpeakInterrupt("Minimum");
-                }
-            }
+            CharacterAnnouncementHelper.AdjustAttribute(editor, direction, () => AnnounceCurrentControl());
         }
 
         private void AdjustCurrentSkill(int direction)
@@ -1146,23 +999,7 @@ namespace Wasteland2AccessibilityMod.States
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
             var editor = controlList[controlIndex].GetComponent<CHA_SkillEditor>();
             if (editor == null) return;
-
-            if (direction > 0)
-            {
-                if (skillOnPlusClickedMethod != null)
-                {
-                    skillOnPlusClickedMethod.Invoke(editor, new object[] { null });
-                    AnnounceCurrentControl();
-                }
-            }
-            else
-            {
-                if (skillOnMinusClickedMethod != null)
-                {
-                    skillOnMinusClickedMethod.Invoke(editor, new object[] { null });
-                    AnnounceCurrentControl();
-                }
-            }
+            CharacterAnnouncementHelper.AdjustSkill(editor, direction, () => AnnounceCurrentControl());
         }
 
         // ========== Panel-Specific Input Handlers ==========
@@ -1628,39 +1465,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     var editor = controlList[controlIndex].GetComponent<CHA_TraitEditor>();
                     if (editor != null && editor.checkbox != null)
-                    {
-                        if (editor.checkboxButton != null && !editor.checkboxButton.isEnabled)
-                        {
-                            ScreenReaderManager.SpeakInterrupt("Locked");
-                        }
-                        else
-                        {
-                            // Must call pressedCallback BEFORE toggling checkbox.
-                            // In the game's normal flow, OnSelect/OnHover/OnPress calls pressedCallback
-                            // to set currentEditor in CHA_TraitsPanel BEFORE the checkbox changes.
-                            // OnTraitChanged then uses currentEditor to enforce single-selection.
-                            if (pressedCallbackField == null)
-                                pressedCallbackField = typeof(CHA_TraitEditor).GetField("pressedCallback", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                            if (pressedCallbackField != null)
-                            {
-                                var callback = pressedCallbackField.GetValue(editor) as System.Delegate;
-                                callback?.DynamicInvoke(editor);
-                            }
-
-                            bool before = editor.checkbox.value;
-                            editor.checkbox.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-                            bool after = editor.checkbox.value;
-                            if (before != after)
-                            {
-                                string state = after ? "selected" : "not selected";
-                                ScreenReaderManager.SpeakInterrupt(state);
-                            }
-                            else
-                            {
-                                ScreenReaderManager.SpeakInterrupt("Cannot select");
-                            }
-                        }
-                    }
+                        CharacterAnnouncementHelper.ToggleTrait(editor);
                 }
                 return true;
             }
@@ -1875,123 +1680,10 @@ namespace Wasteland2AccessibilityMod.States
 
         private string GetTraitDescription(CHA_TraitEditor editor)
         {
-            try
-            {
-                if (traitEditorTraitField != null)
-                {
-                    var trait = traitEditorTraitField.GetValue(editor) as Trait;
-                    if (trait != null)
-                    {
-                        var parts = new List<string>();
-
-                        // Flavour text
-                        if (!string.IsNullOrEmpty(trait.description))
-                        {
-                            string desc = UITextExtractor.CleanText(
-                                Language.Localize(trait.description, false, false, string.Empty));
-                            if (!string.IsNullOrEmpty(desc))
-                                parts.Add(desc);
-                        }
-
-                        // Mechanical effects
-                        if (!string.IsNullOrEmpty(trait.effectsDescription))
-                        {
-                            string effects = UITextExtractor.CleanText(
-                                Language.Localize(trait.effectsDescription, false, false, string.Empty));
-                            if (!string.IsNullOrEmpty(effects))
-                                parts.Add(effects);
-                        }
-
-                        // Stat requirements
-                        if (trait.requiredStatValues != null && trait.requiredStatValues.Count > 0)
-                        {
-                            var reqParts = new List<string>();
-                            reqParts.Add("Requirements:");
-                            foreach (var kvp in trait.requiredStatValues)
-                            {
-                                string statDisplayName = MonoBehaviourSingleton<PCStatsManager>.GetInstance()
-                                    .GetCharacteristicDisplayName(kvp.Key);
-                                string localized = UITextExtractor.CleanText(
-                                    Language.Localize(statDisplayName, false, false, string.Empty));
-                                reqParts.Add($"{kvp.Value} {localized}");
-                            }
-                            parts.Add(string.Join(", ", reqParts.ToArray()));
-                        }
-
-                        // Required traits
-                        if (trait.requiredTraits != null && trait.requiredTraits.Length > 0)
-                        {
-                            var traitNames = new List<string>();
-                            foreach (var reqTrait in trait.requiredTraits)
-                            {
-                                if (reqTrait != null)
-                                {
-                                    string name = UITextExtractor.CleanText(
-                                        Language.Localize(reqTrait.displayName, false, false, string.Empty));
-                                    traitNames.Add(name);
-                                }
-                            }
-                            if (traitNames.Count > 0)
-                                parts.Add("Requires: " + string.Join(", ", traitNames.ToArray()));
-                        }
-
-                        // Unlocks
-                        if (trait.subTraits != null && trait.subTraits.Length > 0)
-                        {
-                            var unlockNames = new List<string>();
-                            foreach (var subTrait in trait.subTraits)
-                            {
-                                if (subTrait != null)
-                                {
-                                    string name = UITextExtractor.CleanText(
-                                        Language.Localize(subTrait.displayName, false, false, string.Empty));
-                                    unlockNames.Add(name);
-                                }
-                            }
-                            if (unlockNames.Count > 0)
-                                parts.Add("Unlocks: " + string.Join(", ", unlockNames.ToArray()));
-                        }
-
-                        if (parts.Count > 0)
-                            return string.Join(". ", parts.ToArray());
-                    }
-                }
-
-                // Fallback: read the pre-built tooltip text from the editor
-                if (editor.tooltip != null)
-                {
-                    string tooltipText = editor.tooltip.text;
-                    if (!string.IsNullOrEmpty(tooltipText))
-                        return UITextExtractor.CleanText(tooltipText);
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[CharacterState] Error getting trait description: {ex.Message}");
-                return null;
-            }
+            return CharacterAnnouncementHelper.GetTraitDescription(editor);
         }
 
         // ========== Derived Stats Browser ==========
-
-        /// <summary>
-        /// The 10 derived stat names in the same order the game displays them.
-        /// </summary>
-        private static readonly string[] DerivedStatNames = new string[]
-        {
-            PCStatsManager.actionPoints,
-            PCStatsManager.bonusRangedHitChance,
-            PCStatsManager.criticalHitChance,
-            PCStatsManager.actionRechargeRate,
-            PCStatsManager.chanceToEvade,
-            PCStatsManager.hitPoints,
-            PCStatsManager.combatSpeed,
-            PCStatsManager.skillPointsPerLevel,
-            PCStatsManager.maxWeight,
-            PCStatsManager.conPerLevel
-        };
 
         private void OpenDerivedStatsBrowser(CharacterScreen screen)
         {
@@ -2025,7 +1717,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
                 derivedStatsIndex--;
-                if (derivedStatsIndex < 0) derivedStatsIndex = DerivedStatNames.Length - 1;
+                if (derivedStatsIndex < 0) derivedStatsIndex = CharacterAnnouncementHelper.DerivedStatNames.Length - 1;
                 AnnounceDerivedStat(screen);
                 return true;
             }
@@ -2033,7 +1725,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
                 derivedStatsIndex++;
-                if (derivedStatsIndex >= DerivedStatNames.Length) derivedStatsIndex = 0;
+                if (derivedStatsIndex >= CharacterAnnouncementHelper.DerivedStatNames.Length) derivedStatsIndex = 0;
                 AnnounceDerivedStat(screen);
                 return true;
             }
@@ -2053,7 +1745,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (Input.GetKeyDown(KeyCode.End))
             {
-                derivedStatsIndex = DerivedStatNames.Length - 1;
+                derivedStatsIndex = CharacterAnnouncementHelper.DerivedStatNames.Length - 1;
                 AnnounceDerivedStat(screen);
                 return true;
             }
@@ -2064,108 +1756,14 @@ namespace Wasteland2AccessibilityMod.States
 
         private void AnnounceDerivedStat(CharacterScreen screen, bool interrupt = true)
         {
-            if (derivedStatsIndex < 0 || derivedStatsIndex >= DerivedStatNames.Length) return;
-
-            string statName = DerivedStatNames[derivedStatsIndex];
             PC pc = GetCurrentPC(screen);
-
-            try
-            {
-                var statsManager = MonoBehaviourSingleton<PCStatsManager>.GetInstance();
-                DerivedStat stat = statsManager.GetStat(statName);
-                if (stat == null)
-                {
-                    ScreenReaderManager.SpeakInterrupt($"Unknown stat");
-                    return;
-                }
-
-                string displayName = UITextExtractor.CleanText(
-                    Language.Localize(stat.displayName, false, false, string.Empty));
-
-                // Get the current value from the PC's stats
-                string valueText = "unknown";
-                if (pc != null)
-                {
-                    int rawValue = pc.pcStats.GetDerivedStat(statName);
-                    valueText = FormatDerivedStatValue(rawValue, stat.displayType);
-                }
-
-                string announcement = $"{displayName}, {valueText}, {derivedStatsIndex + 1} of {DerivedStatNames.Length}";
-                if (interrupt)
-                    ScreenReaderManager.SpeakInterrupt(announcement);
-                else
-                    ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[CharacterState] Derived stat [{derivedStatsIndex}]: {announcement}");
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[CharacterState] Error announcing derived stat: {ex.Message}");
-                ScreenReaderManager.SpeakInterrupt("Error reading stat");
-            }
-        }
-
-        private string FormatDerivedStatValue(int rawValue, DerivedStat.StatDisplayType displayType)
-        {
-            switch (displayType)
-            {
-                case DerivedStat.StatDisplayType.Percent:
-                    return Mathf.Clamp(rawValue, 0, 100) + "%";
-                case DerivedStat.StatDisplayType.ActionPoint:
-                    return rawValue + " AP";
-                case DerivedStat.StatDisplayType.CombatMovement:
-                    float val = (float)rawValue / 100f;
-                    return val.ToString("F1");
-                case DerivedStat.StatDisplayType.Meters:
-                    return rawValue + " meters";
-                case DerivedStat.StatDisplayType.Pounds:
-                    return rawValue + " lbs";
-                default:
-                    return rawValue.ToString();
-            }
+            CharacterAnnouncementHelper.AnnounceDerivedStat(pc, derivedStatsIndex, interrupt);
         }
 
         private void AnnounceDerivedStatDescription(CharacterScreen screen)
         {
-            if (derivedStatsIndex < 0 || derivedStatsIndex >= DerivedStatNames.Length) return;
-
-            string statName = DerivedStatNames[derivedStatsIndex];
-
-            try
-            {
-                var statsManager = MonoBehaviourSingleton<PCStatsManager>.GetInstance();
-                BaseStat characteristic = statsManager.GetCharacteristic(statName);
-                if (characteristic == null)
-                {
-                    ScreenReaderManager.SpeakInterrupt("No description available");
-                    return;
-                }
-
-                string name = UITextExtractor.CleanText(
-                    Language.Localize(characteristic.displayName, false, false, string.Empty));
-                string desc = UITextExtractor.CleanText(
-                    Language.Localize(characteristic.description, false, false, string.Empty));
-
-                var parts = new List<string>();
-                parts.Add(name);
-                if (!string.IsNullOrEmpty(desc))
-                    parts.Add(desc);
-
-                // Include trait modifications if available
-                PC pc = GetCurrentPC(screen);
-                if (pc != null && pc.pcTemplate != null)
-                {
-                    string traitInfo = pc.pcTemplate.GetTraitBaseStatTooltipString(characteristic);
-                    if (!string.IsNullOrEmpty(traitInfo))
-                        parts.Add(UITextExtractor.CleanText(traitInfo));
-                }
-
-                ScreenReaderManager.SpeakInterrupt(string.Join(". ", parts.ToArray()));
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[CharacterState] Error getting derived stat description: {ex.Message}");
-                ScreenReaderManager.SpeakInterrupt("No description available");
-            }
+            PC pc = GetCurrentPC(screen);
+            CharacterAnnouncementHelper.AnnounceDerivedStatDescription(pc, derivedStatsIndex);
         }
 
         // ========== Character Summary ==========
@@ -2173,42 +1771,9 @@ namespace Wasteland2AccessibilityMod.States
         private void AnnounceCharacterSummary(CharacterScreen screen)
         {
             PC pc = GetCurrentPC(screen);
-
             if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
-            {
                 pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
-            }
-
-            if (pc == null)
-            {
-                ScreenReaderManager.SpeakInterrupt("No character selected");
-                return;
-            }
-
-            List<string> parts = new List<string>();
-
-            // Character name
-            if (pc.pcTemplate != null)
-            {
-                string name = UITextExtractor.CleanText(Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty));
-                parts.Add(name);
-            }
-
-            // Specialization
-            if (pc.pcTemplate != null)
-            {
-                string spec = pc.pcTemplate.GetLocalizedSpecialization();
-                if (!string.IsNullOrEmpty(spec))
-                    parts.Add(UITextExtractor.CleanText(spec));
-            }
-
-            // Level
-            if (pc.pcTemplate != null)
-            {
-                parts.Add($"Level {pc.pcTemplate.level}");
-            }
-
-            ScreenReaderManager.SpeakInterrupt(string.Join(", ", parts.ToArray()));
+            CharacterAnnouncementHelper.AnnounceCharacterSummary(pc);
         }
     }
 }
