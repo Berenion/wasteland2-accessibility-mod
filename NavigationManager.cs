@@ -11,6 +11,7 @@ namespace Wasteland2AccessibilityMod
     public enum InteractableCategory
     {
         All,        // All interactables
+        Party,      // Party members (PCs)
         Characters, // NPCs (friendly and hostile)
         Containers, // Lootable containers, lockers, etc.
         Objects,    // Doors, switches, computers, etc.
@@ -27,15 +28,22 @@ namespace Wasteland2AccessibilityMod
         private static string lastAnnouncement = "";
         private static InteractableNexus lastAnnouncedInteractable = null;
 
-        // Separate tracking for keyboard-selected interactable (via [ ] cycling)
+        // Separate tracking for keyboard-selected interactable (via cycling)
         // This is NOT overwritten by proximity announcements
         private static InteractableNexus selectedInteractable = null;
+
+        /// <summary>
+        /// The currently selected interactable from cycling (PageUp/PageDown).
+        /// Used by MapCursorState to jump the cursor to this object's position.
+        /// </summary>
+        public static InteractableNexus SelectedInteractable => selectedInteractable;
 
         // Category filtering
         private static InteractableCategory currentCategory = InteractableCategory.All;
         private static readonly InteractableCategory[] categoryOrder =
         {
             InteractableCategory.All,
+            InteractableCategory.Party,
             InteractableCategory.Characters,
             InteractableCategory.Containers,
             InteractableCategory.Objects,
@@ -97,6 +105,7 @@ namespace Wasteland2AccessibilityMod
             switch (category)
             {
                 case InteractableCategory.All: return "All";
+                case InteractableCategory.Party: return "Party";
                 case InteractableCategory.Characters: return "Characters";
                 case InteractableCategory.Containers: return "Containers";
                 case InteractableCategory.Objects: return "Objects";
@@ -261,13 +270,6 @@ namespace Wasteland2AccessibilityMod
                 if (nexus.GetHighlight() == null) continue;
                 if (nexus.transform == null) continue;
 
-                // Exclude conscious PCs (unconscious PCs can be interacted with for healing)
-                if (nexus.drama != null && nexus.drama.GetMob() is PC)
-                {
-                    PC pc = nexus.drama.GetMob() as PC;
-                    if (!pc.isUnconscious) continue; // Skip conscious PCs
-                }
-
                 // Apply category filter
                 if (!MatchesCategory(nexus, currentCategory)) continue;
 
@@ -291,6 +293,15 @@ namespace Wasteland2AccessibilityMod
 
             switch (category)
             {
+                case InteractableCategory.Party:
+                    // Party members (PCs)
+                    if (drama != null)
+                    {
+                        Mob mob = drama.GetMob();
+                        if (mob != null && mob is PC) return true;
+                    }
+                    return false;
+
                 case InteractableCategory.Characters:
                     // NPCs (not PCs) - characters you can talk to or fight
                     if (drama != null)
@@ -399,6 +410,7 @@ namespace Wasteland2AccessibilityMod
                     // Miscellaneous - anything that doesn't fit other categories
                     // This includes: teleporters, dig spots, shrines, special objects, etc.
                     // Check if it matches any OTHER specific category - if so, exclude it
+                    if (MatchesCategory(nexus, InteractableCategory.Party)) return false;
                     if (MatchesCategory(nexus, InteractableCategory.Characters)) return false;
                     if (MatchesCategory(nexus, InteractableCategory.Containers)) return false;
                     if (MatchesCategory(nexus, InteractableCategory.Objects)) return false;

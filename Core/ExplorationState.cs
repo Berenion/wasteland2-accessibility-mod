@@ -6,7 +6,7 @@ namespace Wasteland2AccessibilityMod.Core
 {
     /// <summary>
     /// Handles keyboard input during exploration mode.
-    /// Provides interactable cycling ([ ]), category filtering (PageUp/Down),
+    /// Provides interactable cycling (PageUp/Down), category filtering (Ctrl+PageUp/Down),
     /// announcement repeat (\), direction toggle (=), and scrap query (').
     /// Lowest priority (10) - only handles input when no menus or cursor are active.
     /// </summary>
@@ -59,16 +59,32 @@ namespace Wasteland2AccessibilityMod.Core
                 return true;
             }
 
-            // Next interactable (])
-            if (Input.GetKeyDown(KeyCode.RightBracket))
+            bool ctrl = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+
+            // Ctrl+PageDown = next category
+            if (ctrl && Input.GetKeyDown(KeyCode.PageDown))
+            {
+                NavigationManager.NextCategory();
+                return true;
+            }
+
+            // Ctrl+PageUp = previous category
+            if (ctrl && Input.GetKeyDown(KeyCode.PageUp))
+            {
+                NavigationManager.PreviousCategory();
+                return true;
+            }
+
+            // PageDown = next interactable
+            if (Input.GetKeyDown(KeyCode.PageDown))
             {
                 NavigationState.lastKeyboardNavigationTime = Time.time;
                 NavigationManager.CycleNext();
                 return true;
             }
 
-            // Previous interactable ([)
-            if (Input.GetKeyDown(KeyCode.LeftBracket))
+            // PageUp = previous interactable
+            if (Input.GetKeyDown(KeyCode.PageUp))
             {
                 NavigationState.lastKeyboardNavigationTime = Time.time;
                 NavigationManager.CyclePrevious();
@@ -94,20 +110,6 @@ namespace Wasteland2AccessibilityMod.Core
             if (Input.GetKeyDown(KeyCode.Quote))
             {
                 AnnouncePartyScrap();
-                return true;
-            }
-
-            // Next category (Page Down)
-            if (Input.GetKeyDown(KeyCode.PageDown))
-            {
-                NavigationManager.NextCategory();
-                return true;
-            }
-
-            // Previous category (Page Up)
-            if (Input.GetKeyDown(KeyCode.PageUp))
-            {
-                NavigationManager.PreviousCategory();
                 return true;
             }
 

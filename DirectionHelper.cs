@@ -37,9 +37,7 @@ namespace Wasteland2AccessibilityMod
             // In Unity/Wasteland 2: +Z = North, +X = East, -Z = South, -X = West
             float rawAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
 
-            // Add 180 degrees to flip directions
-            float angle = rawAngle + 180f;
-            if (angle >= 360f) angle -= 360f;
+            float angle = rawAngle;
             if (angle < 0) angle += 360f;
 
             // Map to 8 cardinal directions
@@ -71,9 +69,7 @@ namespace Wasteland2AccessibilityMod
             // 9 o'clock = West (270 degrees)
             float rawAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
 
-            // Add 180 degrees to flip directions
-            float angle = rawAngle + 180f;
-            if (angle >= 360f) angle -= 360f;
+            float angle = rawAngle;
             if (angle < 0) angle += 360f;
 
             // Convert angle to clock position (12 positions)
