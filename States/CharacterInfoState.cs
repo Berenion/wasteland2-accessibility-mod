@@ -678,8 +678,14 @@ namespace Wasteland2AccessibilityMod.States
             if (HandlePartySwitch(menu))
                 return true;
 
-            // Escape: let the game handle closing
-            // Don't consume — return false so game processes it
+            // Escape: close the character info menu
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                hasSuspendedState = false;
+                menu.Close();
+                MelonLogger.Msg("[CharacterInfoState] Closed character info menu");
+                return true;
+            }
 
             return false;
         }
