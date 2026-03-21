@@ -62,8 +62,20 @@ namespace Wasteland2AccessibilityMod.States
                 MainMenu mainMenu = guiManager.GetMainMenu();
                 if (mainMenu != null && mainMenu.isTopMenu) return false;
 
-                // Not active when CharacterScreen is showing - CharacterState handles that
+                // Not active when CharacterScreen (creation) is showing - CharacterState handles that
                 if (CharacterScreen.instance != null && CharacterScreen.instance.gameObject.activeInHierarchy)
+                    return false;
+
+                // Not active when CharacterInfoMenu (in-game) inventory is showing (unless an overlay like ItemInfoMenu is open)
+                var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+                if (charInfoMenu != null && charInfoMenu.gameObject.activeInHierarchy
+                    && !guiManager.IsItemInfoScreenOpen())
+                    return false;
+
+                // Not active when PopupInventoryMenu is showing (unless an overlay like ItemInfoMenu is open)
+                var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+                if (popupInv != null && popupInv.gameObject.activeInHierarchy
+                    && !guiManager.IsItemInfoScreenOpen())
                     return false;
 
                 // Active when any other menu is on top (including submenus over MainMenu)

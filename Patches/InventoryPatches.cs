@@ -3,6 +3,7 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Wasteland2AccessibilityMod.States;
 
 namespace Wasteland2AccessibilityMod.Patches
 {
@@ -299,6 +300,8 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPostfix]
         public static void Postfix(INV_DragDropItem __instance, ItemInstance newItem, Inventory newOwnerInventory, PC pc, EquipmentSlot newSlot)
         {
+            if (InventoryState.IsManagedNavigation) return;
+
             // Only announce if this item is currently selected
             if (UICamera.selectedObject == __instance.gameObject && newItem != null)
             {
@@ -336,6 +339,8 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPostfix]
         public static void Postfix(InventoryGrid __instance, ItemInstance itemInstance, bool __result)
         {
+            if (InventoryState.IsManagedNavigation) return;
+
             // If selection succeeded and we have a valid item
             if (__result && itemInstance != null)
             {
@@ -360,6 +365,8 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPostfix]
         public static void Postfix(InventoryGrid __instance, bool __result)
         {
+            if (InventoryState.IsManagedNavigation) return;
+
             // The focus patches will handle announcing the selected item
             // We just announce context
             if (__result)
@@ -438,6 +445,8 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPostfix]
         public static void Postfix(INV_EquipmentSlot __instance, PC newPC)
         {
+            if (InventoryState.IsManagedNavigation) return;
+
             // Only announce if this slot is currently selected
             if (UICamera.selectedObject != null && __instance != null)
             {
@@ -464,6 +473,8 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPostfix]
         public static void Postfix(INV_EquipmentSlot __instance, ItemInstance_Equipment newItem)
         {
+            if (InventoryState.IsManagedNavigation) return;
+
             // Announce equipment changes
             string announcement = InventoryPatches.FormatEquipmentSlot(__instance.equipmentSlot, newItem);
 
@@ -484,6 +495,8 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPostfix]
         public static void Postfix(InventoryGrid __instance)
         {
+            if (InventoryState.IsManagedNavigation) return;
+
             // Count items in the grid
             Transform transform = __instance.transform;
             int currentItemCount = 0;
@@ -522,6 +535,8 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPostfix]
         public static void Postfix(ItemInfoBox __instance, ItemInstance item, PC currentPC)
         {
+            if (InventoryState.IsManagedNavigation) return;
+
             if (item != null)
             {
                 // Announce comprehensive item details
@@ -541,6 +556,7 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPostfix]
         public static void Postfix(GameObject go)
         {
+            if (InventoryState.IsManagedNavigation) return;
             if (go == null) return;
 
             // Check if the selected object is an inventory item
