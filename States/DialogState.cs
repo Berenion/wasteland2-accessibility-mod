@@ -469,7 +469,19 @@ namespace Wasteland2AccessibilityMod.States
                     string qtyAnnouncement = "";
                     if (!string.IsNullOrEmpty(qtyTitle)) qtyAnnouncement += qtyTitle + ". ";
                     if (!string.IsNullOrEmpty(qtyMessage)) qtyAnnouncement += qtyMessage + ". ";
-                    qtyAnnouncement += $"{current} of {max}. Left and Right to adjust, Page Up and Page Down by 10, Home for minimum, End for maximum. Up and Down for OK or Cancel";
+                    qtyAnnouncement += $"{current} of {max}";
+
+                    // Include unit price and total if available (vendor quantity dialogs)
+                    var unitValueField = typeof(AskQuantityMenu).GetField("unitValue", BindingFlags.NonPublic | BindingFlags.Instance);
+                    float unitValue = unitValueField != null ? (float)unitValueField.GetValue(currentQuantityMenu) : 0f;
+                    if (unitValue > 0f)
+                    {
+                        int unitPrice = Mathf.CeilToInt(unitValue);
+                        int totalPrice = Mathf.CeilToInt(current * unitValue);
+                        qtyAnnouncement += $", {unitPrice} scrap each, {totalPrice} scrap total";
+                    }
+
+                    qtyAnnouncement += ". Left and Right to adjust, Page Up and Page Down by 10, Home for minimum, End for maximum. Up and Down for OK or Cancel";
 
                     ScreenReaderManager.SpeakInterrupt(qtyAnnouncement);
                     return;
@@ -642,7 +654,19 @@ namespace Wasteland2AccessibilityMod.States
             if (value != lastAnnouncedQuantity)
             {
                 lastAnnouncedQuantity = value;
-                ScreenReaderManager.SpeakInterrupt($"{value} of {max}");
+
+                // Include total price if this is a vendor quantity dialog
+                var unitValueField = typeof(AskQuantityMenu).GetField("unitValue", BindingFlags.NonPublic | BindingFlags.Instance);
+                float unitValue = unitValueField != null ? (float)unitValueField.GetValue(currentQuantityMenu) : 0f;
+                if (unitValue > 0f)
+                {
+                    int totalPrice = Mathf.CeilToInt(value * unitValue);
+                    ScreenReaderManager.SpeakInterrupt($"{value} of {max}, {totalPrice} scrap");
+                }
+                else
+                {
+                    ScreenReaderManager.SpeakInterrupt($"{value} of {max}");
+                }
             }
         }
 

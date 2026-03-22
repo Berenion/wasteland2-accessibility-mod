@@ -59,6 +59,7 @@ namespace Wasteland2AccessibilityMod
             InputRouter.Register(new GenericMenuState());  // Priority 55 - generic popup menus (Options, Load/Save, etc.)
             InputRouter.Register(new ConversationState()); // Priority 50 - dialogue navigation
             InputRouter.Register(new InventoryState());    // Priority 50 - inventory navigation
+            InputRouter.Register(new ShopState());         // Priority 50 - vendor/shop navigation
             InputRouter.Register(new CharacterState());    // Priority 50 - character creation navigation
             InputRouter.Register(new CharacterInfoState()); // Priority 50 - in-game character info (Attributes/Skills/Traits/Dossier)
 
