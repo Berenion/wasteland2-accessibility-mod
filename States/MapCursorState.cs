@@ -815,6 +815,18 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
+            // For examine-only objects without Drama (difficulty None),
+            // add an Examine option that uses CheckExamineDrama directly
+            if (contextMenuOptions.Count == 0 && target.skobExamine != null &&
+                target.skobExamine.difficulty == SkillLevelCategory.None)
+            {
+                contextMenuOptions.Add(new ContextMenuOption
+                {
+                    DisplayName = "Examine",
+                    ASIName = "examine"
+                });
+            }
+
             if (contextMenuOptions.Count == 0)
             {
                 // No actions available — just try default interact
@@ -913,19 +925,13 @@ namespace Wasteland2AccessibilityMod.States
 
         private void ExecuteInteraction(InteractableNexus target, string asiName)
         {
-            if (target == null || target.drama == null) return;
+            if (target == null) return;
 
             PC pc = GetPartyLeader();
             if (pc == null)
             {
                 ScreenReaderManager.SpeakInterrupt("No party leader");
                 return;
-            }
-
-            // Set the active ASI if this is a skill interaction
-            if (!string.IsNullOrEmpty(asiName))
-            {
-                UseASIManager.SetActiveASIName(asiName);
             }
 
             // Set selectedInteractable so the game knows what we're targeting
@@ -935,7 +941,30 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             string name = GetInteractableName(target) ?? "Object";
-            string actionName = string.IsNullOrEmpty(asiName) ? "Interacting with" : asiName;
+
+            // Handle no-Drama examine objects (difficulty None) via CheckExamineDrama
+            // These are simple description objects with no skill requirement
+            if (asiName == "examine" && target.skobExamine != null &&
+                target.drama == null &&
+                target.skobExamine.difficulty == SkillLevelCategory.None)
+            {
+                MelonLogger.Msg($"[MapCursorState] Examining (no difficulty): {name}");
+                ScreenReaderManager.SpeakInterrupt("Examining " + name);
+
+                if (MonoBehaviourSingleton<InputManager>.HasInstance())
+                {
+                    MonoBehaviourSingleton<InputManager>.GetInstance().CheckExamineDrama(target.transform);
+                }
+                return;
+            }
+
+            if (target.drama == null) return;
+
+            // Set the active ASI if this is a skill interaction
+            if (!string.IsNullOrEmpty(asiName))
+            {
+                UseASIManager.SetActiveASIName(asiName);
+            }
 
             string displayAction;
             if (string.IsNullOrEmpty(asiName))
@@ -955,6 +984,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(displayAction + " " + name);
 
             // Trigger the game's interaction system — PC will walk to object and interact
+            // This respects distance (PC must walk there), skill checks, etc.
             Drama.CheckInstigate(target.drama, pc, false);
         }
 

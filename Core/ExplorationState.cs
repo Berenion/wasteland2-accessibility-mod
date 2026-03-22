@@ -120,6 +120,14 @@ namespace Wasteland2AccessibilityMod.Core
                 return true;
             }
 
+            // Enter = interact with selected interactable
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                InteractWithSelected();
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
             // Block Space from triggering "Toggle Group Mode" via EventManager
             if (Input.GetKeyDown(KeyCode.Space))
             {
@@ -138,6 +146,62 @@ namespace Wasteland2AccessibilityMod.Core
         public void OnDeactivated()
         {
             // No special deactivation behavior needed
+        }
+
+        private static void InteractWithSelected()
+        {
+            try
+            {
+                InteractableNexus nexus = NavigationManager.SelectedInteractable;
+                if (nexus == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No object selected");
+                    return;
+                }
+
+                if (!MonoBehaviourSingleton<InputManager>.HasInstance() ||
+                    !MonoBehaviourSingleton<Game>.HasInstance())
+                    return;
+
+                var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+                PC pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+                if (pc == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No ranger selected");
+                    return;
+                }
+
+                // Ensure the game's selectedInteractable is set
+                inputManager.selectedInteractable = nexus;
+
+                // Follow the same interaction logic as the game's HandleSkillClick:
+                // - Objects with Drama: CheckInstigate makes the PC walk there and interact
+                //   (this respects distance, skill checks on arrival, etc.)
+                // - Objects without Drama but with examine (difficulty None): CheckExamineDrama
+                //   (these are simple description objects with no skill requirement)
+                // - Objects with examine that have a difficulty > None are revealed passively
+                //   by the perception sphere, not by clicking — so no action needed
+                if (nexus.drama != null)
+                {
+                    MelonLogger.Msg($"[ExplorationState] Interacting with: {nexus.name}");
+                    Drama.CheckInstigate(nexus.drama, pc, false);
+                    return;
+                }
+
+                if (nexus.skobExamine != null &&
+                    nexus.skobExamine.difficulty == SkillLevelCategory.None)
+                {
+                    MelonLogger.Msg($"[ExplorationState] Examining (no difficulty): {nexus.name}");
+                    inputManager.CheckExamineDrama(nexus.transform);
+                    return;
+                }
+
+                ScreenReaderManager.SpeakInterrupt("Cannot interact with this object");
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"Error interacting with selected: {ex.Message}");
+            }
         }
 
         private static void ToggleGroupMode()
