@@ -588,8 +588,9 @@ namespace Wasteland2AccessibilityMod.States
         {
             float dx = Mathf.Abs(worldPos.x - cursorPosition.x);
             float dz = Mathf.Abs(worldPos.z - cursorPosition.z);
-            // Within half a grid square in each axis = on this tile
-            return dx <= GRID_SQUARE_SIZE * 0.5f && dz <= GRID_SQUARE_SIZE * 0.5f;
+            // Use TILE_MATCH_RADIUS (75% of grid size) to catch objects that
+            // sit near tile boundaries — objects aren't perfectly grid-aligned
+            return dx <= TILE_MATCH_RADIUS && dz <= TILE_MATCH_RADIUS;
         }
 
         private List<InteractableNexus> FindInteractablesOnTile()
@@ -1043,8 +1044,10 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
+            Vector3 worldPos = selected.transform.position;
+
             // Jump cursor to the selected interactable's grid position
-            CombatAStarNode targetNode = FindNodeAtPosition(selected.transform.position);
+            CombatAStarNode targetNode = FindNodeAtPosition(worldPos);
             if (targetNode != null)
             {
                 cursorGridId = targetNode.id;
@@ -1053,12 +1056,47 @@ namespace Wasteland2AccessibilityMod.States
             else
             {
                 // No grid node — compute grid ID from world position
-                Vector3 worldPos = selected.transform.position;
                 int gridX = Mathf.RoundToInt(worldPos.x / GRID_SQUARE_SIZE);
                 int gridZ = Mathf.RoundToInt(worldPos.z / GRID_SQUARE_SIZE);
                 cursorGridId = new Vector3(gridX, 0, gridZ);
                 cursorPosition = new Vector3(gridX * GRID_SQUARE_SIZE, worldPos.y, gridZ * GRID_SQUARE_SIZE);
             }
+
+            // Verify the interactable is actually on the tile we landed on.
+            // Objects near tile boundaries can round to the wrong grid cell.
+            if (!IsOnCurrentTile(worldPos))
+            {
+                // Snap directly to the interactable's position instead
+                int gridX = Mathf.FloorToInt(worldPos.x / GRID_SQUARE_SIZE + 0.5f);
+                int gridZ = Mathf.FloorToInt(worldPos.z / GRID_SQUARE_SIZE + 0.5f);
+
+                // Try adjacent tiles to find one that contains the object
+                int bestX = gridX, bestZ = gridZ;
+                float bestDist = float.MaxValue;
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    for (int dz = -1; dz <= 1; dz++)
+                    {
+                        float tileX = (gridX + dx) * GRID_SQUARE_SIZE;
+                        float tileZ = (gridZ + dz) * GRID_SQUARE_SIZE;
+                        float dist = (worldPos.x - tileX) * (worldPos.x - tileX) +
+                                     (worldPos.z - tileZ) * (worldPos.z - tileZ);
+                        if (dist < bestDist)
+                        {
+                            bestDist = dist;
+                            bestX = gridX + dx;
+                            bestZ = gridZ + dz;
+                        }
+                    }
+                }
+
+                MelonLogger.Msg($"[MapCursorState] Jump correction: object at ({worldPos.x:F2}, {worldPos.z:F2}) " +
+                    $"was on tile ({cursorGridId.x}, {cursorGridId.z}), moved to ({bestX}, {bestZ})");
+
+                cursorGridId = new Vector3(bestX, cursorGridId.y, bestZ);
+                cursorPosition = new Vector3(bestX * GRID_SQUARE_SIZE, cursorPosition.y, bestZ * GRID_SQUARE_SIZE);
+            }
+
             SnapCameraToCursor();
             AnnounceCurrentTile(detailed: false);
         }
