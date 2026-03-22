@@ -1105,6 +1105,8 @@ namespace Wasteland2AccessibilityMod.States
 
             if (topScreen != null)
             {
+                // Prevent the "Back" event from bleeding into the next frame and opening the pause menu
+                EventManager.ignoreNextBack = true;
                 topScreen.Close();
                 ScreenReaderManager.SpeakInterrupt("Closed");
                 MelonLogger.Msg($"[GenericMenuState] Closed: {topScreen.name}");

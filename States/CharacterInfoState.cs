@@ -682,6 +682,8 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 hasSuspendedState = false;
+                // Prevent the "Back" event from bleeding into the next frame and opening the pause menu
+                EventManager.ignoreNextBack = true;
                 menu.Close();
                 MelonLogger.Msg("[CharacterInfoState] Closed character info menu");
                 return true;

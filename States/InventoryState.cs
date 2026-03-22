@@ -364,10 +364,10 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Enter - open context menu
+            // Enter - transfer item (loot screen uses transfer, not context menu)
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
-                OpenContextMenuOnCurrentItem();
+                TransferCurrentItem();
                 return true;
             }
 
@@ -731,6 +731,30 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
+        private void TransferCurrentItem()
+        {
+            var dragDropItem = GetCurrentDragDropItem();
+            if (dragDropItem == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No item selected");
+                return;
+            }
+
+            var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+            if (popupInv == null) return;
+
+            // Use OnItemDoubleClicked which is the game's own transfer mechanism
+            popupInv.OnItemDoubleClicked(dragDropItem.gameObject);
+            isDirty = true;
+
+            ItemInstance item = dragDropItem.GetItem();
+            string itemName = item != null
+                ? UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty))
+                : "Item";
+            ScreenReaderManager.SpeakInterrupt($"Transferred {itemName}");
+            MelonLogger.Msg($"[InventoryState] Transferred item: {itemName}");
+        }
+
         private void TakeAll()
         {
             var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
@@ -754,6 +778,8 @@ namespace Wasteland2AccessibilityMod.States
         private void CloseInventory()
         {
             hasSuspendedState = false; // Full close, don't restore
+            // Prevent the "Back" event from bleeding into the next frame and opening the pause menu
+            EventManager.ignoreNextBack = true;
             var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
             if (charInfoMenu != null)
             {
@@ -765,6 +791,8 @@ namespace Wasteland2AccessibilityMod.States
         private void CloseLoot()
         {
             hasSuspendedState = false; // Full close, don't restore
+            // Prevent the "Back" event from bleeding into the next frame and opening the pause menu
+            EventManager.ignoreNextBack = true;
             var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
             if (popupInv != null)
             {
@@ -852,41 +880,29 @@ namespace Wasteland2AccessibilityMod.States
             var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
             if (popupInv == null) return;
 
-            List<BackpackPCButton> buttons = null;
-            if (popupPcContainerButtonsField != null)
+            if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
+            var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+            if (party == null || party.Count == 0)
             {
-                buttons = popupPcContainerButtonsField.GetValue(popupInv) as List<BackpackPCButton>;
-            }
-
-            if (buttons == null || buttons.Count == 0)
-            {
-                MelonLogger.Msg($"[InventoryState] Popup party switch failed: buttons={buttons?.Count ?? -1}");
                 ScreenReaderManager.SpeakInterrupt("No party members available");
                 return;
             }
 
-            if (index >= buttons.Count)
+            if (index >= party.Count)
             {
-                ScreenReaderManager.SpeakInterrupt($"No party member at position {index + 1}, {buttons.Count} available");
+                ScreenReaderManager.SpeakInterrupt($"No party member at position {index + 1}, {party.Count} available");
                 return;
             }
 
-            var button = buttons[index];
-            if (button == null) return;
-
-            string pcName;
-            if (button.pc != null && button.pc.pcTemplate != null)
-            {
-                pcName = UITextExtractor.CleanText(
-                    Language.Localize(button.pc.pcTemplate.displayName, false, false, string.Empty));
-            }
-            else
-            {
-                pcName = "All squad members";
-            }
-
-            popupInv.SelectPCContainer(button);
+            // Use the game's own OnButtonDown handler which properly updates pcSelected
+            // via EventInfo_CharacterSelectionChanged -> OnPlayerSelected
+            popupInv.OnButtonDown($"Select Player {index + 1}");
             isDirty = true;
+
+            PC pc = party[index];
+            string pcName = pc != null && pc.pcTemplate != null
+                ? UITextExtractor.CleanText(Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty))
+                : $"Party member {index + 1}";
             ScreenReaderManager.SpeakInterrupt($"Selected {pcName}");
             MelonLogger.Msg($"[InventoryState] Popup party switch to {index + 1}: {pcName}");
         }

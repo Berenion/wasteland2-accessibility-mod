@@ -556,17 +556,17 @@ namespace Wasteland2AccessibilityMod.States
             {
                 case 0:
                     currentScanRange = SHORT_RANGE;
-                    ScreenReaderManager.SpeakInterrupt($"Short range, {SHORT_RANGE:F0} meters. Press S to rescan.");
                     break;
                 case 1:
                     currentScanRange = MEDIUM_RANGE;
-                    ScreenReaderManager.SpeakInterrupt($"Medium range, {MEDIUM_RANGE:F0} meters. Press S to rescan.");
                     break;
                 case 2:
                     currentScanRange = LONG_RANGE;
-                    ScreenReaderManager.SpeakInterrupt($"Long range, {LONG_RANGE:F0} meters. Press S to rescan.");
                     break;
             }
+
+            // Auto-rescan at new range so the list is never stale
+            PerformScan();
         }
 
         private void ExitScanMode()
