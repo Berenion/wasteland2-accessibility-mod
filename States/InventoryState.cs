@@ -308,7 +308,7 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // 1-7 - switch party member
+            // F1-F7 - switch party member
             if (HandlePartySwitch())
                 return true;
 
@@ -406,7 +406,7 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // 1-7 - switch destination party member
+            // F1-F7 - switch destination party member
             if (HandlePartySwitch())
                 return true;
 
@@ -790,7 +790,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             for (int i = 0; i < 7; i++)
             {
-                KeyCode key = KeyCode.Alpha1 + i;
+                KeyCode key = KeyCode.F1 + i;
                 if (Input.GetKeyDown(key))
                 {
                     SwitchToPartyMember(i);
