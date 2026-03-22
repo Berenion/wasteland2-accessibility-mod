@@ -16,6 +16,45 @@ namespace Wasteland2AccessibilityMod.Patches
     /// </summary>
 
     // ============================================================================
+    // PATCH 0: Hook BubbleTextManager.Print to track whether current line has VO
+    // ============================================================================
+    [HarmonyPatch(typeof(BubbleTextManager), "Print", new Type[] {
+        typeof(BubbleTextKind), typeof(GameObject), typeof(string), typeof(string),
+        typeof(GameObject), typeof(float), typeof(BubbleTextManager.NotifyBubbleText),
+        typeof(string), typeof(bool), typeof(Texture2D), typeof(Texture2D), typeof(bool)
+    })]
+    public class BubbleTextManager_Print_Patch
+    {
+        /// <summary>
+        /// True if the most recently printed bubble text has voiceover audio.
+        /// Reset each time Print() is called. Consumed by AddText patch.
+        /// </summary>
+        public static bool LastPrintHadAudio { get; private set; }
+
+        /// <summary>
+        /// The BubbleTextKind of the most recently printed bubble text.
+        /// </summary>
+        public static BubbleTextKind LastPrintTextKind { get; private set; }
+
+        [HarmonyPostfix]
+        public static void Postfix(BubbleTextKind textKind, string audioName)
+        {
+            LastPrintTextKind = textKind;
+            // audioName "__" is a placeholder used when no actual voice file exists
+            LastPrintHadAudio = !string.IsNullOrEmpty(audioName) && audioName.Length > 0 && audioName != "__";
+
+            if (textKind == BubbleTextKind.Conversation ||
+                textKind == BubbleTextKind.DescConversation ||
+                textKind == BubbleTextKind.DescPercConversation ||
+                textKind == BubbleTextKind.AsciiArtConversation ||
+                textKind == BubbleTextKind.AudioConversation)
+            {
+                MelonLogger.Msg($"[BubbleTextPrint] textKind={textKind}, hasAudio={LastPrintHadAudio}, audioName={audioName}");
+            }
+        }
+    }
+
+    // ============================================================================
     // PATCH 1: Hook AddText to read displayed NPC/Player dialogue text
     // ============================================================================
     [HarmonyPatch(typeof(ConversationHUD), "AddText", new Type[] {
@@ -61,31 +100,29 @@ namespace Wasteland2AccessibilityMod.Patches
                     return;
                 }
 
-                // Determine whether to speak immediately or wait for voiceover.
-                // Three cases:
-                // 1. Voiceover actively playing → wait (polling coroutine)
-                // 2. Voiced audio pending BUT description bubbles exist → this IS the
-                //    description text, speak immediately (audio won't start until user
-                //    dismisses the description via click-to-continue)
-                // 3. Voiced audio pending, NO description bubbles → this is a subtitle
-                //    for upcoming voiceover, wait
-                bool voiceoverPlaying = VoiceoverHelper.IsVoiceoverPlaying();
-                bool voicedAudioPending = VoiceoverHelper.HasPendingOrActiveVoicedAudio();
-                bool descriptionShowing = VoiceoverHelper.HasActiveDescriptionBubbles();
+                // Check if this specific line has voiceover audio.
+                // BubbleTextManager.Print() fires just before AddText() in the Drama
+                // pipeline, so LastPrintHadAudio tells us about THIS line.
+                bool thisLineHasAudio = BubbleTextManager_Print_Patch.LastPrintHadAudio;
 
-                if (voiceoverPlaying || (voicedAudioPending && !descriptionShowing))
+                if (!thisLineHasAudio)
                 {
-                    MelonCoroutines.Start(SpeakAfterVoiceoverFinishes(cleanedText));
-                }
-                else
-                {
+                    // No voiceover for this line — speak immediately, no delays needed
                     ScreenReaderManager.SpeakDirect(cleanedText);
+                    MelonLogger.Msg($"[Conversation] No VO — speaking immediately");
 
                     // If description is showing, prompt to continue
+                    bool descriptionShowing = VoiceoverHelper.HasActiveDescriptionBubbles();
                     if (Drama.isConversationOn && !Drama.isCutsceneOn && descriptionShowing)
                     {
                         ScreenReaderManager.SpeakDirect("Press Enter to continue");
                     }
+                }
+                else
+                {
+                    // This line has voiceover — wait for it to finish, then read the text
+                    MelonLogger.Msg($"[Conversation] Has VO — waiting for audio to finish");
+                    MelonCoroutines.Start(SpeakAfterVoiceoverFinishes(cleanedText));
                 }
 
                 // Update tracking

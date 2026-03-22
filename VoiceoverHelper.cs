@@ -148,7 +148,8 @@ namespace Wasteland2AccessibilityMod
                     if (audioNameField != null)
                     {
                         string audioName = audioNameField.GetValue(btInfo) as string;
-                        if (!string.IsNullOrEmpty(audioName) && audioName.Length > 0)
+                        // "__" is a placeholder used when no actual voice file exists
+                        if (!string.IsNullOrEmpty(audioName) && audioName.Length > 0 && audioName != "__")
                         {
                             return true;
                         }
