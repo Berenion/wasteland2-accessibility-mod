@@ -979,8 +979,9 @@ namespace Wasteland2AccessibilityMod.States
             int tileDistZ = Mathf.Abs((int)cursorGridId.z - Mathf.RoundToInt(pc.transform.position.z / GRID_SQUARE_SIZE));
             int tileDist = Mathf.Max(tileDistX, tileDistZ);
 
-            ScreenReaderManager.SpeakInterrupt("Moving party, " + tileDist + (tileDist == 1 ? " tile" : " tiles"));
-            MelonLogger.Msg($"[MapCursorState] Moving party to cursor position {cursorPosition}");
+            string subject = inputManager.isPartyGrouped ? "party" : GetPCDisplayName(pc);
+            ScreenReaderManager.SpeakInterrupt("Moving " + subject + ", " + tileDist + (tileDist == 1 ? " tile" : " tiles"));
+            MelonLogger.Msg($"[MapCursorState] Moving {subject} to cursor position {cursorPosition}");
         }
 
         // --- Camera ---
@@ -1202,6 +1203,16 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             return null;
+        }
+
+        private string GetPCDisplayName(PC pc)
+        {
+            if (pc == null) return "Unknown";
+            if (pc.template != null && !string.IsNullOrEmpty(pc.template.displayName))
+                return pc.template.displayName;
+            if (pc.pcTemplate != null && !string.IsNullOrEmpty(pc.pcTemplate.displayName))
+                return pc.pcTemplate.displayName;
+            return pc.name ?? "Unknown";
         }
 
         private void SuppressInput()

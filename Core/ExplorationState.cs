@@ -113,6 +113,20 @@ namespace Wasteland2AccessibilityMod.Core
                 return true;
             }
 
+            // Toggle group mode (G) - rebound from Space
+            if (Input.GetKeyDown(KeyCode.G))
+            {
+                ToggleGroupMode();
+                return true;
+            }
+
+            // Block Space from triggering "Toggle Group Mode" via EventManager
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
             return false;
         }
 
@@ -124,6 +138,25 @@ namespace Wasteland2AccessibilityMod.Core
         public void OnDeactivated()
         {
             // No special deactivation behavior needed
+        }
+
+        private static void ToggleGroupMode()
+        {
+            try
+            {
+                if (!MonoBehaviourSingleton<InputManager>.HasInstance()) return;
+
+                var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+                inputManager.TogglePartyIsGrouped();
+
+                string mode = inputManager.isPartyGrouped ? "grouped" : "ungrouped";
+                MelonLogger.Msg($"Toggle group mode: {mode}");
+                ScreenReaderManager.SpeakInterrupt($"Party {mode}");
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"Error toggling group mode: {ex.Message}");
+            }
         }
 
         private static void AnnouncePartyScrap()

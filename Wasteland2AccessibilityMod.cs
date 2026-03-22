@@ -33,6 +33,7 @@ namespace Wasteland2AccessibilityMod
             MelonLogger.Msg("  PgUp/PgDn - Cycle categories");
             MelonLogger.Msg("  F10 - Toggle camera lock");
             MelonLogger.Msg("  M - Toggle map cursor mode");
+            MelonLogger.Msg("  G - Toggle group mode");
             MelonLogger.Msg("  S - Environment scan");
             MelonLogger.Msg("===========================================");
 
