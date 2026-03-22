@@ -3,6 +3,9 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using MelonLoader;
+using Wasteland2AccessibilityMod.Core;
 using Wasteland2AccessibilityMod.States;
 
 namespace Wasteland2AccessibilityMod.Patches
@@ -586,6 +589,225 @@ namespace Wasteland2AccessibilityMod.Patches
                         ScreenReaderManager.Speak(announcement);
                     }
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds a "Give to" button to the inventory context menu, enabling keyboard-accessible
+    /// item transfers between party members (normally requires drag-and-drop).
+    /// </summary>
+    [HarmonyPatch(typeof(INV_DragDropItem), "OpenContextMenu")]
+    public class OpenContextMenu_GiveTo_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(INV_DragDropItem __instance)
+        {
+            // Only add "Give to" in the character inventory screen, not loot/vendor
+            if (__instance is VND_DragDropItem) return;
+            if (__instance.ownerPC == null) return;
+
+            // Must have party members to give to
+            if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
+            var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+            if (party == null || party.Count <= 1) return;
+
+            // Find the ItemInfoMenu that was just opened
+            if (!MonoBehaviourSingleton<GUIManager>.HasInstance()) return;
+            var guiManager = MonoBehaviourSingleton<GUIManager>.GetInstance();
+            if (!guiManager.IsItemInfoScreenOpen()) return;
+
+            // Get the top screen as ItemInfoMenu
+            var screensField = typeof(GUIManager).GetField("screens", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (screensField == null) return;
+            var screens = screensField.GetValue(guiManager) as List<GUIScreen>;
+            if (screens == null || screens.Count == 0) return;
+
+            ItemInfoMenu itemInfoMenu = null;
+            for (int i = screens.Count - 1; i >= 0; i--)
+            {
+                itemInfoMenu = screens[i] as ItemInfoMenu;
+                if (itemInfoMenu != null) break;
+            }
+            if (itemInfoMenu == null) return;
+
+            // Capture references for the closure
+            INV_DragDropItem dragDropItem = __instance;
+
+            itemInfoMenu.AddButton("Give to...", () =>
+            {
+                OnGiveToClicked(dragDropItem);
+            });
+        }
+
+        private static void OnGiveToClicked(INV_DragDropItem dragDropItem)
+        {
+            // Close the context menu
+            MonoBehaviourSingleton<GUIManager>.GetInstance().CloseTopMenu();
+
+            if (dragDropItem == null || dragDropItem.GetItem() == null) return;
+
+            ItemInstance item = dragDropItem.GetItem();
+            PC ownerPC = dragDropItem.ownerPC;
+
+            // Open a new ItemInfoMenu to show party member list
+            ItemInfoMenu partyMenu = MonoBehaviourSingleton<GUIManager>.GetInstance().OpenItemInfoMenu(item, ownerPC);
+            if (partyMenu == null) return;
+
+            var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+            for (int i = 0; i < party.Count; i++)
+            {
+                PC targetPC = party[i];
+                if (targetPC == null) continue;
+                if (targetPC == ownerPC) continue;
+
+                string pcName = UITextExtractor.CleanText(
+                    Language.Localize(targetPC.pcTemplate.displayName, false, false, string.Empty));
+
+                // Check distance (same 20-unit check the game uses)
+                bool inRange = true;
+                if (ownerPC != null && targetPC != null)
+                {
+                    float sqrDist = (targetPC.transform.position - ownerPC.transform.position).sqrMagnitude;
+                    if (sqrDist > 400f)
+                        inRange = false;
+                }
+
+                partyMenu.AddButton(pcName, () =>
+                {
+                    OnPartyMemberSelected(dragDropItem, targetPC);
+                }, inRange);
+            }
+        }
+
+        private static void OnPartyMemberSelected(INV_DragDropItem dragDropItem, PC targetPC)
+        {
+            // Close the party member menu
+            MonoBehaviourSingleton<GUIManager>.GetInstance().CloseTopMenu();
+
+            if (dragDropItem == null || targetPC == null) return;
+
+            ItemInstance item = dragDropItem.GetItem();
+            if (item == null) return;
+
+            // If stackable with quantity > 1, show quantity selection
+            if (item.quantity > 1)
+            {
+                ShowQuantityMenu(dragDropItem, targetPC, item);
+                return;
+            }
+
+            // Single item — transfer immediately
+            ExecuteTransfer(dragDropItem, targetPC, 1);
+        }
+
+        private static void ShowQuantityMenu(INV_DragDropItem dragDropItem, PC targetPC, ItemInstance item)
+        {
+            int maxQty = item.quantity;
+            string itemName = UITextExtractor.CleanText(
+                Language.Localize(item.template.displayName, false, false, string.Empty));
+
+            AskQuantityMenu qtyMenu = MonoBehaviourSingleton<GUIManager>.GetInstance().CreateAskQuantityMenu();
+            qtyMenu.SetMessage(
+                Language.Localize("<@>How Many?", false, false, string.Empty),
+                itemName,
+                maxQty,    // default to full stack
+                1,         // min
+                maxQty,    // max
+                Language.Localize("<@>Okay", false, false, string.Empty),
+                (ModalMessageMenu menu) =>
+                {
+                    AskQuantityMenu askMenu = menu as AskQuantityMenu;
+                    if (askMenu != null)
+                    {
+                        int qty = UnityEngine.Mathf.Clamp(askMenu.GetQuantity(), 1, maxQty);
+                        ExecuteTransfer(dragDropItem, targetPC, qty);
+                    }
+                },
+                Language.Localize("<@>Cancel", false, false, string.Empty),
+                null,  // no cancel callback needed
+                0f     // no unit value (not trading)
+            );
+        }
+
+        private static void ExecuteTransfer(INV_DragDropItem dragDropItem, PC targetPC, int transferQty)
+        {
+            if (dragDropItem == null || targetPC == null) return;
+
+            ItemInstance item = dragDropItem.GetItem();
+            if (item == null) return;
+
+            PC ownerPC = dragDropItem.ownerPC;
+            string itemName = UITextExtractor.CleanText(
+                Language.Localize(item.template.displayName, false, false, string.Empty));
+            string targetName = UITextExtractor.CleanText(
+                Language.Localize(targetPC.pcTemplate.displayName, false, false, string.Empty));
+
+            // Clamp to actual quantity available
+            transferQty = Math.Min(transferQty, item.quantity);
+            if (transferQty <= 0) return;
+
+            // Check CNPC willingness
+            if (ownerPC is CNPC cnpc)
+            {
+                Drama drama = cnpc.gameObject.GetComponent<Drama>();
+                if (drama != null && !Drama.NotifyOnTradeItemsEvent(cnpc, "WillGiveItem", dragDropItem, null))
+                {
+                    ScreenReaderManager.SpeakInterrupt($"{UITextExtractor.CleanText(Language.Localize(ownerPC.pcTemplate.displayName, false, false, string.Empty))} refuses to give that item");
+                    MelonLogger.Msg("[GiveTo] CNPC refused to give item");
+                    return;
+                }
+            }
+
+            // Unequip if the item is equipped
+            if (dragDropItem.slot != EquipmentSlot.None && ownerPC != null)
+            {
+                ownerPC.inventory.UnEquip(dragDropItem.slot);
+                ownerPC.inventory.RefreshEquipment();
+            }
+
+            bool transferringAll = transferQty >= item.quantity;
+
+            // Print the trade message in the HUD (before removing, so owner info is still valid)
+            INV_DragDropItem.PrintTradeMessage(dragDropItem, targetPC, transferQty);
+
+            if (dragDropItem.ownerInventory != null)
+            {
+                dragDropItem.ownerInventory.RemoveItemInstance(item, transferQty, true);
+                EventInfo_InventoryModified inventoryModified = ObjectPool.Get<EventInfo_InventoryModified>();
+                inventoryModified.target = dragDropItem.ownerInventory;
+                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(inventoryModified);
+            }
+
+            ItemInstance[] items = dragDropItem.RemoveItems(transferQty);
+            targetPC.inventory.AddItems(items);
+            targetPC.inventory.inventory.TriggerPCReceivedItemEvents(items);
+
+            if (transferringAll)
+            {
+                // Destroy the now-empty drag drop widget
+                if (dragDropItem.gameObject != null)
+                {
+                    UnityEngine.Object.Destroy(dragDropItem.gameObject, 0.05f);
+                }
+            }
+            else
+            {
+                // Partial transfer — update the widget to show remaining quantity
+                dragDropItem.UpdateText();
+            }
+
+            // Announce to screen reader
+            string qtyText = transferQty > 1 ? $" x{transferQty}" : "";
+            ScreenReaderManager.SpeakInterrupt($"Gave {itemName}{qtyText} to {targetName}");
+            MelonLogger.Msg($"[GiveTo] Transferred {itemName} (x{transferQty}) from {ownerPC?.name ?? "?"} to {targetName}");
+
+            // Check encumbrance
+            float maxWeight = targetPC.pcStats.GetMaxWeight();
+            float currentWeight = targetPC.inventory.WeightInPossession();
+            if (currentWeight > maxWeight * 0.8f)
+            {
+                MonoBehaviourSingleton<TutorialManager>.GetInstance().TriggerTutorial("Encumbrance");
             }
         }
     }

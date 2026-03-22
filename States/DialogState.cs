@@ -23,6 +23,8 @@ namespace Wasteland2AccessibilityMod.States
         private DifficultySelectionMenu currentDifficultyMenu;
         private int difficultyIndex;
         private static readonly string[] DifficultyNames = { "Rookie", "Seasoned", "Ranger", "Legend" };
+        private AskQuantityMenu currentQuantityMenu;
+        private int lastAnnouncedQuantity = -1;
 
         private class DialogButton
         {
@@ -101,6 +103,79 @@ namespace Wasteland2AccessibilityMod.States
                     return true;
                 }
             }
+            else if (currentQuantityMenu != null)
+            {
+                // AskQuantityMenu: Left/Right adjusts quantity, number keys type, Up/Down for OK/Cancel
+                if (Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    AdjustQuantity(-1);
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    AdjustQuantity(1);
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.PageDown))
+                {
+                    AdjustQuantity(-10);
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.PageUp))
+                {
+                    AdjustQuantity(10);
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    SetQuantity(1);
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    var maxField = typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
+                    int max = maxField != null ? (int)maxField.GetValue(currentQuantityMenu) : 999;
+                    SetQuantity(max);
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                // Up/Down navigate OK/Cancel buttons
+                if (Input.GetKeyDown(KeyCode.UpArrow))
+                {
+                    selectedButtonIndex--;
+                    if (selectedButtonIndex < 0) selectedButtonIndex = buttons.Count - 1;
+                    AnnounceButton();
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.DownArrow))
+                {
+                    selectedButtonIndex = (selectedButtonIndex + 1) % buttons.Count;
+                    AnnounceButton();
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    return true;
+                }
+            }
             else
             {
                 // Standard dialog: Left/Up previous, Right/Down next
@@ -155,6 +230,8 @@ namespace Wasteland2AccessibilityMod.States
             buttons.Clear();
             currentDialogId = "";
             currentDifficultyMenu = null;
+            currentQuantityMenu = null;
+            lastAnnouncedQuantity = -1;
 
             MelonLogger.Msg("[DialogState] Deactivated");
         }
@@ -223,6 +300,13 @@ namespace Wasteland2AccessibilityMod.States
                 else
                 {
                     currentDifficultyMenu = null;
+                }
+
+                // Check if this is a quantity selection menu
+                currentQuantityMenu = modal as AskQuantityMenu;
+                if (currentQuantityMenu != null)
+                {
+                    lastAnnouncedQuantity = -1;
                 }
 
                 string dialogId = "modal_" + (modal.titleLabel != null ? modal.titleLabel.text : "unknown");
@@ -367,6 +451,30 @@ namespace Wasteland2AccessibilityMod.States
                     return;
                 }
 
+                // AskQuantityMenu gets a specialized announcement
+                if (currentQuantityMenu != null)
+                {
+                    string qtyTitle = "";
+                    string qtyMessage = "";
+                    if (modal.titleLabel != null && !string.IsNullOrEmpty(modal.titleLabel.text))
+                        qtyTitle = UITextExtractor.CleanText(modal.titleLabel.text);
+                    if (modal.messageLabel != null && !string.IsNullOrEmpty(modal.messageLabel.text))
+                        qtyMessage = UITextExtractor.CleanText(modal.messageLabel.text);
+
+                    var maxField = typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
+                    int max = maxField != null ? (int)maxField.GetValue(currentQuantityMenu) : 0;
+                    int current = currentQuantityMenu.GetQuantity();
+                    lastAnnouncedQuantity = current;
+
+                    string qtyAnnouncement = "";
+                    if (!string.IsNullOrEmpty(qtyTitle)) qtyAnnouncement += qtyTitle + ". ";
+                    if (!string.IsNullOrEmpty(qtyMessage)) qtyAnnouncement += qtyMessage + ". ";
+                    qtyAnnouncement += $"{current} of {max}. Left and Right to adjust, Page Up and Page Down by 10, Home for minimum, End for maximum. Up and Down for OK or Cancel";
+
+                    ScreenReaderManager.SpeakInterrupt(qtyAnnouncement);
+                    return;
+                }
+
                 string title = "";
                 string message = "";
 
@@ -486,5 +594,58 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
         }
+        #region AskQuantityMenu Helpers
+
+        private void AdjustQuantity(int delta)
+        {
+            if (currentQuantityMenu == null) return;
+
+            int current = currentQuantityMenu.GetQuantity();
+            var minField = typeof(AskQuantityMenu).GetField("minValue", BindingFlags.NonPublic | BindingFlags.Instance);
+            var maxField = typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
+            int min = minField != null ? (int)minField.GetValue(currentQuantityMenu) : 1;
+            int max = maxField != null ? (int)maxField.GetValue(currentQuantityMenu) : 999;
+
+            int newValue = Mathf.Clamp(current + delta, min, max);
+            SetQuantity(newValue);
+        }
+
+        private void SetQuantity(int value)
+        {
+            if (currentQuantityMenu == null) return;
+
+            var minField = typeof(AskQuantityMenu).GetField("minValue", BindingFlags.NonPublic | BindingFlags.Instance);
+            var maxField = typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
+            int min = minField != null ? (int)minField.GetValue(currentQuantityMenu) : 1;
+            int max = maxField != null ? (int)maxField.GetValue(currentQuantityMenu) : 999;
+
+            value = Mathf.Clamp(value, min, max);
+
+            // Update the quantity field
+            var qtyField = typeof(AskQuantityMenu).GetField("quantity", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (qtyField != null)
+                qtyField.SetValue(currentQuantityMenu, value);
+
+            // Update the text input to reflect the new value
+            if (currentQuantityMenu.quantityInput != null)
+            {
+                currentQuantityMenu.quantityInput.value = value.ToString();
+            }
+
+            // Update the slider position
+            if (currentQuantityMenu.slider != null && max > min)
+            {
+                currentQuantityMenu.slider.value = (float)(value - min) / (float)(max - min);
+            }
+
+            // Announce if changed
+            if (value != lastAnnouncedQuantity)
+            {
+                lastAnnouncedQuantity = value;
+                ScreenReaderManager.SpeakInterrupt($"{value} of {max}");
+            }
+        }
+
+        #endregion
     }
 }
