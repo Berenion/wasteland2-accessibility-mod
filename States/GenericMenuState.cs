@@ -41,6 +41,19 @@ namespace Wasteland2AccessibilityMod.States
         // Track the current top screen to detect when a new menu opens on top
         private GUIScreen cachedTopScreen = null;
 
+        // Cached SaveLoadScreen reference
+        private SaveLoadScreen cachedSaveLoadScreen = null;
+
+        // Text field editing mode (SaveLoadScreen name input)
+        private bool isEditingTextField = false;
+        private string editingOriginalValue = "";
+
+        /// <summary>
+        /// When true, UIInput.ProcessEvent and UIInput.Update are blocked by Harmony patch.
+        /// Prevents accidental text entry while navigating controls.
+        /// </summary>
+        internal static bool blockUIInput = false;
+
         // Tab order for OptionsMenu
         private static readonly string[] tabOrder = { "gameplay", "display", "controls", "audio" };
 
@@ -91,6 +104,95 @@ namespace Wasteland2AccessibilityMod.States
             InputSuppressor.ShouldSuppressGameInput = true;
             InputSuppressor.ShouldSuppressUINavigation = true;
             InputSuppressor.ShouldSuppressButtonEvents = true;
+
+            // If user has entered editing mode on a text field, handle input directly.
+            // We keep blockUIInput=true and process typed characters ourselves rather than
+            // relying on UIInput's Update/ProcessEvent, which have complex timing dependencies
+            // with our suppression patches.
+            if (isEditingTextField)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    isEditingTextField = false;
+                    // Restore the previously selected entry's name
+                    if (cachedSaveLoadScreen != null && cachedSaveLoadScreen.nameInput != null
+                        && !string.IsNullOrEmpty(editingOriginalValue))
+                    {
+                        cachedSaveLoadScreen.nameInput.value = editingOriginalValue;
+                    }
+                    MelonLogger.Msg("[GenericMenuState] Exited editing (Escape)");
+                    ScreenReaderManager.SpeakInterrupt("Cancelled");
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    isEditingTextField = false;
+                    string value = cachedSaveLoadScreen != null && cachedSaveLoadScreen.nameInput != null
+                        ? cachedSaveLoadScreen.nameInput.value : "";
+                    MelonLogger.Msg($"[GenericMenuState] Exited editing (Enter), value='{value}'");
+                    ScreenReaderManager.SpeakInterrupt(!string.IsNullOrEmpty(value) ? $"Saving as {value}" : "Confirmed");
+
+                    // Trigger save with the entered name
+                    if (cachedSaveLoadScreen != null)
+                        cachedSaveLoadScreen.OnSaveClicked();
+
+                    return true;
+                }
+
+                // Process typed characters directly into nameInput.value
+                if (cachedSaveLoadScreen != null && cachedSaveLoadScreen.nameInput != null)
+                {
+                    UIInput nameInput = cachedSaveLoadScreen.nameInput;
+                    string currentValue = nameInput.value ?? "";
+                    bool changed = false;
+
+                    // Handle backspace
+                    if (Input.GetKeyDown(KeyCode.Backspace) && currentValue.Length > 0)
+                    {
+                        currentValue = currentValue.Substring(0, currentValue.Length - 1);
+                        changed = true;
+                    }
+
+                    // Handle typed characters from Input.inputString
+                    string inputString = Input.inputString;
+                    if (!string.IsNullOrEmpty(inputString))
+                    {
+                        foreach (char c in inputString)
+                        {
+                            if (c == '\b') // Backspace (also comes through inputString)
+                            {
+                                if (currentValue.Length > 0)
+                                {
+                                    currentValue = currentValue.Substring(0, currentValue.Length - 1);
+                                    changed = true;
+                                }
+                            }
+                            else if (c >= ' ' && c != '\u007f') // Printable characters
+                            {
+                                // Respect character limit
+                                if (nameInput.characterLimit <= 0 || currentValue.Length < nameInput.characterLimit)
+                                {
+                                    currentValue += c;
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (changed)
+                    {
+                        nameInput.value = currentValue;
+                        // Announce the last typed/deleted character for screen reader feedback
+                        if (currentValue.Length > 0)
+                            ScreenReaderManager.SpeakInterrupt(currentValue[currentValue.Length - 1].ToString());
+                        else
+                            ScreenReaderManager.SpeakInterrupt("empty");
+                        MelonLogger.Msg($"[GenericMenuState] Save name edited: '{currentValue}'");
+                    }
+                }
+
+                return true;
+            }
 
             // Detect when a new screen opens on top (e.g., Options over Pause) and reinitialize.
             // Skip ModalMessageMenu screens - DialogState handles modal dialogs.
@@ -164,6 +266,13 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // Handle Delete key for SaveLoadScreen
+            if (cachedSaveLoadScreen != null && Input.GetKeyDown(KeyCode.Delete))
+            {
+                cachedSaveLoadScreen.OnDeleteClicked();
+                return true;
+            }
+
             // Handle Enter for activation
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
@@ -184,6 +293,8 @@ namespace Wasteland2AccessibilityMod.States
         public void OnActivated()
         {
             MelonLogger.Msg("[GenericMenuState] Activated");
+            blockUIInput = true;
+            isEditingTextField = false;
             GUIScreen topScreen = FindTopScreen();
             ReinitializeForScreen(topScreen);
         }
@@ -198,7 +309,10 @@ namespace Wasteland2AccessibilityMod.States
             optionsControls = null;
             optionsControlIndex = -1;
             cachedOptionsMenu = null;
+            cachedSaveLoadScreen = null;
             cachedTopScreen = null;
+            blockUIInput = false;
+            isEditingTextField = false;
         }
 
         /// <summary>
@@ -215,13 +329,22 @@ namespace Wasteland2AccessibilityMod.States
             optionsControls = null;
             optionsControlIndex = -1;
             cachedOptionsMenu = null;
+            isEditingTextField = false;
+            blockUIInput = true;
             cachedTopScreen = topScreen;
 
-            // Detect OptionsMenu
+            // Detect specialized screens
             cachedOptionsMenu = topScreen as OptionsMenu;
+            cachedSaveLoadScreen = topScreen as SaveLoadScreen;
 
-            // For non-OptionsMenu screens, build a button list from UIGrid children
-            if (cachedOptionsMenu == null)
+            // Build appropriate control list
+            if (cachedOptionsMenu != null)
+            {
+                // OptionsMenu handled by BuildOptionsControlList in EnsureSelection
+            }
+            else if (cachedSaveLoadScreen != null)
+                BuildSaveLoadControlList();
+            else
                 BuildGridButtonList(topScreen);
 
             // Announce the menu type
@@ -243,7 +366,12 @@ namespace Wasteland2AccessibilityMod.States
             if (menuName.EndsWith("(Clone)"))
                 menuName = menuName.Substring(0, menuName.Length - 7).Trim();
 
-            if (cachedOptionsMenu != null)
+            if (cachedSaveLoadScreen != null)
+            {
+                menuName = cachedSaveLoadScreen.IsLoading() ? "Load Game" : "Save Game";
+                menuName += ". Delete key to delete a save";
+            }
+            else if (cachedOptionsMenu != null)
             {
                 menuName = "Options, " + GetActiveTabName(cachedOptionsMenu);
                 menuName += ". Page Up and Page Down to switch tabs";
@@ -487,6 +615,70 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
+        // ========== SaveLoad Screen Control List ==========
+
+        private void BuildSaveLoadControlList()
+        {
+            if (cachedSaveLoadScreen == null) return;
+
+            optionsControls = new List<GameObject>();
+
+            // Get save entries from the grid, sorted by grid order
+            if (cachedSaveLoadScreen.saveGrid != null)
+            {
+                List<Transform> children = new List<Transform>();
+                for (int i = 0; i < cachedSaveLoadScreen.saveGrid.transform.childCount; i++)
+                {
+                    Transform child = cachedSaveLoadScreen.saveGrid.transform.GetChild(i);
+                    if (child != null && child.gameObject.activeInHierarchy)
+                    {
+                        SaveGameListEntry entry = child.GetComponent<SaveGameListEntry>();
+                        if (entry != null)
+                            children.Add(child);
+                    }
+                }
+
+                // Sort by name to match UIGrid's sorted order
+                children.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.Ordinal));
+
+                foreach (var child in children)
+                {
+                    optionsControls.Add(child.gameObject);
+                }
+            }
+
+            // Add nameInput (save mode only)
+            if (!cachedSaveLoadScreen.IsLoading() && cachedSaveLoadScreen.nameInput != null
+                && cachedSaveLoadScreen.nameInput.gameObject.activeInHierarchy)
+            {
+                optionsControls.Add(cachedSaveLoadScreen.nameInput.gameObject);
+            }
+
+            // Add save or load button depending on mode
+            if (!cachedSaveLoadScreen.IsLoading() && cachedSaveLoadScreen.saveButton != null
+                && cachedSaveLoadScreen.saveButton.gameObject.activeInHierarchy)
+            {
+                optionsControls.Add(cachedSaveLoadScreen.saveButton.gameObject);
+            }
+            else if (cachedSaveLoadScreen.IsLoading() && cachedSaveLoadScreen.loadButton != null
+                && cachedSaveLoadScreen.loadButton.gameObject.activeInHierarchy)
+            {
+                optionsControls.Add(cachedSaveLoadScreen.loadButton.gameObject);
+            }
+
+            // Add close button
+            if (cachedSaveLoadScreen.closeButton != null
+                && cachedSaveLoadScreen.closeButton.gameObject.activeInHierarchy)
+            {
+                optionsControls.Add(cachedSaveLoadScreen.closeButton.gameObject);
+            }
+
+            optionsControlIndex = 0;
+            MelonLogger.Msg($"[GenericMenuState] Built SaveLoad control list: {optionsControls.Count} controls");
+            for (int i = 0; i < optionsControls.Count; i++)
+                MelonLogger.Msg($"  [{i}] {optionsControls[i].name}");
+        }
+
         // ========== Options Menu Control List ==========
 
         private void BuildOptionsControlList()
@@ -647,6 +839,16 @@ namespace Wasteland2AccessibilityMod.States
             {
                 optionsControlIndex = newIndex;
                 UICamera.selectedObject = optionsControls[newIndex];
+
+                // SaveLoadScreen: sync entry selection when navigating to a save entry
+                if (cachedSaveLoadScreen != null)
+                {
+                    SaveGameListEntry entry = optionsControls[newIndex].GetComponent<SaveGameListEntry>();
+                    if (entry != null)
+                    {
+                        cachedSaveLoadScreen.OnEntrySelected(entry);
+                    }
+                }
 
                 // Announce directly from the control list (UICamera.selectedObject may be overridden by the game)
                 string announcement = GetElementAnnouncement(optionsControls[newIndex]);
@@ -940,6 +1142,10 @@ namespace Wasteland2AccessibilityMod.States
                 }
                 else if (input != null)
                 {
+                    // Provide context for SaveLoadScreen name input
+                    if (cachedSaveLoadScreen != null && input == cachedSaveLoadScreen.nameInput)
+                        announcement = "Save name";
+
                     if (!string.IsNullOrEmpty(input.value))
                         controlValue = input.value;
                     controlType = "edit";
@@ -996,6 +1202,41 @@ namespace Wasteland2AccessibilityMod.States
                     MelonLogger.Msg($"[GenericMenuState] SaveLoad activated: {(saveEntry.nameLabel != null ? saveEntry.nameLabel.text : current.name)}");
                 }
                 return;
+            }
+
+            // Check for SaveLoadScreen action controls (nameInput, save/load/close buttons)
+            if (cachedSaveLoadScreen != null)
+            {
+                if (cachedSaveLoadScreen.nameInput != null && current == cachedSaveLoadScreen.nameInput.gameObject)
+                {
+                    // Enter editing mode - we handle typed characters directly in HandleInput
+                    // rather than relying on UIInput, so blockUIInput stays true
+                    isEditingTextField = true;
+                    editingOriginalValue = cachedSaveLoadScreen.nameInput.value ?? "";
+                    // Clear the field so user starts fresh
+                    cachedSaveLoadScreen.nameInput.value = "";
+                    MelonLogger.Msg($"[GenericMenuState] Entered editing mode for save name, original='{editingOriginalValue}'");
+                    ScreenReaderManager.SpeakInterrupt("Editing save name. Type a name, then press Enter to save or Escape to cancel.");
+                    return;
+                }
+                if (cachedSaveLoadScreen.saveButton != null && current == cachedSaveLoadScreen.saveButton.gameObject)
+                {
+                    cachedSaveLoadScreen.OnSaveClicked();
+                    MelonLogger.Msg("[GenericMenuState] SaveLoad save button activated");
+                    return;
+                }
+                if (cachedSaveLoadScreen.loadButton != null && current == cachedSaveLoadScreen.loadButton.gameObject)
+                {
+                    cachedSaveLoadScreen.OnLoadClicked();
+                    MelonLogger.Msg("[GenericMenuState] SaveLoad load button activated");
+                    return;
+                }
+                if (cachedSaveLoadScreen.closeButton != null && current == cachedSaveLoadScreen.closeButton.gameObject)
+                {
+                    CloseMenu();
+                    MelonLogger.Msg("[GenericMenuState] SaveLoad close button activated");
+                    return;
+                }
             }
 
             // Check for OPT_Checkbox
