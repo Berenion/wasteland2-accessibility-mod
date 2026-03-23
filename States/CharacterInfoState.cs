@@ -22,6 +22,7 @@ namespace Wasteland2AccessibilityMod.States
         /// When true, the next CharacterInfoMenu.OnEnable should switch to Attributes tab.
         /// Set by CharacterInfoPatches when C key opens the menu.
         /// </summary>
+        // Kept for potential future use but no longer set by CharacterInfoPatches
         public static bool openToAttributes = false;
 
         /// <summary>
@@ -644,8 +645,8 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // C for derived stats (Attributes/Skills) or character summary (others)
-            if (Input.GetKeyDown(KeyCode.C))
+            // D for derived stats (Attributes/Skills) or character summary (others)
+            if (Input.GetKeyDown(KeyCode.D))
             {
                 if (lastPanel == CharacterInfoMenu.InfoPanel.Attributes ||
                     lastPanel == CharacterInfoMenu.InfoPanel.Skills)

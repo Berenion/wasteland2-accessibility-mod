@@ -1017,8 +1017,8 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // C to open derived stats browser (on panels that have them) or announce character summary
-            if (Input.GetKeyDown(KeyCode.C))
+            // D to open derived stats browser (on panels that have them) or announce character summary
+            if (Input.GetKeyDown(KeyCode.D))
             {
                 if (lastPanelType == CharacterScreen.EditorPanel.Attributes ||
                     lastPanelType == CharacterScreen.EditorPanel.Skills)
