@@ -183,6 +183,12 @@ namespace Wasteland2AccessibilityMod.Core
                 //   by the perception sphere, not by clicking — so no action needed
                 if (nexus.drama != null)
                 {
+                    // Check if this object accepts items (e.g. dirt piles needing shovels).
+                    // If a matching item is in party inventory, use it automatically instead
+                    // of falling through to examine/poke.
+                    if (TryUseItemOnObject(nexus, inputManager, pc))
+                        return;
+
                     MelonLogger.Msg($"[ExplorationState] Interacting with: {nexus.name}");
                     Drama.CheckInstigate(nexus.drama, pc, false);
                     return;
@@ -202,6 +208,86 @@ namespace Wasteland2AccessibilityMod.Core
             {
                 MelonLogger.Error($"Error interacting with selected: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Checks if the object has ItemAcceptingObject components and a matching item
+        /// exists in party inventory. If so, sets up UseASIManager and triggers the
+        /// game's use-item flow (PC walks to object and uses item).
+        /// If the object needs items but none are available, announces what's needed.
+        /// Returns true if the interaction was handled (item used OR missing-item announced).
+        /// </summary>
+        internal static bool TryUseItemOnObject(InteractableNexus nexus, InputManager inputManager, PC pc)
+        {
+            var acceptors = nexus.gameObject.GetComponentsInChildren<ItemAcceptingObject>();
+            if (acceptors == null || acceptors.Length == 0)
+                return false;
+
+            // Collect needed item names for announcement if none are found
+            var neededItems = new System.Collections.Generic.List<string>();
+
+            foreach (var acceptor in acceptors)
+            {
+                if (!acceptor.enabled || acceptor.desiredItemTemplate == null)
+                    continue;
+
+                bool found = false;
+
+                // Search all party members for the matching item
+                var game = MonoBehaviourSingleton<Game>.GetInstance();
+                for (int i = 0; i < game.party.Count; i++)
+                {
+                    PC member = game.party[i];
+                    if (!member.isConscious) continue;
+
+                    ItemInstance item = member.inventory.inventory.GetInstanceOfTemplate(acceptor.desiredItemTemplate);
+                    if (item != null)
+                    {
+                        MelonLogger.Msg($"[Accessibility] Using item '{item.template.displayName}' from {member.name} on {nexus.name}");
+                        ScreenReaderManager.SpeakInterrupt($"Using {item.template.displayName} on {nexus.name}");
+
+                        // Set up the use-item ASI state (this sets ASI name to "useItem")
+                        UseASIManager.SetActiveASIItem(item, member);
+
+                        // Trigger the game's item-use-on-targetable flow
+                        Targetable targetable = nexus.gameObject.GetComponent<Targetable>();
+                        if (targetable != null)
+                        {
+                            inputManager.HandleUsableItemClickOnTargetable(targetable);
+                        }
+                        else
+                        {
+                            // Fallback: use PrepareUseItemActions directly with Drama
+                            InputManager.PrepareUseItemActions(nexus.transform, nexus.drama, null, false);
+                        }
+                        return true;
+                    }
+                }
+
+                if (!found)
+                {
+                    string displayName = acceptor.desiredItemTemplate.displayName;
+                    if (!string.IsNullOrEmpty(displayName))
+                    {
+                        string cleanName = UITextExtractor.CleanText(displayName);
+                        if (!string.IsNullOrEmpty(cleanName))
+                            neededItems.Add(cleanName);
+                    }
+                }
+            }
+
+            // No matching items found — announce what's needed, but return false
+            // so the caller still triggers Drama.CheckInstigate (which makes the PC
+            // walk to the object and triggers the game's own description text like
+            // "If only you had a shovel to dig into this pile of dirt.")
+            if (neededItems.Count > 0)
+            {
+                string itemList = string.Join(", ", neededItems.ToArray());
+                MelonLogger.Msg($"[Accessibility] Object {nexus.name} requires items: {itemList}");
+                ScreenReaderManager.SpeakInterrupt($"Requires {itemList}");
+            }
+
+            return false;
         }
 
         private static void ToggleGroupMode()

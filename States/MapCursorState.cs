@@ -961,14 +961,29 @@ namespace Wasteland2AccessibilityMod.States
 
             if (target.drama == null) return;
 
-            // Set the active ASI if this is a skill interaction
-            if (!string.IsNullOrEmpty(asiName))
+            // Check if this object accepts items (e.g. dirt piles needing shovels).
+            // Auto-use matching items from party inventory, or announce what's needed.
+            // This runs before skill handling because locked item-accepting objects
+            // often only expose "Examine" in GetAllowedInteractions, hiding the real
+            // interaction (use item) behind the fallback.
+            if (MonoBehaviourSingleton<InputManager>.HasInstance())
+            {
+                if (ExplorationState.TryUseItemOnObject(target, MonoBehaviourSingleton<InputManager>.GetInstance(), pc))
+                    return;
+            }
+
+            // Set the active ASI if this is a real skill interaction.
+            // "examine" is a mod-only fallback from BuildActionMenu, not a valid game ASI.
+            // Setting it would confuse Drama.CheckInstigate — the default poke/examine
+            // fires naturally when ASI is null.
+            bool isRealSkillASI = !string.IsNullOrEmpty(asiName) && asiName != "examine";
+            if (isRealSkillASI)
             {
                 UseASIManager.SetActiveASIName(asiName);
             }
 
             string displayAction;
-            if (string.IsNullOrEmpty(asiName))
+            if (string.IsNullOrEmpty(asiName) || asiName == "examine")
             {
                 displayAction = "Interacting with";
             }
