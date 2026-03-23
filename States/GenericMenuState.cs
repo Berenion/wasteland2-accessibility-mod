@@ -114,11 +114,21 @@ namespace Wasteland2AccessibilityMod.States
                 if (Input.GetKeyDown(KeyCode.Escape))
                 {
                     isEditingTextField = false;
-                    // Restore the previously selected entry's name
+                    // Restore the previously selected entry's name via reflection to avoid
+                    // triggering onChange -> OnInputEntry -> OnSaveClicked
                     if (cachedSaveLoadScreen != null && cachedSaveLoadScreen.nameInput != null
                         && !string.IsNullOrEmpty(editingOriginalValue))
                     {
-                        cachedSaveLoadScreen.nameInput.value = editingOriginalValue;
+                        var mValueField = typeof(UIInput).GetField("mValue", BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (mValueField != null)
+                        {
+                            mValueField.SetValue(cachedSaveLoadScreen.nameInput, editingOriginalValue);
+                            cachedSaveLoadScreen.nameInput.UpdateLabel();
+                        }
+                        else
+                        {
+                            cachedSaveLoadScreen.nameInput.value = editingOriginalValue;
+                        }
                     }
                     MelonLogger.Msg("[GenericMenuState] Exited editing (Escape)");
                     ScreenReaderManager.SpeakInterrupt("Cancelled");
@@ -132,9 +142,17 @@ namespace Wasteland2AccessibilityMod.States
                     MelonLogger.Msg($"[GenericMenuState] Exited editing (Enter), value='{value}'");
                     ScreenReaderManager.SpeakInterrupt(!string.IsNullOrEmpty(value) ? $"Saving as {value}" : "Confirmed");
 
+                    // Sync nameInput.value through the public setter so OnSaveClicked reads
+                    // the correct value from GetTrimmedSaveName(). The value is already in mValue
+                    // from our reflection writes, so the setter's mValue != value check will
+                    // skip ExecuteOnChange() (no actual change).
+
                     // Trigger save with the entered name
                     if (cachedSaveLoadScreen != null)
+                    {
+                        Core.SaveLoadScreenSuppressor.AllowNextAction = true;
                         cachedSaveLoadScreen.OnSaveClicked();
+                    }
 
                     return true;
                 }
@@ -181,7 +199,18 @@ namespace Wasteland2AccessibilityMod.States
 
                     if (changed)
                     {
-                        nameInput.value = currentValue;
+                        // Use reflection to set mValue directly to avoid triggering
+                        // ExecuteOnChange() -> OnInputEntry() -> OnSaveClicked()
+                        var mValueField = typeof(UIInput).GetField("mValue", BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (mValueField != null)
+                        {
+                            mValueField.SetValue(nameInput, currentValue);
+                            nameInput.UpdateLabel();
+                        }
+                        else
+                        {
+                            nameInput.value = currentValue;
+                        }
                         // Announce the last typed/deleted character for screen reader feedback
                         if (currentValue.Length > 0)
                             ScreenReaderManager.SpeakInterrupt(currentValue[currentValue.Length - 1].ToString());
@@ -1182,8 +1211,10 @@ namespace Wasteland2AccessibilityMod.States
 
             if (current == null) return;
 
-            // Check for SaveGameListEntry - call SaveLoadScreen methods directly
-            // since we suppress EventManager.Update() which normally dispatches "Attack Current Target"
+            // Check for SaveGameListEntry - select the entry and trigger save/load.
+            // OnSaveClicked/OnLoadClicked handle confirmation dialogs (overwrite, incompatible version, etc.)
+            // The Harmony patch on SaveLoadScreen.OnButtonDown prevents the game's native handler
+            // from double-firing on the same Enter keypress.
             SaveGameListEntry saveEntry = current.GetComponent<SaveGameListEntry>();
             if (saveEntry == null) saveEntry = current.GetComponentInParent<SaveGameListEntry>();
             if (saveEntry != null)
@@ -1191,9 +1222,10 @@ namespace Wasteland2AccessibilityMod.States
                 SaveLoadScreen saveLoadScreen = cachedTopScreen as SaveLoadScreen;
                 if (saveLoadScreen != null)
                 {
-                    // Ensure this entry is selected (OnSelect callback only fires in gamepad mode)
                     saveLoadScreen.OnEntrySelected(saveEntry);
 
+                    // Set the allow flag so our Harmony prefix lets this call through
+                    Core.SaveLoadScreenSuppressor.AllowNextAction = true;
                     if (saveLoadScreen.IsLoading())
                         saveLoadScreen.OnLoadClicked();
                     else
@@ -1213,20 +1245,32 @@ namespace Wasteland2AccessibilityMod.States
                     // rather than relying on UIInput, so blockUIInput stays true
                     isEditingTextField = true;
                     editingOriginalValue = cachedSaveLoadScreen.nameInput.value ?? "";
-                    // Clear the field so user starts fresh
-                    cachedSaveLoadScreen.nameInput.value = "";
+                    // Clear the field so user starts fresh. Use reflection to set mValue directly
+                    // to avoid triggering ExecuteOnChange() -> OnInputEntry() -> OnSaveClicked()
+                    var mValueField = typeof(UIInput).GetField("mValue", BindingFlags.NonPublic | BindingFlags.Instance);
+                    if (mValueField != null)
+                    {
+                        mValueField.SetValue(cachedSaveLoadScreen.nameInput, "");
+                        cachedSaveLoadScreen.nameInput.UpdateLabel();
+                    }
+                    else
+                    {
+                        cachedSaveLoadScreen.nameInput.value = "";
+                    }
                     MelonLogger.Msg($"[GenericMenuState] Entered editing mode for save name, original='{editingOriginalValue}'");
                     ScreenReaderManager.SpeakInterrupt("Editing save name. Type a name, then press Enter to save or Escape to cancel.");
                     return;
                 }
                 if (cachedSaveLoadScreen.saveButton != null && current == cachedSaveLoadScreen.saveButton.gameObject)
                 {
+                    Core.SaveLoadScreenSuppressor.AllowNextAction = true;
                     cachedSaveLoadScreen.OnSaveClicked();
                     MelonLogger.Msg("[GenericMenuState] SaveLoad save button activated");
                     return;
                 }
                 if (cachedSaveLoadScreen.loadButton != null && current == cachedSaveLoadScreen.loadButton.gameObject)
                 {
+                    Core.SaveLoadScreenSuppressor.AllowNextAction = true;
                     cachedSaveLoadScreen.OnLoadClicked();
                     MelonLogger.Msg("[GenericMenuState] SaveLoad load button activated");
                     return;

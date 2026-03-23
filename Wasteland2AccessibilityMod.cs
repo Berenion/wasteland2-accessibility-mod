@@ -63,8 +63,9 @@ namespace Wasteland2AccessibilityMod
             InputRouter.Register(new CharacterState());    // Priority 50 - character creation navigation
             InputRouter.Register(new CharacterInfoState()); // Priority 50 - in-game character info (Attributes/Skills/Traits/Dossier)
 
-            // Phase 3: Map cursor
+            // Phase 3: Map cursor and world map
             InputRouter.Register(new MapCursorState());    // Priority 30 - virtual map cursor (M to toggle)
+            InputRouter.Register(new WorldMapState());     // Priority 20 - world map review cursor and navigation
 
             // Phase 4: Scanner
             InputRouter.Register(new ScannerState());      // Priority 80 - environment scanning (S to scan)

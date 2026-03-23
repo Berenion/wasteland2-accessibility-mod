@@ -97,4 +97,75 @@ namespace Wasteland2AccessibilityMod.Core
             return true; // Let original run
         }
     }
+
+    /// <summary>
+    /// PREFIX patches on SaveLoadScreen methods to prevent the game's native input from
+    /// triggering save/load actions when GenericMenuState is handling input.
+    /// Tracks whether our mod explicitly requested the action via AllowNextSaveLoadAction().
+    /// </summary>
+    public static class SaveLoadScreenSuppressor
+    {
+        /// <summary>
+        /// When true, the next OnSaveClicked/OnLoadClicked call is allowed through.
+        /// Set by GenericMenuState.ActivateSelected() right before calling these methods.
+        /// Reset after the call passes through.
+        /// </summary>
+        public static bool AllowNextAction { get; set; }
+    }
+
+    [HarmonyPatch(typeof(SaveLoadScreen), "OnSaveClicked")]
+    public class SaveLoadScreen_OnSaveClicked_Suppressor
+    {
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            if (SaveLoadScreenSuppressor.AllowNextAction)
+            {
+                SaveLoadScreenSuppressor.AllowNextAction = false;
+                return true; // Allow - our mod requested this
+            }
+            if (Wasteland2AccessibilityMod.States.GenericMenuState.blockUIInput)
+            {
+                MelonLoader.MelonLogger.Msg("[SaveLoadScreen] Blocked native OnSaveClicked");
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(SaveLoadScreen), "OnLoadClicked")]
+    public class SaveLoadScreen_OnLoadClicked_Suppressor
+    {
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            if (SaveLoadScreenSuppressor.AllowNextAction)
+            {
+                SaveLoadScreenSuppressor.AllowNextAction = false;
+                return true; // Allow - our mod requested this
+            }
+            if (Wasteland2AccessibilityMod.States.GenericMenuState.blockUIInput)
+            {
+                MelonLoader.MelonLogger.Msg("[SaveLoadScreen] Blocked native OnLoadClicked");
+                return false;
+            }
+            return true;
+        }
+    }
+
+    [HarmonyPatch(typeof(SaveLoadScreen), "OnButtonDown")]
+    public class SaveLoadScreen_OnButtonDown_Suppressor
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(string buttonName)
+        {
+            if (Wasteland2AccessibilityMod.States.GenericMenuState.blockUIInput &&
+                (buttonName == "Attack Current Target" || buttonName == "Controller A"))
+            {
+                MelonLoader.MelonLogger.Msg($"[SaveLoadScreen] Blocked native OnButtonDown({buttonName})");
+                return false;
+            }
+            return true;
+        }
+    }
 }
