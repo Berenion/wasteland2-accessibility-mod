@@ -95,19 +95,20 @@ namespace Wasteland2AccessibilityMod.States
                 // Yield to GenericMenuState when an overlay screen (e.g. ItemInfoMenu) is open
                 if (guiManager.IsItemInfoScreenOpen()) return false;
 
+                // Check for PopupInventoryMenu (loot containers) FIRST — loot takes priority
+                // because CharacterInfoMenu can coexist and would shadow the popup check
+                var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+                if (popupInv != null && popupInv.gameObject.activeInHierarchy)
+                {
+                    return true;
+                }
+
                 // Check for CharacterInfoMenu with inventory panel active
                 var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
                 if (charInfoMenu != null && charInfoMenu.gameObject.activeInHierarchy)
                 {
                     var chaInvPanel = charInfoMenu.GetComponentInChildren<CHA_InventoryPanel>();
                     return chaInvPanel != null && chaInvPanel.gameObject.activeInHierarchy;
-                }
-
-                // Check for PopupInventoryMenu (loot containers)
-                var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
-                if (popupInv != null && popupInv.gameObject.activeInHierarchy)
-                {
-                    return true;
                 }
 
                 return false;
@@ -216,6 +217,14 @@ namespace Wasteland2AccessibilityMod.States
             isCharacterInfoMenu = false;
             isPopupInventoryMenu = false;
 
+            // Check PopupInventoryMenu first — loot takes priority over CharacterInfoMenu
+            var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+            if (popupInv != null && popupInv.gameObject.activeInHierarchy)
+            {
+                isPopupInventoryMenu = true;
+                return;
+            }
+
             var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
             if (charInfoMenu != null && charInfoMenu.gameObject.activeInHierarchy)
             {
@@ -223,14 +232,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (chaInvPanel != null && chaInvPanel.gameObject.activeInHierarchy)
                 {
                     isCharacterInfoMenu = true;
-                    return;
                 }
-            }
-
-            var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
-            if (popupInv != null && popupInv.gameObject.activeInHierarchy)
-            {
-                isPopupInventoryMenu = true;
             }
         }
 
