@@ -69,40 +69,46 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
+        // Track which map we were on to detect actual map changes vs menu open/close
+        private string lastMapName = "";
+
         public void OnActivated()
         {
-            // Initialize cursor to party position
-            if (WorldMapParty.instance != null)
-            {
-                cursorPosition = WorldMapParty.instance.transform.position;
-                cursorInitialized = true;
-            }
-
-            WorldMapProximityAlert.Reset();
-            WorldMapNavigationManager.Reset();
-
-            // Determine map name
             string mapName = "Arizona";
             if (Application.loadedLevelName == "LosAngelesWorldMap")
                 mapName = "Los Angeles";
 
-            ScreenReaderManager.SpeakInterrupt(
-                $"World map, {mapName}. Arrows to explore, Page Up Down for locations, step size {stepSize}");
+            bool mapChanged = mapName != lastMapName;
+            lastMapName = mapName;
 
-            MelonLogger.Msg($"[WorldMapState] Activated on {mapName}");
+            if (!cursorInitialized || mapChanged)
+            {
+                // First activation or map change: initialize cursor to party position
+                if (WorldMapParty.instance != null)
+                {
+                    cursorPosition = WorldMapParty.instance.transform.position;
+                    cursorInitialized = true;
+                }
+
+                WorldMapProximityAlert.Reset();
+                WorldMapNavigationManager.Reset();
+
+                ScreenReaderManager.SpeakInterrupt(
+                    $"World map, {mapName}. Arrows to explore, Page Up Down for locations, Shift Left Right for step size, W for water, Shift W for water cost to cursor, step size {stepSize}");
+            }
+            else
+            {
+                // Returning from a menu: restore camera to cursor position
+                if (cameraFollowsCursor)
+                    SnapCameraToCursor();
+            }
+
+            MelonLogger.Msg($"[WorldMapState] Activated on {mapName}, cursorInitialized={cursorInitialized}, mapChanged={mapChanged}");
         }
 
         public void OnDeactivated()
         {
-            // Return camera to party
-            if (WorldMapCameraController.instance != null && WorldMapParty.instance != null)
-            {
-                WorldMapCameraController.instance.CenterOnParty(true);
-            }
-
-            cursorInitialized = false;
-            WorldMapProximityAlert.Reset();
-
+            // Don't reset cursor position - preserve it for when we return
             MelonLogger.Msg("[WorldMapState] Deactivated");
         }
 
@@ -114,14 +120,14 @@ namespace Wasteland2AccessibilityMod.States
 
             float currentTime = Time.time;
 
-            // --- Step size adjustment: Shift+Up/Down ---
+            // --- Step size adjustment: Shift+Left/Right ---
             if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
             {
                 bool canChangeStep = (currentTime - lastStepChangeTime) >= STEP_CHANGE_REPEAT_DELAY;
 
                 if (canChangeStep)
                 {
-                    if (Input.GetKey(KeyCode.UpArrow))
+                    if (Input.GetKey(KeyCode.RightArrow))
                     {
                         if (stepSize < MAX_STEP_SIZE)
                         {
@@ -131,7 +137,7 @@ namespace Wasteland2AccessibilityMod.States
                         }
                         return true;
                     }
-                    if (Input.GetKey(KeyCode.DownArrow))
+                    if (Input.GetKey(KeyCode.LeftArrow))
                     {
                         if (stepSize > MIN_STEP_SIZE)
                         {
@@ -146,6 +152,7 @@ namespace Wasteland2AccessibilityMod.States
                 // Shift+Home: Jump cursor to party position
                 if (Input.GetKeyDown(KeyCode.Home))
                 {
+                    MelonLogger.Msg("[WorldMapState] Shift+Home detected, jumping to party");
                     JumpToParty();
                     return true;
                 }
@@ -153,12 +160,20 @@ namespace Wasteland2AccessibilityMod.States
                 // Shift+End: Announce distance from cursor to party
                 if (Input.GetKeyDown(KeyCode.End))
                 {
+                    MelonLogger.Msg("[WorldMapState] Shift+End detected, announcing distance to party");
                     AnnounceDistanceToParty();
                     return true;
                 }
 
+                // Shift+W: Estimate water cost from party to cursor
+                if (Input.GetKeyDown(KeyCode.W))
+                {
+                    AnnounceWaterCostToCursor();
+                    return true;
+                }
+
                 // Consume shift+arrow even if repeat delay not met
-                if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.DownArrow))
+                if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.RightArrow))
                     return true;
 
                 // Don't consume other shift combinations
@@ -203,11 +218,13 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (Input.GetKeyDown(KeyCode.PageUp))
                 {
+                    MelonLogger.Msg("[WorldMapState] Ctrl+PageUp detected, previous category");
                     WorldMapNavigationManager.PreviousCategory(cursorPosition);
                     return true;
                 }
                 if (Input.GetKeyDown(KeyCode.PageDown))
                 {
+                    MelonLogger.Msg("[WorldMapState] Ctrl+PageDown detected, next category");
                     WorldMapNavigationManager.NextCategory(cursorPosition);
                     return true;
                 }
@@ -216,11 +233,13 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (Input.GetKeyDown(KeyCode.PageDown))
                 {
+                    MelonLogger.Msg($"[WorldMapState] PageDown detected, cycling next POI. Cursor at {cursorPosition}");
                     WorldMapNavigationManager.CycleNext(cursorPosition);
                     return true;
                 }
                 if (Input.GetKeyDown(KeyCode.PageUp))
                 {
+                    MelonLogger.Msg($"[WorldMapState] PageUp detected, cycling previous POI. Cursor at {cursorPosition}");
                     WorldMapNavigationManager.CyclePrevious(cursorPosition);
                     return true;
                 }
@@ -229,6 +248,7 @@ namespace Wasteland2AccessibilityMod.States
             // --- Home: Jump cursor to selected POI ---
             if (Input.GetKeyDown(KeyCode.Home))
             {
+                MelonLogger.Msg("[WorldMapState] Home detected (no shift), jumping to selected POI");
                 JumpToSelectedPOI();
                 return true;
             }
@@ -236,6 +256,7 @@ namespace Wasteland2AccessibilityMod.States
             // --- End: Announce distance from cursor to selected POI ---
             if (Input.GetKeyDown(KeyCode.End))
             {
+                MelonLogger.Msg("[WorldMapState] End detected (no shift), announcing distance to selected POI");
                 AnnounceDistanceToSelectedPOI();
                 return true;
             }
@@ -275,6 +296,13 @@ namespace Wasteland2AccessibilityMod.States
                     ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
                 else
                     WorldMapNavigationManager.RepeatLastAnnouncement();
+                return true;
+            }
+
+            // --- W: Announce water supply ---
+            if (Input.GetKeyDown(KeyCode.W))
+            {
+                AnnounceWater();
                 return true;
             }
 
@@ -356,7 +384,7 @@ namespace Wasteland2AccessibilityMod.States
                 radInfo = $", {severity} radiation";
             }
 
-            return $"{Mathf.RoundToInt(distance)} meters {direction} from party{radInfo}";
+            return $"{Mathf.RoundToInt(distance)} units {direction} from party{radInfo}";
         }
 
         // --- Camera ---
@@ -434,7 +462,55 @@ namespace Wasteland2AccessibilityMod.States
             WorldMapPOI poi = WorldMapNavigationManager.GetSelectedPOI();
             string name = poi != null ? WorldMapNavigationManager.GetPOIName(poi) : "Selected location";
 
-            lastAnnouncement = $"{name}, {Mathf.RoundToInt(distance)} meters, {direction} from cursor";
+            lastAnnouncement = $"{name}, {Mathf.RoundToInt(distance)} units, {direction} from cursor";
+            ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
+        }
+
+        private void AnnounceWater()
+        {
+            if (!MonoBehaviourSingleton<Game>.HasInstance())
+            {
+                ScreenReaderManager.SpeakInterrupt("Water info unavailable");
+                return;
+            }
+
+            var game = MonoBehaviourSingleton<Game>.GetInstance();
+            int current = Mathf.FloorToInt(game.water);
+            int max = Mathf.FloorToInt(game.GetMaxWater());
+
+            lastAnnouncement = $"Water, {current} of {max}";
+            ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
+        }
+
+        private void AnnounceWaterCostToCursor()
+        {
+            var party = WorldMapParty.instance;
+            if (party == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("Party not found");
+                return;
+            }
+
+            float distance = Vector2Distance(party.transform.position, cursorPosition);
+            float sampleDistance = party.sampleDistance;
+            if (sampleDistance <= 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("Water cost unavailable");
+                return;
+            }
+
+            int estimatedCost = Mathf.CeilToInt(distance / sampleDistance);
+
+            string costInfo = $"Estimated {estimatedCost} water to cursor";
+
+            if (MonoBehaviourSingleton<Game>.HasInstance())
+            {
+                int current = Mathf.FloorToInt(MonoBehaviourSingleton<Game>.GetInstance().water);
+                int remaining = current - estimatedCost;
+                costInfo += $", {current} available, {remaining} remaining";
+            }
+
+            lastAnnouncement = costInfo;
             ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
         }
 
@@ -450,7 +526,7 @@ namespace Wasteland2AccessibilityMod.States
             float distance = Vector2Distance(cursorPosition, partyPos);
             string direction = DirectionHelper.GetDirectionDescription(cursorPosition, partyPos);
 
-            lastAnnouncement = $"Party, {Mathf.RoundToInt(distance)} meters, {direction} from cursor";
+            lastAnnouncement = $"Party, {Mathf.RoundToInt(distance)} units, {direction} from cursor";
             ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
         }
 
@@ -569,7 +645,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     string name = WorldMapNavigationManager.GetPOIName(closestPOI);
                     ScreenReaderManager.SpeakInterrupt(
-                        $"{name} is {Mathf.RoundToInt(closestDistance)} meters away, too far to interact");
+                        $"{name} is {Mathf.RoundToInt(closestDistance)} units away, too far to interact");
                 }
                 else
                 {
@@ -621,7 +697,7 @@ namespace Wasteland2AccessibilityMod.States
                 Vector3 partyPos = WorldMapParty.instance.transform.position;
                 float partyDist = Vector2Distance(cursorPosition, partyPos);
                 string partyDir = DirectionHelper.GetDirectionDescription(partyPos, cursorPosition);
-                parts.Add($"{Mathf.RoundToInt(partyDist)} meters {partyDir} from party");
+                parts.Add($"{Mathf.RoundToInt(partyDist)} units {partyDir} from party");
             }
 
             // Radiation at cursor
@@ -659,7 +735,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     string name = WorldMapNavigationManager.GetPOIName(nearest);
                     string dir = DirectionHelper.GetDirectionDescription(cursorPosition, nearest.transform.position);
-                    parts.Add($"Nearest: {name}, {Mathf.RoundToInt(nearestDist)} meters, {dir}");
+                    parts.Add($"Nearest: {name}, {Mathf.RoundToInt(nearestDist)} units, {dir}");
                 }
             }
 

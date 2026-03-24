@@ -70,7 +70,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     Vector3 poiPos = __instance.transform.position;
                     float distance = WorldMapPatchUtils.Vector2Distance(partyPos, poiPos);
                     string direction = DirectionHelper.GetDirectionDescription(partyPos, poiPos);
-                    directionInfo = $", {Mathf.RoundToInt(distance)} meters, {direction}";
+                    directionInfo = $", {Mathf.RoundToInt(distance)} units, {direction}";
                 }
 
                 string announcement = $"Discovered {typeName}: {name}{directionInfo}";

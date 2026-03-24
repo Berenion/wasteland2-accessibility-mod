@@ -78,6 +78,8 @@ namespace Wasteland2AccessibilityMod
         {
             UpdateFilteredList(relativeTo);
 
+            MelonLogger.Msg($"[WorldMapNav] CycleNext: category={currentCategory}, filteredItems={filteredItems.Count}, relativeTo={relativeTo}");
+
             if (filteredItems.Count == 0)
             {
                 string categoryName = GetCategoryDisplayName(currentCategory);
@@ -166,7 +168,7 @@ namespace Wasteland2AccessibilityMod
             string typeName = GetPOITypeName(poi.type);
             Vector3 poiPos = poi.transform.position;
             float distance = Vector2Distance(relativeTo, poiPos);
-            string distanceStr = $"{Mathf.RoundToInt(distance)} meters";
+            string distanceStr = $"{Mathf.RoundToInt(distance)} units";
             string direction = DirectionHelper.GetDirectionDescription(relativeTo, poiPos);
 
             // Calculate water cost if party is available
@@ -189,7 +191,7 @@ namespace Wasteland2AccessibilityMod
         {
             Vector3 cloudPos = cloud.transform.position;
             float distance = Vector2Distance(relativeTo, cloudPos);
-            string distanceStr = $"{Mathf.RoundToInt(distance)} meters";
+            string distanceStr = $"{Mathf.RoundToInt(distance)} units";
             string direction = DirectionHelper.GetDirectionDescription(relativeTo, cloudPos);
             int level = cloud.radiationLevel;
             string severity = level >= 3 ? "lethal" : level == 2 ? "high" : "low";
@@ -231,23 +233,34 @@ namespace Wasteland2AccessibilityMod
             if (WorldMapInput.instance != null)
             {
                 pois = WorldMapInput.instance.pois;
+                MelonLogger.Msg($"[WorldMapNav] AddPOIs: WorldMapInput.instance.pois has {(pois != null ? pois.Length : 0)} entries");
+            }
+            else
+            {
+                MelonLogger.Msg("[WorldMapNav] AddPOIs: WorldMapInput.instance is null");
             }
 
             if (pois == null || pois.Length == 0)
             {
                 pois = Object.FindObjectsOfType(typeof(WorldMapPOI)) as WorldMapPOI[];
+                MelonLogger.Msg($"[WorldMapNav] AddPOIs: FindObjectsOfType found {(pois != null ? pois.Length : 0)} WorldMapPOI objects");
             }
 
             if (pois == null) return;
 
+            int visibleCount = 0;
+            int categoryMatchCount = 0;
             foreach (var poi in pois)
             {
                 if (poi == null) continue;
                 if (!poi.IsVisible()) continue;
+                visibleCount++;
                 if (!MatchesPOICategory(poi.type, currentCategory)) continue;
+                categoryMatchCount++;
 
                 filteredItems.Add(poi);
             }
+            MelonLogger.Msg($"[WorldMapNav] AddPOIs: {visibleCount} visible, {categoryMatchCount} matching category {currentCategory}");
         }
 
         private static void AddRadiationClouds(Vector3 relativeTo)

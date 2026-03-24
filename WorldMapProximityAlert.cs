@@ -48,10 +48,8 @@ namespace Wasteland2AccessibilityMod
             if (!string.IsNullOrEmpty(radiationAlert))
                 alerts.Add(radiationAlert);
 
-            // Check encounter zones
-            string encounterAlert = CheckEncounterZoneProximity(cursorPosition);
-            if (!string.IsNullOrEmpty(encounterAlert))
-                alerts.Add(encounterAlert);
+            // Encounter zones are not visible to sighted players (editor-only gizmos),
+            // so we don't announce them to respect fog of war parity.
 
             // Clean up distant POIs from tracking
             CleanupDistantEntries(cursorPosition);
@@ -195,7 +193,7 @@ namespace Wasteland2AccessibilityMod
 
             // Build announcement
             string name = WorldMapNavigationManager.GetPOIName(closestNew);
-            string distanceStr = $"{Mathf.RoundToInt(closestNewDistance)} meters";
+            string distanceStr = $"{Mathf.RoundToInt(closestNewDistance)} units";
             string direction = DirectionHelper.GetDirectionDescription(cursorPosition, closestNew.transform.position);
 
             if (closestNewThreshold == NEAR_THRESHOLD)

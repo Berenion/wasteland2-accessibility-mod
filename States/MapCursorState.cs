@@ -95,6 +95,11 @@ namespace Wasteland2AccessibilityMod.States
                 if (!MonoBehaviourSingleton<GUIManager>.HasInstance()) return false;
                 if (MonoBehaviourSingleton<GUIManager>.GetInstance().IsAnyMenuActive()) return false;
 
+                // Not on the world map (WorldMapState handles its own cursor)
+                if (MonoBehaviourSingleton<Game>.HasInstance() &&
+                    MonoBehaviourSingleton<Game>.GetInstance().state == GameState.WorldMap)
+                    return false;
+
                 // Not during conversations
                 if (Drama.isConversationOn) return false;
 
