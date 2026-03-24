@@ -294,7 +294,7 @@ namespace Wasteland2AccessibilityMod.States
             switch (newPanel)
             {
                 case CharacterInfoMenu.InfoPanel.Attributes:
-                    hint = ". Up and Down to navigate, I for description, C for derived stats";
+                    hint = ". Up and Down to navigate, I for description, D for derived stats";
                     break;
                 case CharacterInfoMenu.InfoPanel.Skills:
                     hint = ". Up and Down to navigate, F to switch section, Left and Right for category";

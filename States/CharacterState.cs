@@ -296,10 +296,10 @@ namespace Wasteland2AccessibilityMod.States
                     announcement += $". {GetPartyCount(screen)} rangers. Up and Down to navigate, Enter to edit, Delete to remove, I for details";
                     break;
                 case CharacterScreen.EditorPanel.Attributes:
-                    announcement += ". F to switch to skills, P for points remaining, I for description, C for derived stats";
+                    announcement += ". F to switch to skills, P for points remaining, I for description, D for derived stats";
                     break;
                 case CharacterScreen.EditorPanel.Skills:
-                    announcement += ". F to switch to attributes, Left and Right for categories, P for points remaining, I for description, C for derived stats";
+                    announcement += ". F to switch to attributes, Left and Right for categories, P for points remaining, I for description, D for derived stats";
                     break;
                 case CharacterScreen.EditorPanel.Traits:
                     announcement += ". Enter to toggle, I for description";
