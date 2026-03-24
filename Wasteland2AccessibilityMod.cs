@@ -35,6 +35,7 @@ namespace Wasteland2AccessibilityMod
             MelonLogger.Msg("  M - Toggle map cursor mode");
             MelonLogger.Msg("  G - Toggle group mode");
             MelonLogger.Msg("  S - Environment scan");
+            MelonLogger.Msg("  T - Initiative/turn order (in combat)");
             MelonLogger.Msg("===========================================");
 
             // Initialize screen reader support
@@ -62,6 +63,9 @@ namespace Wasteland2AccessibilityMod
             InputRouter.Register(new ShopState());         // Priority 50 - vendor/shop navigation
             InputRouter.Register(new CharacterState());    // Priority 50 - character creation navigation
             InputRouter.Register(new CharacterInfoState()); // Priority 50 - in-game character info (Attributes/Skills/Traits/Dossier)
+
+            // Phase 2b: Combat state
+            InputRouter.Register(new CombatState());  // Priority 45 - combat initiative tracker and accessibility
 
             // Phase 3: Map cursor and world map
             InputRouter.Register(new MapCursorState());    // Priority 30 - virtual map cursor (M to toggle)
