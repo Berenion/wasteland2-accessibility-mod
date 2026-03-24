@@ -284,6 +284,7 @@ namespace Wasteland2AccessibilityMod
                 if (!nexus.isVisible) continue;
                 if (nexus.GetHighlight() == null) continue;
                 if (nexus.transform == null) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(nexus.transform.position)) continue;
 
                 // Apply category filter
                 if (!MatchesCategory(nexus, currentCategory)) continue;

@@ -606,6 +606,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (interactable == null || !interactable.isVisible) continue;
                 if (interactable.isPC) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(interactable.transform.position)) continue;
 
                 if (IsOnCurrentTile(interactable.transform.position))
                 {
@@ -631,6 +632,7 @@ namespace Wasteland2AccessibilityMod.States
                         if (npc == null || npc.gameObject == null) continue;
                         if (!npc.gameObject.activeInHierarchy) continue;
                         if (npc.mobState == Mob.MobState.DEAD) continue;
+                        if (!FOWHelper.IsVisibleThroughFOW(npc.transform.position)) continue;
 
                         if (IsOnCurrentTile(npc.transform.position))
                         {
@@ -645,6 +647,7 @@ namespace Wasteland2AccessibilityMod.States
                     {
                         if (follower == null || follower.gameObject == null) continue;
                         if (!follower.gameObject.activeInHierarchy) continue;
+                        if (!FOWHelper.IsVisibleThroughFOW(follower.transform.position)) continue;
 
                         if (IsOnCurrentTile(follower.transform.position))
                         {

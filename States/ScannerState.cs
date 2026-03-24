@@ -163,14 +163,9 @@ namespace Wasteland2AccessibilityMod.States
             AnnounceScanSummary();
         }
 
-        /// <summary>
-        /// Checks if a world position is currently visible (not hidden by fog of war).
-        /// Returns true if no FOW system exists (e.g. world map).
-        /// </summary>
         private bool IsVisibleThroughFOW(Vector3 position)
         {
-            if (FOWSystem.instance == null) return true;
-            return FOWSystem.instance.IsVisible(position);
+            return FOWHelper.IsVisibleThroughFOW(position);
         }
 
         private void ScanForEnemies(Vector3 origin)

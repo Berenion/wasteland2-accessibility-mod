@@ -87,6 +87,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 // Get the InteractableNexus component
                 InteractableNexus nexus = __instance.GetComponent<InteractableNexus>();
                 if (nexus == null || !nexus.isVisible) return;
+                if (!FOWHelper.IsVisibleThroughFOW(__instance.transform.position)) return;
 
                 // Check distance - only announce if within actual interact range (8 meters)
                 var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
@@ -153,6 +154,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 // Get the InteractableNexus component
                 InteractableNexus nexus = __instance.GetComponent<InteractableNexus>();
                 if (nexus == null || !nexus.isVisible) return;
+                if (!FOWHelper.IsVisibleThroughFOW(__instance.transform.position)) return;
 
                 // Check distance - only announce if within actual interact range (8 meters)
                 var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
