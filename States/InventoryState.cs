@@ -133,6 +133,18 @@ namespace Wasteland2AccessibilityMod.States
                 RebuildCurrentList();
             }
 
+            // Retry if list was empty — the game may populate the loot grid
+            // after the popup becomes active (async container setup)
+            if (currentList.Count == 0 && currentZone == NavigationZone.ContainerItems)
+            {
+                BuildContainerItemList();
+                if (currentList.Count > 0)
+                {
+                    MelonLogger.Msg($"[InventoryState] Late grid population detected, found {currentList.Count} items");
+                    AnnounceCurrentItem(interrupt: false);
+                }
+            }
+
             // Detect context
             DetectContext();
 
