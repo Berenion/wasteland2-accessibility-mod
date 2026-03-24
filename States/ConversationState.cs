@@ -53,7 +53,11 @@ namespace Wasteland2AccessibilityMod.States
         {
             get
             {
-                if (!Drama.isConversationOn || Drama.isCutsceneOn) return false;
+                // Note: Do NOT check Drama.isCutsceneOn here. Many conversations use
+                // cutsceneStart() to freeze party movement while the conversation is active
+                // (e.g. AZ10_RoadBlock toll shakedown). The WaitState checks are sufficient
+                // to determine if the game needs player input.
+                if (!Drama.isConversationOn) return false;
                 if (!MonoBehaviourSingleton<ConversationHUD>.HasInstance()) return false;
                 return DramaGUI.waitState == DramaGUI.WaitState.ForAdvance;
             }
@@ -66,7 +70,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             get
             {
-                if (!Drama.isConversationOn || Drama.isCutsceneOn) return false;
+                if (!Drama.isConversationOn) return false;
                 if (!MonoBehaviourSingleton<ConversationHUD>.HasInstance()) return false;
                 if (DramaGUI.waitState != DramaGUI.WaitState.ForInput) return false;
 
