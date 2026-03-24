@@ -114,27 +114,9 @@ namespace Wasteland2AccessibilityMod.Patches
             {
                 string name = WorldMapNavigationManager.GetPOIName(__instance);
 
-                switch (__instance.type)
-                {
-                    case POIType.Location:
-                    case POIType.Shrine:
-                        // The game shows a "Do you want to enter [location]?" confirmation
-                        // DialogState should pick that up, so just log
-                        MelonLogger.Msg($"[WorldMapPatches] POI instigated: {name} (dialog will handle)");
-                        break;
-                    case POIType.Combat:
-                        ScreenReaderManager.Speak($"Combat encounter: {name}");
-                        break;
-                    case POIType.Cache:
-                        ScreenReaderManager.Speak($"Cache found: {name}");
-                        break;
-                    case POIType.Water:
-                        ScreenReaderManager.Speak($"Oasis: {name}");
-                        break;
-                    default:
-                        ScreenReaderManager.Speak($"Arrived at {name}");
-                        break;
-                }
+                // All POI types that trigger HUD_POIPanel are announced by DialogState
+                // when the panel opens, so just log here to avoid duplicate/competing speech
+                MelonLogger.Msg($"[WorldMapState] Instigating POI: {name}");
             }
             catch (System.Exception ex)
             {

@@ -37,7 +37,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             get
             {
-                return IsModalDialogOpen() || IsTutorialOpen() || IsTutorialPopupMenuOpen();
+                return IsModalDialogOpen() || IsTutorialOpen() || IsTutorialPopupMenuOpen() || IsPOIPanelOpen();
             }
         }
 
@@ -272,6 +272,12 @@ namespace Wasteland2AccessibilityMod.States
             return popup != null && popup.gameObject.activeInHierarchy;
         }
 
+        private bool IsPOIPanelOpen()
+        {
+            var panel = UnityEngine.Object.FindObjectOfType<HUD_POIPanel>();
+            return panel != null && panel.gameObject.activeInHierarchy && !panel.isClosing;
+        }
+
         /// <summary>
         /// Refreshes the button list for the current dialog.
         /// Returns true if the dialog changed (new dialog appeared).
@@ -415,6 +421,96 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
+            // Check for HUD_POIPanel (world map oasis, location, encounter, cache dialogs)
+            var poiPanel = UnityEngine.Object.FindObjectOfType<HUD_POIPanel>();
+            if (poiPanel != null && poiPanel.gameObject.activeInHierarchy && !poiPanel.isClosing)
+            {
+                string dialogId = "poi_" + (poiPanel.titleLabel != null ? poiPanel.titleLabel.text : "unknown");
+
+                // Encounter buttons (Attack/Run or Investigate/Skip)
+                if (poiPanel.encounterButtonContainer != null && poiPanel.encounterButtonContainer.activeSelf)
+                {
+                    if (poiPanel.attackButton != null && poiPanel.attackButton.gameObject.activeSelf)
+                    {
+                        string label = poiPanel.attackLabel != null ? UITextExtractor.CleanText(poiPanel.attackLabel.text) : "Attack";
+                        var btn = poiPanel.attackButton;
+                        buttons.Add(new DialogButton
+                        {
+                            Label = label,
+                            ButtonObject = btn.gameObject,
+                            ClickAction = () => poiPanel.OnConfirmClicked()
+                        });
+                    }
+                    if (poiPanel.runButton != null && poiPanel.runButton.gameObject.activeSelf)
+                    {
+                        string label = poiPanel.runLabel != null ? UITextExtractor.CleanText(poiPanel.runLabel.text) : "Run";
+                        buttons.Add(new DialogButton
+                        {
+                            Label = label,
+                            ButtonObject = poiPanel.runButton.gameObject,
+                            ClickAction = () => poiPanel.OnCancelClicked()
+                        });
+                    }
+                }
+                // Multi-entry location buttons
+                else if (poiPanel.secondaryEntryButtonContainer != null && poiPanel.secondaryEntryButtonContainer.activeSelf)
+                {
+                    if (poiPanel.entryButtonGrid != null)
+                    {
+                        foreach (Transform child in poiPanel.entryButtonGrid.transform)
+                        {
+                            var entryBtn = child.GetComponent<HUD_SecondaryEntryButton>();
+                            var label = child.GetComponentInChildren<UILabel>();
+                            if (entryBtn != null && label != null)
+                            {
+                                string text = UITextExtractor.CleanText(label.text);
+                                var capturedEntry = entryBtn;
+                                buttons.Add(new DialogButton
+                                {
+                                    Label = text,
+                                    ButtonObject = child.gameObject,
+                                    ClickAction = () => poiPanel.OnEntryButtonClicked(
+                                        capturedEntry.location, capturedEntry.isCancel, capturedEntry.isDefault)
+                                });
+                            }
+                        }
+                    }
+                }
+                // Normal confirm/cancel buttons
+                else
+                {
+                    if (poiPanel.confirmButton != null && poiPanel.confirmButton.gameObject.activeSelf)
+                    {
+                        string label = poiPanel.confirmLabel != null ? UITextExtractor.CleanText(poiPanel.confirmLabel.text) : "Confirm";
+                        buttons.Add(new DialogButton
+                        {
+                            Label = label,
+                            ButtonObject = poiPanel.confirmButton.gameObject,
+                            ClickAction = () => poiPanel.OnConfirmClicked()
+                        });
+                    }
+                    if (poiPanel.cancelButton != null && poiPanel.cancelButton.gameObject.activeSelf)
+                    {
+                        string label = poiPanel.cancelLabel != null ? UITextExtractor.CleanText(poiPanel.cancelLabel.text) : "Cancel";
+                        buttons.Add(new DialogButton
+                        {
+                            Label = label,
+                            ButtonObject = poiPanel.cancelButton.gameObject,
+                            ClickAction = () => poiPanel.OnCancelClicked()
+                        });
+                    }
+                }
+
+                if (dialogId != currentDialogId)
+                {
+                    currentDialogId = dialogId;
+                    selectedButtonIndex = 0;
+                    changed = true;
+                }
+
+                return changed;
+            }
+
             // Clamp index
             if (selectedButtonIndex >= buttons.Count && buttons.Count > 0)
             {
@@ -514,6 +610,28 @@ namespace Wasteland2AccessibilityMod.States
                 }
 
                 ScreenReaderManager.SpeakInterrupt(announcement2);
+                return;
+            }
+
+            // HUD_POIPanel (world map dialogs)
+            var poiPanel = UnityEngine.Object.FindObjectOfType<HUD_POIPanel>();
+            if (poiPanel != null && poiPanel.gameObject.activeInHierarchy && !poiPanel.isClosing)
+            {
+                string title = poiPanel.titleLabel != null ? UITextExtractor.CleanText(poiPanel.titleLabel.text) : "";
+                string desc = poiPanel.descriptionLabel != null ? UITextExtractor.CleanText(poiPanel.descriptionLabel.text) : "";
+
+                string announcement = "";
+                if (!string.IsNullOrEmpty(title)) announcement += title + ". ";
+                if (!string.IsNullOrEmpty(desc)) announcement += desc + ". ";
+
+                if (buttons.Count > 0)
+                {
+                    announcement += $"Button: {buttons[0].Label}";
+                    if (buttons.Count > 1)
+                        announcement += $", 1 of {buttons.Count}";
+                }
+
+                ScreenReaderManager.SpeakInterrupt(announcement);
                 return;
             }
 
