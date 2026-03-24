@@ -1,5 +1,6 @@
 using HarmonyLib;
 using UnityEngine;
+using Wasteland2AccessibilityMod.Core;
 
 namespace Wasteland2AccessibilityMod.Patches
 {
@@ -24,6 +25,13 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             // Don't announce if a menu state is handling announcements
             if (SuppressAnnouncements)
+            {
+                return;
+            }
+
+            // Don't announce when any InputRouter state is active - refactored states
+            // handle their own announcements, so this legacy catch-all is not needed
+            if (InputRouter.IsAnyStateActive())
             {
                 return;
             }

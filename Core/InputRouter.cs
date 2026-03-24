@@ -99,6 +99,21 @@ namespace Wasteland2AccessibilityMod.Core
         }
 
         /// <summary>
+        /// Check if any accessibility state is currently active.
+        /// Used by UIFocusPatches to suppress legacy focus announcements
+        /// when refactored states are handling their own announcements.
+        /// </summary>
+        public static bool IsAnyStateActive()
+        {
+            for (int i = 0; i < states.Count; i++)
+            {
+                if (states[i].IsActive)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Check if any accessibility state that needs input suppression is currently active.
         /// Used by InputSuppressor to decide whether to block game input.
         /// </summary>
