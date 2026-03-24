@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
@@ -148,16 +149,31 @@ namespace Wasteland2AccessibilityMod.Patches
     [HarmonyPatch(typeof(WorldMapRadiationCloud), "CheckDiscovery")]
     public class WorldMapRadiationCloud_CheckDiscovery_Patch
     {
+        // Track clouds we've already announced to prevent spam
+        // (CheckDiscovery is called every frame while the party is within range)
+        private static HashSet<int> announcedClouds = new HashSet<int>();
+
+        /// <summary>
+        /// Call this when leaving the world map to reset tracking.
+        /// </summary>
+        public static void Reset()
+        {
+            announcedClouds.Clear();
+        }
+
         [HarmonyPostfix]
         public static void Postfix(WorldMapRadiationCloud __instance)
         {
             if (__instance == null) return;
             if (!__instance.radiationActive) return;
 
+            int id = __instance.GetInstanceID();
+            if (announcedClouds.Contains(id)) return;
+
             try
             {
-                // Only announce when first discovered
-                // The game sets a WSBool on discovery, but we detect it via radiationActive
+                announcedClouds.Add(id);
+
                 string directionInfo = "";
                 if (WorldMapParty.instance != null)
                 {

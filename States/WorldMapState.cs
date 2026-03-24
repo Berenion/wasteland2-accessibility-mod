@@ -2,6 +2,7 @@ using System.Reflection;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Patches;
 
 namespace Wasteland2AccessibilityMod.States
 {
@@ -91,6 +92,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
 
                 WorldMapProximityAlert.Reset();
+                WorldMapRadiationCloud_CheckDiscovery_Patch.Reset();
                 WorldMapNavigationManager.Reset();
 
                 ScreenReaderManager.SpeakInterrupt(
