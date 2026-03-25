@@ -74,6 +74,19 @@ namespace Wasteland2AccessibilityMod.States
             public string Details;
         }
 
+        // --- Combat Actions Menu (Tab key) ---
+        private bool browsingActions = false;
+        private int actionIndex = 0;
+        private List<CombatAction> actionList = new List<CombatAction>();
+
+        private class CombatAction
+        {
+            public string Label;
+            public string Status; // e.g. "3 AP", "unavailable"
+            public bool IsEnabled;
+            public System.Action Execute;
+        }
+
         public bool IsActive
         {
             get
@@ -138,6 +151,62 @@ namespace Wasteland2AccessibilityMod.States
                 if (Input.GetKeyDown(KeyCode.Escape))
                 {
                     ExitInitiativeBrowse();
+                    EventManager.ignoreNextBack = true;
+                    return true;
+                }
+
+                return true;
+            }
+
+            // Tab key: open/close combat actions menu
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+
+                if (browsingActions)
+                {
+                    ExitActionsBrowse();
+                }
+                else
+                {
+                    if (browsingInitiative) ExitInitiativeBrowse();
+                    OpenActionsMenu();
+                }
+                return true;
+            }
+
+            // While browsing actions menu
+            if (browsingActions)
+            {
+                InputSuppressor.ShouldSuppressUINavigation = true;
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+
+                if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    actionIndex = (actionIndex + 1) % actionList.Count;
+                    AnnounceCurrentAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    actionIndex--;
+                    if (actionIndex < 0) actionIndex = actionList.Count - 1;
+                    AnnounceCurrentAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    ExecuteCurrentAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    ExitActionsBrowse();
                     EventManager.ignoreNextBack = true;
                     return true;
                 }
@@ -263,6 +332,8 @@ namespace Wasteland2AccessibilityMod.States
         {
             browsingInitiative = false;
             initiativeList.Clear();
+            browsingActions = false;
+            actionList.Clear();
             cursorInitialized = false;
             combatMap = null;
             fullMap = null;
@@ -1067,6 +1138,240 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (string.IsNullOrEmpty(rawName)) return "Unknown";
             return UITextExtractor.CleanText(Language.Localize(rawName, false, false, string.Empty));
+        }
+
+        // =====================================================================
+        // Combat Actions Menu (Tab key)
+        // =====================================================================
+
+        private void OpenActionsMenu()
+        {
+            BuildActionList();
+
+            if (actionList.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No actions available");
+                return;
+            }
+
+            browsingActions = true;
+            actionIndex = 0;
+
+            // Announce with current actor context
+            PC currentPC = GetCurrentActor() as PC;
+            string header = "Combat actions";
+            if (currentPC != null)
+                header += ", " + currentPC.combatActionPointsRemaining + " AP remaining";
+            header += ", " + actionList.Count + " actions";
+
+            ScreenReaderManager.SpeakInterrupt(header + ". " + FormatAction(actionList[0]));
+        }
+
+        private void BuildActionList()
+        {
+            actionList.Clear();
+
+            var cm = MonoBehaviourSingleton<CombatManager>.GetInstance();
+            if (cm == null) return;
+            if (!cm.isPlayersTurn) return;
+
+            PC pc = cm.GetCurrentMob() as PC;
+            if (pc == null) return;
+
+            bool isThinking = pc.combatActionState == Mob.CombatActionState.THINKING
+                           || pc.combatActionState == Mob.CombatActionState.STARTED;
+
+            // --- Reload / Unjam ---
+            if (pc.IsJammed())
+            {
+                int unjamAP = pc.stats.GetActionPointsToUnjam();
+                bool canUnjam = pc.CanUnjam() && isThinking;
+                actionList.Add(new CombatAction
+                {
+                    Label = "Unjam weapon",
+                    Status = unjamAP + " AP",
+                    IsEnabled = canUnjam,
+                    Execute = () =>
+                    {
+                        var evt = ObjectPool.Get<EventInfo_CommandUnjam>();
+                        evt.target = pc;
+                        MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+                    }
+                });
+            }
+            else
+            {
+                int reloadAP = pc.stats.GetActionPointsToReload();
+                bool canReload = pc.CanReload() && isThinking;
+                string ammoInfo = GetAmmoInfo(pc);
+                actionList.Add(new CombatAction
+                {
+                    Label = "Reload" + (string.IsNullOrEmpty(ammoInfo) ? "" : ", " + ammoInfo),
+                    Status = reloadAP + " AP",
+                    IsEnabled = canReload,
+                    Execute = () =>
+                    {
+                        var evt = ObjectPool.Get<EventInfo_CommandReload>();
+                        evt.mob = pc;
+                        MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+                    }
+                });
+            }
+
+            // --- Swap Weapons ---
+            {
+                string weaponInfo = GetSwapWeaponInfo(pc);
+                actionList.Add(new CombatAction
+                {
+                    Label = "Swap weapons" + (string.IsNullOrEmpty(weaponInfo) ? "" : ", " + weaponInfo),
+                    Status = "0 AP",
+                    IsEnabled = isThinking,
+                    Execute = () =>
+                    {
+                        MonoBehaviourSingleton<InputManager>.GetInstance().OnSwapWeaponsClicked(pc);
+                    }
+                });
+            }
+
+            // --- Crouch / Stand ---
+            {
+                bool isCrouching = pc.isCrouching;
+                int stanceAP = pc.stats.GetActionPointsToChangeStance();
+                bool canChangeStance = isThinking
+                    && pc.combatActionPointsRemaining >= stanceAP
+                    && !pc.IsInCover();
+                actionList.Add(new CombatAction
+                {
+                    Label = isCrouching ? "Stand up" : "Crouch",
+                    Status = stanceAP + " AP" + (pc.IsInCover() ? ", in cover" : ""),
+                    IsEnabled = canChangeStance,
+                    Execute = () =>
+                    {
+                        var evt = ObjectPool.Get<EventInfo_CommandChangeStance>();
+                        evt.pc = pc;
+                        evt.crouch = !pc.isCrouching;
+                        MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+                    }
+                });
+            }
+
+            // --- Ambush ---
+            {
+                int ambushAP = pc.stats.GetActionPointsToAmbush();
+                bool canAmbush = isThinking
+                    && pc.combatActionPointsRemaining >= ambushAP
+                    && !pc.IsOutOfAmmo()
+                    && !pc.IsJammed();
+                actionList.Add(new CombatAction
+                {
+                    Label = "Ambush",
+                    Status = ambushAP + " AP",
+                    IsEnabled = canAmbush,
+                    Execute = () =>
+                    {
+                        var evt = ObjectPool.Get<EventInfo_CommandAmbush>();
+                        evt.mob = pc;
+                        MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+                    }
+                });
+            }
+
+            // --- End Turn ---
+            {
+                actionList.Add(new CombatAction
+                {
+                    Label = "End turn",
+                    Status = pc.combatActionPointsRemaining + " AP remaining",
+                    IsEnabled = isThinking,
+                    Execute = () =>
+                    {
+                        MonoBehaviourSingleton<CombatManager>.GetInstance().EndCurrentTurn();
+                    }
+                });
+            }
+        }
+
+        private string GetAmmoInfo(PC pc)
+        {
+            try
+            {
+                var weapon = pc.pcStats.GetWeaponInstance() as ItemInstance_WeaponRanged;
+                if (weapon == null) return null;
+                int current = weapon.GetAmmoCount();
+                int clipSize = weapon.GetClipSize();
+                return current + " of " + clipSize;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private string GetSwapWeaponInfo(PC pc)
+        {
+            try
+            {
+                var secondary = pc.pcStats.GetSecondaryWeaponInstance();
+                if (secondary == null || secondary.template == null) return "no secondary weapon";
+                string name = Language.Localize(secondary.template.displayName, false, false, string.Empty);
+                return "to " + UITextExtractor.CleanText(name);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private string FormatAction(CombatAction action)
+        {
+            int position = actionList.IndexOf(action) + 1;
+            string result = position + " of " + actionList.Count + ". " + action.Label;
+
+            if (!string.IsNullOrEmpty(action.Status))
+                result += ", " + action.Status;
+
+            if (!action.IsEnabled)
+                result += ", unavailable";
+
+            return result;
+        }
+
+        private void AnnounceCurrentAction()
+        {
+            if (actionIndex < 0 || actionIndex >= actionList.Count) return;
+            ScreenReaderManager.SpeakInterrupt(FormatAction(actionList[actionIndex]));
+        }
+
+        private void ExecuteCurrentAction()
+        {
+            if (actionIndex < 0 || actionIndex >= actionList.Count) return;
+
+            var action = actionList[actionIndex];
+            if (!action.IsEnabled)
+            {
+                ScreenReaderManager.SpeakInterrupt(action.Label + ", unavailable");
+                return;
+            }
+
+            ScreenReaderManager.SpeakInterrupt(action.Label);
+            ExitActionsBrowse();
+
+            try
+            {
+                action.Execute();
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] Action execution error: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("Action failed");
+            }
+        }
+
+        private void ExitActionsBrowse()
+        {
+            browsingActions = false;
+            actionList.Clear();
+            ScreenReaderManager.SpeakInterrupt("Actions closed");
         }
 
         // =====================================================================
