@@ -88,6 +88,20 @@ namespace Wasteland2AccessibilityMod.States
         private int targetMenuTab = 0; // 0 = Actions, 1 = Info
         private Mob targetMob = null;
 
+        // --- Item Targeting Mode ---
+        private bool itemTargetingMode = false;
+        private ItemInstance_Usable pendingItem = null;
+        private PC pendingItemUser = null;
+
+        // --- Free Aim Targeting Mode ---
+        private bool freeAimMode = false;
+        private PC freeAimUser = null;
+
+        // --- Party Member Info ---
+        private bool browsingPartyInfo = false;
+        private List<string> partyInfoLines = new List<string>();
+        private int partyInfoIndex = 0;
+
         // --- Combat Log Viewer (L key) ---
         private bool browsingLog = false;
         private int logIndex = 0;
@@ -190,6 +204,9 @@ namespace Wasteland2AccessibilityMod.States
             {
                 InputSuppressor.ShouldSuppressGameInput = true;
                 InputSuppressor.ShouldSuppressButtonEvents = true;
+
+                if (itemTargetingMode) CancelItemTargeting();
+                if (freeAimMode) CancelFreeAim();
 
                 if (browsingActions)
                 {
@@ -322,6 +339,47 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // While browsing party member info
+            if (browsingPartyInfo)
+            {
+                InputSuppressor.ShouldSuppressUINavigation = true;
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+
+                if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    if (partyInfoLines.Count > 0)
+                    {
+                        partyInfoIndex = (partyInfoIndex + 1) % partyInfoLines.Count;
+                        ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    if (partyInfoLines.Count > 0)
+                    {
+                        partyInfoIndex--;
+                        if (partyInfoIndex < 0) partyInfoIndex = partyInfoLines.Count - 1;
+                        ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Return)
+                    || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    browsingPartyInfo = false;
+                    partyInfoLines.Clear();
+                    EventManager.ignoreNextBack = true;
+                    ScreenReaderManager.SpeakInterrupt("Info closed");
+                    return true;
+                }
+
+                return true;
+            }
+
             // While browsing combat log
             if (browsingLog)
             {
@@ -361,6 +419,60 @@ namespace Wasteland2AccessibilityMod.States
                 }
 
                 return true;
+            }
+
+            // --- Item targeting mode: move cursor to a mob and press Enter ---
+            if (itemTargetingMode)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    CancelItemTargeting();
+                    EventManager.ignoreNextBack = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    if (cursorInitialized)
+                    {
+                        Mob targetOnTile = FindAliveMobOnTile();
+                        if (targetOnTile != null)
+                        {
+                            ExecuteItemOnTarget(targetOnTile);
+                        }
+                        else
+                        {
+                            ScreenReaderManager.SpeakInterrupt("No character on this tile. Move to a character and press Enter, or Escape to cancel");
+                        }
+                    }
+                    SuppressInput();
+                    return true;
+                }
+
+                // Allow cursor movement while targeting - fall through to normal cursor handling
+            }
+
+            // --- Free aim targeting mode: move cursor and press Enter to shoot ---
+            if (freeAimMode)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    CancelFreeAim();
+                    EventManager.ignoreNextBack = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    if (cursorInitialized)
+                    {
+                        ExecuteFreeAimShot();
+                    }
+                    SuppressInput();
+                    return true;
+                }
+
+                // Allow cursor movement while targeting - fall through to normal cursor handling
             }
 
             // --- Preview cursor: always active ---
@@ -448,13 +560,22 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Enter: open target actions menu if cursor is on a hostile mob
+            // Enter: open target actions on hostile, or info screen on ally
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 Mob hostile = FindHostileOnTile();
                 if (hostile != null)
                 {
                     OpenTargetActionsMenu(hostile);
+                    SuppressInput();
+                    return true;
+                }
+
+                // Check for ally on tile - open info screen
+                PC allyOnTile = FindAllyOnTile();
+                if (allyOnTile != null)
+                {
+                    OpenPartyMemberInfo(allyOnTile);
                     SuppressInput();
                     return true;
                 }
@@ -517,6 +638,13 @@ namespace Wasteland2AccessibilityMod.States
             targetMenuTab = 0;
             targetMob = null;
             browsingLog = false;
+            itemTargetingMode = false;
+            pendingItem = null;
+            pendingItemUser = null;
+            freeAimMode = false;
+            freeAimUser = null;
+            browsingPartyInfo = false;
+            partyInfoLines.Clear();
             cursorInitialized = false;
             combatMap = null;
             fullMap = null;
@@ -1481,6 +1609,79 @@ namespace Wasteland2AccessibilityMod.States
                 });
             }
 
+            // --- Free Aim ---
+            {
+                bool hasRangedWeapon = pc.pcStats.GetWeaponInstance() is ItemInstance_WeaponRanged;
+                bool notJammed = !pc.IsJammed();
+                bool notOutOfAmmo = !pc.IsOutOfAmmo();
+                int attackAP = pc.GetActionPointsToAttack();
+                bool canFreeAim = isThinking && hasRangedWeapon && notJammed && notOutOfAmmo
+                    && pc.combatActionPointsRemaining >= attackAP;
+
+                if (hasRangedWeapon)
+                {
+                    var capturedPC = pc;
+                    actionList.Add(new CombatAction
+                    {
+                        Label = "Free aim",
+                        Status = attackAP + " AP",
+                        IsEnabled = canFreeAim,
+                        Execute = () =>
+                        {
+                            EnterFreeAim(capturedPC);
+                        }
+                    });
+                }
+            }
+
+            // --- Use Items ---
+            try
+            {
+                var usableItems = pc.inventory.GetUsableItems(true, true);
+                for (int i = 0; i < usableItems.Count; i++)
+                {
+                    var item = usableItems[i];
+                    if (item == null || item.template == null) continue;
+
+                    var usableTemplate = item.template as ItemTemplate_Usable;
+                    if (usableTemplate == null) continue;
+
+                    int itemAP = usableTemplate.actionPoints;
+                    bool canUse = isThinking
+                        && pc.combatActionPointsRemaining >= itemAP
+                        && usableTemplate.CanUse(pc);
+
+                    string itemName = UITextExtractor.CleanText(
+                        Language.Localize(item.template.displayName, false, false, string.Empty));
+
+                    int count = pc.inventory.CountInInventory(item);
+                    string label = "Use " + itemName;
+                    if (count > 1)
+                        label += ", " + count + " remaining";
+
+                    string status = itemAP + " AP";
+
+                    // Capture for closure
+                    var capturedItem = item;
+                    var capturedPC = pc;
+
+                    actionList.Add(new CombatAction
+                    {
+                        Label = label,
+                        Status = status,
+                        IsEnabled = canUse,
+                        Execute = () =>
+                        {
+                            EnterItemTargeting(capturedItem, capturedPC);
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] Error building item list: {ex.Message}");
+            }
+
             // --- End Turn ---
             {
                 actionList.Add(new CombatAction
@@ -1577,6 +1778,322 @@ namespace Wasteland2AccessibilityMod.States
             browsingActions = false;
             actionList.Clear();
             ScreenReaderManager.SpeakInterrupt("Actions closed");
+        }
+
+        // =====================================================================
+        // Item Targeting
+        // =====================================================================
+
+        private void EnterItemTargeting(ItemInstance_Usable item, PC user)
+        {
+            pendingItem = item;
+            pendingItemUser = user;
+            itemTargetingMode = true;
+
+            string itemName = UITextExtractor.CleanText(
+                Language.Localize(item.template.displayName, false, false, string.Empty));
+            ScreenReaderManager.SpeakInterrupt("Select a target for " + itemName
+                + ". Move to a character and press Enter, or Escape to cancel");
+        }
+
+        private void CancelItemTargeting()
+        {
+            itemTargetingMode = false;
+            pendingItem = null;
+            pendingItemUser = null;
+            UseASIManager.SetActiveASIName(null);
+            UseASIManager.SetActiveASIItem(null, null);
+            ScreenReaderManager.SpeakInterrupt("Item use cancelled");
+        }
+
+        private Mob FindAliveMobOnTile()
+        {
+            var mobs = FindMobsOnTile();
+            foreach (var mob in mobs)
+            {
+                if (mob.mobState != Mob.MobState.DEAD)
+                    return mob;
+            }
+            return null;
+        }
+
+        private void ExecuteItemOnTarget(Mob target)
+        {
+            if (pendingItem == null || pendingItemUser == null)
+            {
+                CancelItemTargeting();
+                return;
+            }
+
+            string itemName = UITextExtractor.CleanText(
+                Language.Localize(pendingItem.template.displayName, false, false, string.Empty));
+            string targetName = GetMobName(target);
+
+            try
+            {
+                // Set up UseASIManager state for the item use flow
+                UseASIManager.SetActiveASIItem(pendingItem, pendingItemUser);
+
+                var targetable = target as Targetable;
+                if (targetable != null)
+                {
+                    InputManager.PrepareUseItemActions(
+                        target.transform,
+                        target.GetComponent<Drama>(),
+                        targetable,
+                        false);
+                }
+
+                ScreenReaderManager.SpeakInterrupt("Using " + itemName + " on " + targetName);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] Item use error: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("Failed to use " + itemName);
+            }
+
+            itemTargetingMode = false;
+            pendingItem = null;
+            pendingItemUser = null;
+        }
+
+        // =====================================================================
+        // Party Member Info
+        // =====================================================================
+
+        private PC FindAllyOnTile()
+        {
+            var mobs = FindMobsOnTile();
+            foreach (var mob in mobs)
+            {
+                if (mob is PC && mob.mobState != Mob.MobState.DEAD)
+                    return mob as PC;
+            }
+            return null;
+        }
+
+        private void OpenPartyMemberInfo(PC pc)
+        {
+            partyInfoLines.Clear();
+            BuildPartyMemberInfo(pc);
+
+            if (partyInfoLines.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt(GetMobName(pc) + ", no info available");
+                return;
+            }
+
+            browsingPartyInfo = true;
+            partyInfoIndex = 0;
+
+            string header = GetMobName(pc) + " info, " + partyInfoLines.Count + " items";
+            ScreenReaderManager.SpeakInterrupt(header + ". " + FormatPartyInfoLine(0));
+        }
+
+        private void BuildPartyMemberInfo(PC pc)
+        {
+            // --- Health ---
+            float maxHP = pc.stats.GetMaxHP();
+            float hpPercent = maxHP > 0 ? (pc.curHP / maxHP) * 100f : 0;
+            string healthLine = "Health: " + Mathf.RoundToInt(pc.curHP) + " of " + Mathf.RoundToInt(maxHP)
+                + " (" + hpPercent.ToString("F0") + "%)";
+
+            if (pc.healthState != PC.HealthState.Healthy)
+                healthLine += ", " + pc.healthState.ToString();
+
+            partyInfoLines.Add(healthLine);
+
+            // --- CON / AP ---
+            partyInfoLines.Add("AP: " + pc.combatActionPointsRemaining + " of " + pc.stats.GetActionPoints());
+
+            // --- Stance / Cover ---
+            var stanceParts = new List<string>();
+            if (pc.isCrouching) stanceParts.Add("crouching");
+            if (pc.inCover)
+                stanceParts.Add(pc.coverType == Cover.CoverType.Tall ? "tall cover" : "short cover");
+            if (pc.isHidden) stanceParts.Add("hidden");
+            if (stanceParts.Count > 0)
+                partyInfoLines.Add("Stance: " + string.Join(", ", stanceParts.ToArray()));
+
+            // --- Weapon ---
+            try
+            {
+                var weaponInstance = pc.pcStats.GetWeaponInstance();
+                if (weaponInstance != null && weaponInstance.template != null)
+                {
+                    string weaponName = UITextExtractor.CleanText(
+                        Language.Localize(weaponInstance.template.displayName, false, false, string.Empty));
+                    string weaponLine = "Weapon: " + weaponName;
+
+                    var ranged = weaponInstance as ItemInstance_WeaponRanged;
+                    if (ranged != null)
+                    {
+                        weaponLine += ", " + ranged.GetAmmoCount() + " of " + ranged.GetClipSize() + " ammo";
+                        if (pc.IsJammed()) weaponLine += ", jammed";
+                    }
+                    partyInfoLines.Add(weaponLine);
+                }
+            }
+            catch { }
+
+            // --- Status Effects ---
+            try
+            {
+                if (pc.template != null && pc.template.statusEffects != null
+                    && pc.template.statusEffects.Count > 0)
+                {
+                    foreach (var effect in pc.template.statusEffects)
+                    {
+                        if (effect == null) continue;
+
+                        string effectName = null;
+                        if (!string.IsNullOrEmpty(effect.displayName))
+                        {
+                            effectName = UITextExtractor.CleanText(
+                                Language.Localize(effect.displayName, false, false, string.Empty));
+                        }
+                        else
+                        {
+                            effectName = effect.name;
+                        }
+
+                        if (string.IsNullOrEmpty(effectName)) continue;
+
+                        string effectLine = effectName;
+                        if (effect.positiveEffect)
+                            effectLine += " (buff)";
+                        else
+                            effectLine += " (debuff)";
+
+                        if (effect.expires || effect.expiresByTurns)
+                        {
+                            if (effect.expiresByTurns && effect.turnsRemaining > 0)
+                                effectLine += ", " + effect.turnsRemaining + " turns";
+                        }
+
+                        partyInfoLines.Add(effectLine);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private string FormatPartyInfoLine(int index)
+        {
+            if (index < 0 || index >= partyInfoLines.Count) return "";
+            return (index + 1) + " of " + partyInfoLines.Count + ". " + partyInfoLines[index];
+        }
+
+        // =====================================================================
+        // Free Aim Targeting
+        // =====================================================================
+
+        private void EnterFreeAim(PC user)
+        {
+            freeAimUser = user;
+            freeAimMode = true;
+            ScreenReaderManager.SpeakInterrupt("Free aim. Move cursor to a target and press Enter to shoot, or Escape to cancel");
+        }
+
+        private void CancelFreeAim()
+        {
+            freeAimMode = false;
+            freeAimUser = null;
+            ScreenReaderManager.SpeakInterrupt("Free aim cancelled");
+        }
+
+        private void ExecuteFreeAimShot()
+        {
+            if (freeAimUser == null)
+            {
+                CancelFreeAim();
+                return;
+            }
+
+            try
+            {
+                // Check AP
+                int attackAP = freeAimUser.GetActionPointsToAttack();
+                if (freeAimUser.combatActionPointsRemaining < attackAP)
+                {
+                    ScreenReaderManager.SpeakInterrupt("Not enough AP");
+                    return;
+                }
+
+                // Look for a targetable on the tile: mob, destructible object, or explosive
+                Targetable target = FindTargetableOnTile();
+
+                var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+                inputManager.ClearSelectedSquare();
+
+                var evt = ObjectPool.Get<EventInfo_CommandAttack>();
+                evt.pc = freeAimUser;
+                evt.coneAttack = false;
+                evt.specialAttack = false;
+                evt.isAOESetup = false;
+
+                if (target != null)
+                {
+                    evt.target = target;
+                    evt.intentionalMiss = false;
+                    string targetName = GetTargetableName(target);
+                    ScreenReaderManager.SpeakInterrupt("Shooting at " + targetName);
+                }
+                else
+                {
+                    // Intentional miss - shoot at cursor position
+                    evt.target = null;
+                    evt.intentionalMiss = true;
+                    evt.aimDirection = cursorPosition;
+                    evt.meleeMoveToRange = false;
+                    ScreenReaderManager.SpeakInterrupt("Shooting at ground");
+                }
+
+                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+
+                if (MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat)
+                {
+                    MonoBehaviourSingleton<CombatAStar>.GetInstance().ClearPath();
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] Free aim error: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("Shot failed");
+            }
+
+            freeAimMode = false;
+            freeAimUser = null;
+        }
+
+        /// <summary>
+        /// Finds any Targetable on the current cursor tile: alive mobs, destructible objects,
+        /// or explosives. Returns null if nothing targetable is found.
+        /// </summary>
+        private Targetable FindTargetableOnTile()
+        {
+            // First check for mobs (alive ones)
+            Mob mob = FindAliveMobOnTile();
+            if (mob != null) return mob;
+
+            // Then check for TargetableObjects (destructibles, explosives, etc.)
+            float tileRadius = 0.75f;
+            Collider[] colliders = Physics.OverlapSphere(cursorPosition, tileRadius);
+            foreach (var collider in colliders)
+            {
+                if (collider == null || collider.gameObject == null) continue;
+
+                var targetableObj = collider.GetComponent<TargetableObject>();
+                if (targetableObj != null && targetableObj.hasHitpoints)
+                    return targetableObj;
+
+                // Also check parent
+                targetableObj = collider.GetComponentInParent<TargetableObject>();
+                if (targetableObj != null && targetableObj.hasHitpoints)
+                    return targetableObj;
+            }
+
+            return null;
         }
 
         // =====================================================================
