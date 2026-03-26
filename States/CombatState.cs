@@ -79,6 +79,12 @@ namespace Wasteland2AccessibilityMod.States
         private int actionIndex = 0;
         private List<CombatAction> actionList = new List<CombatAction>();
 
+        // --- Target Actions Menu (Enter on enemy) ---
+        private bool browsingTargetActions = false;
+        private int targetActionIndex = 0;
+        private List<CombatAction> targetActionList = new List<CombatAction>();
+        private Mob targetMob = null;
+
         private class CombatAction
         {
             public string Label;
@@ -214,6 +220,44 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // While browsing target actions menu (Enter on enemy)
+            if (browsingTargetActions)
+            {
+                InputSuppressor.ShouldSuppressUINavigation = true;
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+
+                if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    targetActionIndex = (targetActionIndex + 1) % targetActionList.Count;
+                    AnnounceCurrentTargetAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    targetActionIndex--;
+                    if (targetActionIndex < 0) targetActionIndex = targetActionList.Count - 1;
+                    AnnounceCurrentTargetAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    ExecuteCurrentTargetAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    ExitTargetActionsBrowse();
+                    EventManager.ignoreNextBack = true;
+                    return true;
+                }
+
+                return true;
+            }
+
             // --- Preview cursor: always active ---
             if (!cursorInitialized) return false;
 
@@ -283,6 +327,18 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
+            // Enter: open target actions menu if cursor is on a hostile mob
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                Mob hostile = FindHostileOnTile();
+                if (hostile != null)
+                {
+                    OpenTargetActionsMenu(hostile);
+                    SuppressInput();
+                    return true;
+                }
+            }
+
             // Backslash: detailed tile announcement
             // (Space is "End Turn" in combat, so we avoid it)
             if (Input.GetKeyDown(KeyCode.Backslash))
@@ -334,6 +390,9 @@ namespace Wasteland2AccessibilityMod.States
             initiativeList.Clear();
             browsingActions = false;
             actionList.Clear();
+            browsingTargetActions = false;
+            targetActionList.Clear();
+            targetMob = null;
             cursorInitialized = false;
             combatMap = null;
             fullMap = null;
@@ -1372,6 +1431,542 @@ namespace Wasteland2AccessibilityMod.States
             browsingActions = false;
             actionList.Clear();
             ScreenReaderManager.SpeakInterrupt("Actions closed");
+        }
+
+        // =====================================================================
+        // Target Actions Menu (Enter on enemy)
+        // =====================================================================
+
+        /// <summary>
+        /// Finds the first hostile mob on the current cursor tile.
+        /// </summary>
+        private Mob FindHostileOnTile()
+        {
+            var mobs = FindMobsOnTile();
+            foreach (var mob in mobs)
+            {
+                if (mob.HatesParty() && mob.mobState != Mob.MobState.DEAD)
+                    return mob;
+            }
+            return null;
+        }
+
+        private void OpenTargetActionsMenu(Mob target)
+        {
+            targetMob = target;
+            BuildTargetActionList();
+
+            if (targetActionList.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No actions available against " + GetMobName(target));
+                return;
+            }
+
+            browsingTargetActions = true;
+            targetActionIndex = 0;
+
+            string header = GetMobName(target);
+            string ammoStats = GetAmmoStats(GetCurrentActor() as PC);
+            if (!string.IsNullOrEmpty(ammoStats))
+                header += ", " + ammoStats;
+            ScreenReaderManager.SpeakInterrupt(header + ", " + targetActionList.Count
+                + " actions. " + FormatTargetAction(targetActionList[0]));
+        }
+
+        /// <summary>
+        /// Returns loaded ammo stats: penetration, expansion, and armor reduction.
+        /// </summary>
+        private string GetAmmoStats(PC pc)
+        {
+            if (pc == null) return null;
+            try
+            {
+                var ranged = pc.pcStats.GetWeaponInstance() as ItemInstance_WeaponRanged;
+                if (ranged == null || ranged.currentAmmo == null) return null;
+
+                var ammoTemplate = ranged.currentAmmo.template as ItemTemplate_Ammo;
+                if (ammoTemplate == null) return null;
+
+                var parts = new List<string>();
+                if (ammoTemplate.penetration > 0)
+                    parts.Add(ammoTemplate.penetration + " penetration");
+                if (ammoTemplate.expansionMultiplier > 1f)
+                    parts.Add("x" + (ammoTemplate.expansionMultiplier * 100f).ToString("0") + "% expansion");
+                if (ammoTemplate.armorReduction > 0)
+                    parts.Add(ammoTemplate.armorReduction + " armor reduction");
+
+                if (parts.Count == 0) return null;
+                return string.Join(", ", parts.ToArray());
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private void BuildTargetActionList()
+        {
+            targetActionList.Clear();
+
+            var cm = MonoBehaviourSingleton<CombatManager>.GetInstance();
+            if (cm == null || !cm.isPlayersTurn) return;
+
+            PC pc = cm.GetCurrentMob() as PC;
+            if (pc == null || targetMob == null) return;
+
+            // Capture target as a local variable for lambda closures.
+            // targetMob (field) gets cleared by ExitTargetActionsBrowse() before Execute() runs.
+            Mob capturedTarget = targetMob;
+
+            bool isThinking = pc.combatActionState == Mob.CombatActionState.THINKING
+                           || pc.combatActionState == Mob.CombatActionState.STARTED;
+
+            // Get weapon info
+            var weaponInstance = pc.pcStats.GetWeaponInstance();
+            var weaponTemplate = pc.pcStats.GetWeaponTemplate();
+            string weaponName = GetWeaponDisplayName(weaponInstance);
+            bool isMelee = weaponTemplate is ItemTemplate_WeaponMelee;
+            bool isAoe = weaponTemplate is ItemTemplate_WeaponAoe;
+            var rangedInstance = weaponInstance as ItemInstance_WeaponRanged;
+            var rangedTemplate = weaponTemplate as ItemTemplate_WeaponRanged;
+
+            // Compute shared attack info
+            string attackStatus = GetAttackStatus(pc, targetMob, isThinking);
+
+            if (isMelee || isAoe)
+            {
+                // Melee / AOE: single attack option
+                int apCost = pc.GetActionPointsToAttack();
+                string info = BuildAttackInfo(pc, targetMob, apCost);
+                bool canAttack = isThinking && CanPerformAttack(pc, targetMob);
+
+                targetActionList.Add(new CombatAction
+                {
+                    Label = "Attack with " + weaponName + ", " + info,
+                    Status = attackStatus,
+                    IsEnabled = canAttack,
+                    Execute = () => ExecuteAttack(pc, capturedTarget, -1)
+                });
+            }
+            else if (rangedInstance != null && rangedTemplate != null)
+            {
+                // Ranged: one entry per firing mode
+                int savedMode = rangedInstance.firingModeIndex;
+
+                for (int i = 0; i < rangedTemplate.firingModeInfos.Length; i++)
+                {
+                    var modeInfo = rangedTemplate.firingModeInfos[i];
+                    int modeIndex = i;
+
+                    // Temporarily set firing mode to calculate correct values
+                    rangedInstance.firingModeIndex = i;
+                    string modeName = rangedInstance.GetFiringModeName();
+
+                    // Friendly name
+                    string friendlyMode;
+                    if (modeName == ItemTemplate_WeaponRanged.FiringModeInfo.Single)
+                        friendlyMode = "Single shot";
+                    else if (modeName == ItemTemplate_WeaponRanged.FiringModeInfo.Burst)
+                        friendlyMode = "Burst";
+                    else
+                        friendlyMode = "Full auto";
+
+                    int apCost = rangedInstance.GetActionPointsToAttack();
+                    int ammoCost = rangedInstance.GetAmmoCostToFire();
+                    int penalty = rangedInstance.GetFiringModePenalty();
+
+                    // Compute hit% with this firing mode's penalty applied
+                    string info = BuildAttackInfoForMode(pc, targetMob, apCost, ammoCost, penalty);
+
+                    bool hasEnoughAP = isThinking && pc.combatActionPointsRemaining >= apCost;
+                    bool hasEnoughAmmo = rangedInstance.GetAmmoCount() >= ammoCost;
+                    bool canDo = hasEnoughAP && hasEnoughAmmo && !pc.IsJammed()
+                                 && !pc.IsOutOfAmmo() && CanPerformAttack(pc, targetMob);
+
+                    string status = apCost + " AP, " + ammoCost + " ammo";
+                    if (!hasEnoughAP)
+                        status += ", not enough AP";
+                    else if (!hasEnoughAmmo)
+                        status += ", not enough ammo";
+                    else if (pc.IsJammed())
+                        status += ", jammed";
+
+                    targetActionList.Add(new CombatAction
+                    {
+                        Label = friendlyMode + " with " + weaponName + ", " + info,
+                        Status = status,
+                        IsEnabled = canDo,
+                        Execute = () => ExecuteAttack(pc, capturedTarget, modeIndex)
+                    });
+                }
+
+                // Restore original firing mode
+                rangedInstance.firingModeIndex = savedMode;
+            }
+
+            // --- Precision Strike (body part targeting) ---
+            AddPrecisionStrikeOptions(pc, capturedTarget, isThinking, weaponName);
+        }
+
+        private void AddPrecisionStrikeOptions(PC pc, Mob target, bool isThinking, string weaponName)
+        {
+            if (!MonoBehaviourSingleton<PcSpecialAttackManager>.HasInstance()) return;
+            var psManager = MonoBehaviourSingleton<PcSpecialAttackManager>.GetInstance();
+
+            // Target must be an NPC for precision strikes
+            NPC npc = target as NPC;
+            NPCTemplate npcTemplate = (npc != null) ? npc.npcTemplate : null;
+
+            // Weapon must not be jammed/empty
+            var rangedInstance = pc.pcStats.GetWeaponInstance() as ItemInstance_WeaponRanged;
+            bool weaponReady = rangedInstance != null && !rangedInstance.IsJammed() && !rangedInstance.IsEmpty();
+
+            // Base attack AP (precision uses single shot mode)
+            int baseAttackAP = pc.pcStats.GetActionPointsToAttack();
+
+            var zones = new[]
+            {
+                new { Zone = PrecisionShotZone.Head,  Name = "Head",  Effect = "stuns or confuses" },
+                new { Zone = PrecisionShotZone.Torso, Name = "Torso", Effect = "reduces armor" },
+                new { Zone = PrecisionShotZone.Arms,  Name = "Arms",  Effect = "reduces chance to hit" },
+                new { Zone = PrecisionShotZone.Legs,  Name = "Legs",  Effect = "reduces speed" },
+            };
+
+            foreach (var z in zones)
+            {
+                PrecisionShotSpecialAttack precisionAttack = psManager.GetPrecisionShotSpecialAttack(z.Zone);
+                if (precisionAttack == null) continue;
+
+                // Check NPC allows this zone
+                bool zoneAllowed = NPCTemplate.GetAllowedPrecisionShot(npcTemplate, z.Zone);
+
+                // Check weapon type compatibility
+                bool weaponCompatible = precisionAttack.IsUsable(pc);
+
+                // Use NPC-specific label override if available
+                string zoneName = z.Name;
+                if (npcTemplate != null)
+                {
+                    string labelOverride = NPCTemplate.GetPrecisionShotLabelOverride(npcTemplate, z.Zone);
+                    if (!string.IsNullOrEmpty(labelOverride))
+                        zoneName = UITextExtractor.CleanText(
+                            Language.Localize(labelOverride, false, false, string.Empty));
+                }
+
+                // Calculate AP cost: base attack + precision bonus AP
+                int totalAP = baseAttackAP + precisionAttack.actionPoints;
+
+                // Calculate hit% with precision modifiers
+                string hitInfo = "";
+                try
+                {
+                    // Temporarily set special attack to get correct hit calculation
+                    var savedSpecial = pc.specialAttack;
+                    var savedUseSpecial = pc.useSpecialAttack;
+                    pc.specialAttack = precisionAttack;
+                    pc.useSpecialAttack = true;
+
+                    // Force single shot for calculation
+                    int savedMode = -1;
+                    if (rangedInstance != null)
+                    {
+                        savedMode = rangedInstance.firingModeIndex;
+                        rangedInstance.firingModeIndex = 0;
+                    }
+
+                    int hitChance = Mathf.Min(pc.GetChanceToHit(target, false), 100);
+                    int critChance = Mathf.Min(pc.GetChanceToCriticalHit(target), 100);
+
+                    // Restore
+                    pc.specialAttack = savedSpecial;
+                    pc.useSpecialAttack = savedUseSpecial;
+                    if (rangedInstance != null && savedMode >= 0)
+                        rangedInstance.firingModeIndex = savedMode;
+
+                    hitInfo = hitChance + "% hit";
+                    if (critChance > 0)
+                        hitInfo += ", " + critChance + "% crit";
+                }
+                catch
+                {
+                    hitInfo = "hit unknown";
+                }
+
+                // Damage multiplier info
+                string dmgInfo = "";
+                if (precisionAttack.damageMultiplier != 1f)
+                    dmgInfo = ", " + precisionAttack.damageMultiplier.ToString("0.##") + "x damage";
+
+                bool canDo = isThinking && weaponReady && zoneAllowed && weaponCompatible
+                    && pc.combatActionPointsRemaining >= totalAP && npc != null;
+
+                string status = totalAP + " AP";
+                if (!weaponCompatible)
+                    status += ", weapon incompatible";
+                else if (!zoneAllowed)
+                    status += ", zone blocked";
+                else if (pc.combatActionPointsRemaining < totalAP)
+                    status += ", not enough AP";
+
+                PrecisionShotZone capturedZone = z.Zone;
+                targetActionList.Add(new CombatAction
+                {
+                    Label = "Precision strike " + zoneName + ", " + hitInfo + dmgInfo
+                            + ", " + z.Effect,
+                    Status = status,
+                    IsEnabled = canDo,
+                    Execute = () => ExecutePrecisionStrike(pc, npc, capturedZone)
+                });
+            }
+        }
+
+        private void ExecutePrecisionStrike(PC pc, NPC target, PrecisionShotZone zone)
+        {
+            try
+            {
+                var psManager = MonoBehaviourSingleton<PcSpecialAttackManager>.GetInstance();
+                PrecisionShotSpecialAttack precisionAttack = psManager.GetPrecisionShotSpecialAttack(zone);
+
+                // Force single shot mode
+                var rangedInstance = pc.pcStats.GetWeaponInstance() as ItemInstance_WeaponRanged;
+                if (rangedInstance != null)
+                {
+                    rangedInstance.ChangeFiringMode(0);
+                    pc.pcStats.RecalculateAllStats();
+                }
+
+                // Match the game's PrecisionAttackMenu.OnBodyPartClicked flow exactly:
+                // Only set specialAttack (the object), NOT useSpecialAttack (the bool).
+                // The bool is set later by AIAction_Attack.Update() at the right time.
+                pc.specialAttack = precisionAttack;
+
+                var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+                inputManager.ClearSelectedSquare();
+
+                var evt = ObjectPool.Get<EventInfo_CommandAttack>();
+                evt.pc = pc;
+                evt.target = target;
+                evt.coneAttack = false;
+                evt.specialAttack = true;
+                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] ExecutePrecisionStrike error: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("Precision strike failed");
+            }
+        }
+
+        private string GetWeaponDisplayName(ItemInstance_Weapon weapon)
+        {
+            if (weapon == null || weapon.template == null) return "fists";
+            try
+            {
+                return UITextExtractor.CleanText(
+                    Language.Localize(weapon.template.displayName, false, false, string.Empty));
+            }
+            catch
+            {
+                return "weapon";
+            }
+        }
+
+        private string GetAttackStatus(PC pc, Mob target, bool isThinking)
+        {
+            if (!isThinking) return "not your action";
+            if (pc.IsJammed()) return "weapon jammed";
+            if (pc.IsOutOfAmmo()) return "out of ammo";
+            return "";
+        }
+
+        private bool CanPerformAttack(PC pc, Mob target)
+        {
+            // Check if PC can attack this target (line of sight, range, faction)
+            try
+            {
+                return pc.CanAttack(target, true, false);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Build attack info string for melee/AOE weapons.
+        /// </summary>
+        private string BuildAttackInfo(PC pc, Mob target, int apCost)
+        {
+            var parts = new List<string>();
+            parts.Add(apCost + " AP");
+
+            try
+            {
+                int hitChance = Mathf.Min(pc.GetChanceToHit(target, false), 100);
+                parts.Add(hitChance + "% hit");
+
+                int critChance = Mathf.Min(pc.GetChanceToCriticalHit(target), 100);
+                if (critChance > 0)
+                    parts.Add(critChance + "% crit");
+
+                var weaponInstance = pc.pcStats.GetWeaponInstance();
+                if (weaponInstance != null)
+                {
+                    int minDmg = weaponInstance.GetMinDamage();
+                    int maxDmg = weaponInstance.GetMaxDamage();
+                    try
+                    {
+                        Targetable.DamageMitigation mit;
+                        minDmg = pc.CalculateDamage(target, pc.transform.position, minDmg,
+                            out mit, weaponInstance.template as ItemTemplate_Weapon);
+                        maxDmg = pc.CalculateDamage(target, pc.transform.position, maxDmg,
+                            out mit, weaponInstance.template as ItemTemplate_Weapon);
+                    }
+                    catch { }
+
+                    if (minDmg == maxDmg)
+                        parts.Add(minDmg + " damage");
+                    else
+                        parts.Add(minDmg + " to " + maxDmg + " damage");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] BuildAttackInfo error: {ex.Message}");
+            }
+
+            return string.Join(", ", parts.ToArray());
+        }
+
+        /// <summary>
+        /// Build attack info string for a specific ranged firing mode.
+        /// </summary>
+        private string BuildAttackInfoForMode(PC pc, Mob target, int apCost, int ammoCost, int modePenalty)
+        {
+            var parts = new List<string>();
+
+            try
+            {
+                // GetChanceToHit uses the current firingModeIndex internally via GetFiringModePenalty
+                int hitChance = Mathf.Min(pc.GetChanceToHit(target, false), 100);
+                parts.Add(hitChance + "% hit");
+
+                int critChance = Mathf.Min(pc.GetChanceToCriticalHit(target), 100);
+                if (critChance > 0)
+                    parts.Add(critChance + "% crit");
+
+                var weaponInstance = pc.pcStats.GetWeaponInstance();
+                if (weaponInstance != null)
+                {
+                    int minDmg = weaponInstance.GetMinDamage();
+                    int maxDmg = weaponInstance.GetMaxDamage();
+                    try
+                    {
+                        Targetable.DamageMitigation mit;
+                        minDmg = pc.CalculateDamage(target, pc.transform.position, minDmg,
+                            out mit, weaponInstance.template as ItemTemplate_Weapon);
+                        maxDmg = pc.CalculateDamage(target, pc.transform.position, maxDmg,
+                            out mit, weaponInstance.template as ItemTemplate_Weapon);
+                    }
+                    catch { }
+
+                    if (minDmg == maxDmg)
+                        parts.Add(minDmg + " damage");
+                    else
+                        parts.Add(minDmg + " to " + maxDmg + " damage");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] BuildAttackInfoForMode error: {ex.Message}");
+            }
+
+            return string.Join(", ", parts.ToArray());
+        }
+
+        private void ExecuteAttack(PC pc, Mob target, int firingModeIndex)
+        {
+            try
+            {
+                // Set firing mode if ranged
+                if (firingModeIndex >= 0)
+                {
+                    var rangedInstance = pc.pcStats.GetWeaponInstance() as ItemInstance_WeaponRanged;
+                    if (rangedInstance != null)
+                        rangedInstance.ChangeFiringMode(firingModeIndex);
+                }
+
+                // Match the game's AttackModePanel.OpenTargetMenuOrAttackPreSelected flow
+                var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+                inputManager.ClearSelectedSquare();
+                inputManager.attackTypeSelected = true;
+
+                var evt = ObjectPool.Get<EventInfo_CommandAttack>();
+                evt.pc = pc;
+                evt.target = target;
+                evt.coneAttack = false;
+                evt.specialAttack = false;
+                evt.isAOESetup = false;
+                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] ExecuteAttack error: {ex}");
+                ScreenReaderManager.SpeakInterrupt("Attack failed");
+            }
+        }
+
+        private string FormatTargetAction(CombatAction action)
+        {
+            int position = targetActionList.IndexOf(action) + 1;
+            string result = position + " of " + targetActionList.Count + ". " + action.Label;
+
+            if (!string.IsNullOrEmpty(action.Status))
+                result += ", " + action.Status;
+
+            if (!action.IsEnabled)
+                result += ", unavailable";
+
+            return result;
+        }
+
+        private void AnnounceCurrentTargetAction()
+        {
+            if (targetActionIndex < 0 || targetActionIndex >= targetActionList.Count) return;
+            ScreenReaderManager.SpeakInterrupt(FormatTargetAction(targetActionList[targetActionIndex]));
+        }
+
+        private void ExecuteCurrentTargetAction()
+        {
+            if (targetActionIndex < 0 || targetActionIndex >= targetActionList.Count) return;
+
+            var action = targetActionList[targetActionIndex];
+            if (!action.IsEnabled)
+            {
+                ScreenReaderManager.SpeakInterrupt(action.Label + ", unavailable");
+                return;
+            }
+
+            ScreenReaderManager.SpeakInterrupt(action.Label);
+            ExitTargetActionsBrowse();
+
+            try
+            {
+                action.Execute();
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] Target action execution error: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("Action failed");
+            }
+        }
+
+        private void ExitTargetActionsBrowse()
+        {
+            browsingTargetActions = false;
+            targetActionList.Clear();
+            targetMob = null;
+            ScreenReaderManager.SpeakInterrupt("Target menu closed");
         }
 
         // =====================================================================
