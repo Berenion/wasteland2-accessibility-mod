@@ -83,7 +83,14 @@ namespace Wasteland2AccessibilityMod.States
         private bool browsingTargetActions = false;
         private int targetActionIndex = 0;
         private List<CombatAction> targetActionList = new List<CombatAction>();
+        private List<string> targetInfoLines = new List<string>();
+        private int targetInfoIndex = 0;
+        private int targetMenuTab = 0; // 0 = Actions, 1 = Info
         private Mob targetMob = null;
+
+        // --- Combat Log Viewer (L key) ---
+        private bool browsingLog = false;
+        private int logIndex = 0;
 
         private class CombatAction
         {
@@ -151,6 +158,20 @@ namespace Wasteland2AccessibilityMod.States
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
                 {
                     CycleInitiativeBackward();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    if (initiativeIndex >= 0 && initiativeIndex < initiativeList.Count)
+                    {
+                        var entry = initiativeList[initiativeIndex];
+                        ExitInitiativeBrowse();
+                        if (entry.Mob != null && entry.Mob.transform != null)
+                        {
+                            JumpToCombatant(entry.Mob);
+                        }
+                    }
                     return true;
                 }
 
@@ -227,24 +248,67 @@ namespace Wasteland2AccessibilityMod.States
                 InputSuppressor.ShouldSuppressGameInput = true;
                 InputSuppressor.ShouldSuppressButtonEvents = true;
 
-                if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                // Left/Right: switch tabs
+                if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
                 {
-                    targetActionIndex = (targetActionIndex + 1) % targetActionList.Count;
-                    AnnounceCurrentTargetAction();
+                    targetMenuTab = 1 - targetMenuTab; // Toggle between 0 and 1
+                    if (targetMenuTab == 0)
+                    {
+                        targetActionIndex = 0;
+                        string header = "Actions, " + targetActionList.Count + " items";
+                        if (targetActionList.Count > 0)
+                            header += ". " + FormatTargetAction(targetActionList[0]);
+                        ScreenReaderManager.SpeakInterrupt(header);
+                    }
+                    else
+                    {
+                        targetInfoIndex = 0;
+                        string header = "Info, " + targetInfoLines.Count + " items";
+                        if (targetInfoLines.Count > 0)
+                            header += ". " + FormatInfoLine(0);
+                        ScreenReaderManager.SpeakInterrupt(header);
+                    }
                     return true;
                 }
 
-                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
+                // Up/Down: cycle within current tab
+                if (Input.GetKeyDown(KeyCode.DownArrow))
                 {
-                    targetActionIndex--;
-                    if (targetActionIndex < 0) targetActionIndex = targetActionList.Count - 1;
-                    AnnounceCurrentTargetAction();
+                    if (targetMenuTab == 0 && targetActionList.Count > 0)
+                    {
+                        targetActionIndex = (targetActionIndex + 1) % targetActionList.Count;
+                        AnnounceCurrentTargetAction();
+                    }
+                    else if (targetMenuTab == 1 && targetInfoLines.Count > 0)
+                    {
+                        targetInfoIndex = (targetInfoIndex + 1) % targetInfoLines.Count;
+                        ScreenReaderManager.SpeakInterrupt(FormatInfoLine(targetInfoIndex));
+                    }
                     return true;
                 }
 
+                if (Input.GetKeyDown(KeyCode.UpArrow))
+                {
+                    if (targetMenuTab == 0 && targetActionList.Count > 0)
+                    {
+                        targetActionIndex--;
+                        if (targetActionIndex < 0) targetActionIndex = targetActionList.Count - 1;
+                        AnnounceCurrentTargetAction();
+                    }
+                    else if (targetMenuTab == 1 && targetInfoLines.Count > 0)
+                    {
+                        targetInfoIndex--;
+                        if (targetInfoIndex < 0) targetInfoIndex = targetInfoLines.Count - 1;
+                        ScreenReaderManager.SpeakInterrupt(FormatInfoLine(targetInfoIndex));
+                    }
+                    return true;
+                }
+
+                // Enter: execute action (only on Actions tab)
                 if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
                 {
-                    ExecuteCurrentTargetAction();
+                    if (targetMenuTab == 0)
+                        ExecuteCurrentTargetAction();
                     return true;
                 }
 
@@ -252,6 +316,47 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     ExitTargetActionsBrowse();
                     EventManager.ignoreNextBack = true;
+                    return true;
+                }
+
+                return true;
+            }
+
+            // While browsing combat log
+            if (browsingLog)
+            {
+                InputSuppressor.ShouldSuppressUINavigation = true;
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+
+                var log = Patches.HUD_Controller_QueueTextDescription_Patch.CombatLog;
+
+                if (Input.GetKeyDown(KeyCode.DownArrow))
+                {
+                    if (log.Count > 0)
+                    {
+                        logIndex = (logIndex + 1) % log.Count;
+                        ScreenReaderManager.SpeakInterrupt(FormatLogEntry(log, logIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.UpArrow))
+                {
+                    if (log.Count > 0)
+                    {
+                        logIndex--;
+                        if (logIndex < 0) logIndex = log.Count - 1;
+                        ScreenReaderManager.SpeakInterrupt(FormatLogEntry(log, logIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.L))
+                {
+                    browsingLog = false;
+                    EventManager.ignoreNextBack = true;
+                    ScreenReaderManager.SpeakInterrupt("Log closed");
                     return true;
                 }
 
@@ -291,6 +396,14 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // L key: open combat log
+            if (Input.GetKeyDown(KeyCode.L))
+            {
+                OpenCombatLog();
+                SuppressInput();
+                return true;
+            }
+
             // Arrow key movement
             float currentTime = Time.time;
             bool canMove = (currentTime - lastMoveTime) >= MOVE_REPEAT_DELAY;
@@ -325,6 +438,14 @@ namespace Wasteland2AccessibilityMod.States
                     SuppressInput();
                     return true;
                 }
+            }
+
+            // Right bracket: move current actor to cursor position
+            if (Input.GetKeyDown(KeyCode.RightBracket))
+            {
+                MoveToCursor();
+                SuppressInput();
+                return true;
             }
 
             // Enter: open target actions menu if cursor is on a hostile mob
@@ -392,7 +513,10 @@ namespace Wasteland2AccessibilityMod.States
             actionList.Clear();
             browsingTargetActions = false;
             targetActionList.Clear();
+            targetInfoLines.Clear();
+            targetMenuTab = 0;
             targetMob = null;
+            browsingLog = false;
             cursorInitialized = false;
             combatMap = null;
             fullMap = null;
@@ -417,11 +541,17 @@ namespace Wasteland2AccessibilityMod.States
 
             Mob actor = GetCurrentActor();
 
-            // If the actor changed (new turn), jump cursor to them
+            // If the actor changed (new turn), jump cursor to them and announce
             if (actor != null && actor != lastTrackedActor)
             {
                 lastTrackedActor = actor;
                 InitializeCursorToMob(actor);
+
+                string turnName = GetMobName(actor);
+                if (actor is PC)
+                    ScreenReaderManager.SpeakInterrupt(turnName + "'s turn");
+                else
+                    ScreenReaderManager.Speak(turnName + "'s turn");
             }
 
             // Fallback: if cursor was never initialized, try current actor
@@ -734,13 +864,8 @@ namespace Wasteland2AccessibilityMod.States
                 parts.Add(FormatMobForTile(mob));
             }
 
-            // Tile occupant from the node itself (if not already found)
-            if (node != null && node.occupant != null && mobs.Count == 0)
-            {
-                string occupantName = GetTargetableName(node.occupant);
-                if (!string.IsNullOrEmpty(occupantName))
-                    parts.Add(occupantName);
-            }
+            // Note: node.occupant is not used — it can be stale after mobs move.
+            // FindMobsOnTile() above uses actual mob positions, which is always fresh.
 
             if (node != null)
             {
@@ -801,6 +926,13 @@ namespace Wasteland2AccessibilityMod.States
             var parts = new List<string>();
             string name = GetMobName(mob);
             parts.Add(name);
+
+            // Dead — short-circuit, no need for faction/HP/state
+            if (mob.mobState == Mob.MobState.DEAD)
+            {
+                parts.Add("dead");
+                return string.Join(" ", parts.ToArray());
+            }
 
             // Faction
             if (mob is PC)
@@ -943,11 +1075,16 @@ namespace Wasteland2AccessibilityMod.States
             foreach (var mob in cm.mobs)
             {
                 if (mob == null || mob.gameObject == null) continue;
-                if (!mob.gameObject.activeInHierarchy) continue;
-                if (mob.mobState == Mob.MobState.DEAD) continue;
+                // Dead mobs may be deactivated — still include them for tile announcements
+                if (!mob.gameObject.activeInHierarchy && mob.mobState != Mob.MobState.DEAD) continue;
 
-                if (IsOnCurrentTile(mob.transform.position))
-                    onTile.Add(mob);
+                // Dead mobs with deactivated GameObjects may have stale transforms
+                try
+                {
+                    if (IsOnCurrentTile(mob.transform.position))
+                        onTile.Add(mob);
+                }
+                catch { }
             }
 
             return onTile;
@@ -977,6 +1114,15 @@ namespace Wasteland2AccessibilityMod.States
                 if (mob == null || mob.gameObject == null) continue;
                 if (!mob.gameObject.activeInHierarchy) continue;
                 if (mob.mobState == Mob.MobState.DEAD) continue;
+                if (mob.isHidden) continue;
+
+                // NPCs must be visible (fog of war) and part of this combat
+                if (mob is NPC)
+                {
+                    NPC npc = mob as NPC;
+                    if (npc.waitToJoinCombat) continue;
+                    if (FOWSystem.instance != null && !npc.fowRenderer.isVisible) continue;
+                }
 
                 // Filter by category
                 bool isEnemy = mob.HatesParty();
@@ -1455,6 +1601,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             targetMob = target;
             BuildTargetActionList();
+            BuildTargetInfoLines(target);
 
             if (targetActionList.Count == 0)
             {
@@ -1464,13 +1611,15 @@ namespace Wasteland2AccessibilityMod.States
 
             browsingTargetActions = true;
             targetActionIndex = 0;
+            targetInfoIndex = 0;
+            targetMenuTab = 0; // Start on Actions tab
 
             string header = GetMobName(target);
             string ammoStats = GetAmmoStats(GetCurrentActor() as PC);
             if (!string.IsNullOrEmpty(ammoStats))
                 header += ", " + ammoStats;
-            ScreenReaderManager.SpeakInterrupt(header + ", " + targetActionList.Count
-                + " actions. " + FormatTargetAction(targetActionList[0]));
+            ScreenReaderManager.SpeakInterrupt(header + ", Actions tab, " + targetActionList.Count
+                + " actions, left or right for Info. " + FormatTargetAction(targetActionList[0]));
         }
 
         /// <summary>
@@ -1965,8 +2114,270 @@ namespace Wasteland2AccessibilityMod.States
         {
             browsingTargetActions = false;
             targetActionList.Clear();
+            targetInfoLines.Clear();
+            targetInfoIndex = 0;
+            targetMenuTab = 0;
             targetMob = null;
             ScreenReaderManager.SpeakInterrupt("Target menu closed");
+        }
+
+        private void BuildTargetInfoLines(Mob target)
+        {
+            targetInfoLines.Clear();
+            if (target == null) return;
+
+            try
+            {
+                // Name and type
+                string name = GetMobName(target);
+                string mobType = "";
+                if (target.template != null)
+                {
+                    var mt = target.template.mobType;
+                    if (mt == MobTemplate.MobType.Human) mobType = "human";
+                    else if (mt == MobTemplate.MobType.Animal) mobType = "animal";
+                    else if (mt == MobTemplate.MobType.Synth) mobType = "synth";
+                    else mobType = mt.ToString().ToLower();
+                }
+                string nameEntry = name;
+                if (!string.IsNullOrEmpty(mobType))
+                    nameEntry += ", " + mobType;
+                if (target is NPC && (target as NPC).isPartyFollower)
+                    nameEntry += ", party follower";
+                targetInfoLines.Add(nameEntry);
+
+                // HP
+                float maxHP = target.stats.GetMaxHP();
+                float curHP = Mathf.Max(target.curHP, 0f);
+                if (maxHP > 0)
+                {
+                    float pct = (curHP / maxHP) * 100f;
+                    targetInfoLines.Add("Health: " + curHP.ToString("F0") + " of "
+                        + maxHP.ToString("F0") + ", " + pct.ToString("F0") + "%");
+                }
+
+                // Armor and evasion
+                int armor = Mathf.Max(target.stats.GetArmor(), 0);
+                int evasion = Mathf.Clamp(target.stats.GetChanceToEvade(), 0, 100);
+                targetInfoLines.Add("Armor: " + armor);
+                targetInfoLines.Add("Evasion: " + evasion + "%");
+
+                // Conductive (takes extra electrical damage)
+                if (target.template is NPCTemplate)
+                {
+                    var npcTemplate = target.template as NPCTemplate;
+                    if (npcTemplate.conductive)
+                        targetInfoLines.Add("Conductive: takes extra electrical damage");
+                }
+
+                // Enemy weapon
+                var weaponTemplate = target.stats.GetWeaponTemplate();
+                if (weaponTemplate != null)
+                {
+                    string weapName = UITextExtractor.CleanText(
+                        Language.Localize(weaponTemplate.displayName, false, false, string.Empty));
+                    string rangeCategory = target.stats.GetAttackRangeString();
+                    targetInfoLines.Add("Weapon: " + weapName + ", " + weaponTemplate.minDamage
+                        + " to " + weaponTemplate.maxDamage + " damage, " + rangeCategory + " range");
+                }
+
+                // AP and initiative
+                int ap = target.stats.GetActionPoints();
+                targetInfoLines.Add("Action points: " + ap);
+                if (MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat)
+                    targetInfoLines.Add("AP remaining this turn: " + target.combatActionPointsRemaining);
+
+                float initiative = target.stats.GetActionRechargeRate();
+                targetInfoLines.Add("Combat initiative: " + initiative.ToString("F1"));
+
+                // Cover state
+                if (target.inCover)
+                {
+                    string coverType = target.coverType == Cover.CoverType.Tall ? "tall" : "short";
+                    targetInfoLines.Add("In " + coverType + " cover");
+                }
+
+                if (target.isCrouching)
+                    targetInfoLines.Add("Crouching");
+
+                // Distance from current actor
+                Mob actor = GetCurrentActor();
+                if (actor != null)
+                {
+                    float dist = Vector3.Distance(actor.transform.position, target.transform.position);
+                    targetInfoLines.Add("Distance: " + dist.ToString("F0") + " meters");
+                }
+
+                // Status effects
+                if (target.template != null && target.template.statusEffects != null)
+                {
+                    foreach (var effect in target.template.statusEffects)
+                    {
+                        if (effect == null) continue;
+                        string effectName = UITextExtractor.CleanText(
+                            Language.Localize(effect.displayName, false, false, string.Empty));
+                        if (string.IsNullOrEmpty(effectName)) continue;
+
+                        string effectLine = "Effect: " + effectName;
+                        if (effect.positiveEffect)
+                            effectLine += " (buff)";
+                        if (effect.turnsRemaining > 0)
+                            effectLine += ", " + effect.turnsRemaining + " turns remaining";
+                        targetInfoLines.Add(effectLine);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] BuildTargetInfoLines error: {ex.Message}");
+                if (targetInfoLines.Count == 0)
+                    targetInfoLines.Add("Info unavailable");
+            }
+        }
+
+        private string FormatInfoLine(int index)
+        {
+            if (index < 0 || index >= targetInfoLines.Count) return "";
+            return (index + 1) + " of " + targetInfoLines.Count + ". " + targetInfoLines[index];
+        }
+
+        // =====================================================================
+        // Combat Movement (Right Bracket)
+        // =====================================================================
+
+        private void MoveToCursor()
+        {
+            try
+            {
+                var cm = MonoBehaviourSingleton<CombatManager>.GetInstance();
+                if (cm == null || !cm.isPlayersTurn)
+                {
+                    ScreenReaderManager.SpeakInterrupt("Not your turn");
+                    return;
+                }
+
+                PC pc = cm.GetCurrentMob() as PC;
+                if (pc == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No active character");
+                    return;
+                }
+
+                if (pc.combatActionState != Mob.CombatActionState.THINKING)
+                {
+                    ScreenReaderManager.SpeakInterrupt("Character is busy");
+                    return;
+                }
+
+                if (pc.currentSquare == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("Cannot determine character position");
+                    return;
+                }
+
+                // Find the target node at cursor position
+                CombatAStarNode targetNode = GetNodeAtGridId(cursorGridId);
+                if (targetNode == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No valid tile at cursor");
+                    return;
+                }
+
+                // Check if already on this tile
+                if (pc.currentSquare == targetNode)
+                {
+                    ScreenReaderManager.SpeakInterrupt("Already here");
+                    return;
+                }
+
+                // Check if tile is occupied by another mob
+                if (targetNode.occupant != null && targetNode.occupant != pc)
+                {
+                    ScreenReaderManager.SpeakInterrupt("Tile is occupied");
+                    return;
+                }
+
+                var combatAStar = MonoBehaviourSingleton<CombatAStar>.GetInstance();
+                int standCost = pc.GetActionPointsToStand();
+                int availableAP = pc.combatActionPointsRemaining - standCost;
+
+                // Search for a path
+                var pathNodes = combatAStar.Search(
+                    pc.currentSquare, targetNode,
+                    true,   // useLadders
+                    true,   // limitActionPoints
+                    availableAP,
+                    pc.stats.GetCombatSpeed());
+
+                if (pathNodes == null || pathNodes.Count == 0)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No path available, not enough AP or blocked");
+                    return;
+                }
+
+                int pathCost = combatAStar.GetPathCost(pc.stats.GetCombatSpeed(), standCost);
+                if (pathCost <= 0)
+                {
+                    ScreenReaderManager.SpeakInterrupt("Cannot move there");
+                    return;
+                }
+
+                // Execute the move — match the game's InputManager flow exactly
+                MonoBehaviourSingleton<GlobalFxHandler>.GetInstance().Combat_OnMove();
+
+                var evt = ObjectPool.Get<EventInfo_CommandMove>();
+                evt.mob = pc;
+                evt.destination = targetNode.position;
+                evt.path = combatAStar.VectorSmoothPath();
+                evt.actionPointCost = pathCost;
+                evt.sprint = false;
+                evt.closeEnough = 0f;
+                evt.activateDelay = 0f;
+                evt.dontClearStack = false;
+                evt.isPlayerInput = true;
+                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+
+                combatAStar.ClearPath();
+                MonoBehaviourSingleton<CursorManager>.GetInstance().ClearCoverCursor();
+                MonoBehaviourSingleton<Game>.GetInstance().cameraController.FollowPC(pc);
+
+                int apAfter = pc.combatActionPointsRemaining - pathCost;
+                ScreenReaderManager.SpeakInterrupt("Moving, " + pathCost + " AP, " + apAfter + " remaining");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CombatState] MoveToCursor error: {ex.Message}");
+                ScreenReaderManager.SpeakInterrupt("Move failed");
+            }
+        }
+
+        // =====================================================================
+        // Combat Log Viewer (L key)
+        // =====================================================================
+
+        private void OpenCombatLog()
+        {
+            var log = Patches.HUD_Controller_QueueTextDescription_Patch.CombatLog;
+            if (log.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("Combat log is empty");
+                return;
+            }
+
+            browsingLog = true;
+            // Start at the most recent entry
+            logIndex = log.Count - 1;
+
+            ScreenReaderManager.SpeakInterrupt("Combat log, " + log.Count + " entries. "
+                + FormatLogEntry(log, logIndex));
+        }
+
+        private string FormatLogEntry(System.Collections.Generic.List<string> log, int index)
+        {
+            if (index < 0 || index >= log.Count) return "";
+            // Show position from newest: entry 1 is the most recent
+            int fromNewest = log.Count - index;
+            return fromNewest + " of " + log.Count + ". " + log[index];
         }
 
         // =====================================================================

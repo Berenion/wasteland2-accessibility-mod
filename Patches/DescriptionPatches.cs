@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using HarmonyLib;
 using MelonLoader;
 
@@ -9,6 +10,16 @@ namespace Wasteland2AccessibilityMod.Patches
     [HarmonyPatch(typeof(HUD_Controller), "QueueTextDescription")]
     public class HUD_Controller_QueueTextDescription_Patch
     {
+        private static readonly List<string> combatLog = new List<string>();
+        private const int MAX_LOG_ENTRIES = 100;
+
+        public static List<string> CombatLog => combatLog;
+
+        public static void ClearLog()
+        {
+            combatLog.Clear();
+        }
+
         [HarmonyPostfix]
         public static void Postfix(string newText, HUD_Controller.TextType textType, bool hasAudio)
         {
@@ -35,6 +46,11 @@ namespace Wasteland2AccessibilityMod.Patches
                     : $"{prefix}: {cleanedText}";
 
                 MelonLogger.Msg($"Description text ({textType}): {cleanedText}");
+
+                // Store in combat log for review
+                combatLog.Add(announcement);
+                if (combatLog.Count > MAX_LOG_ENTRIES)
+                    combatLog.RemoveAt(0);
 
                 // Use non-interrupting speech so we don't cut off previous descriptions
                 // that might be part of a multi-line examine
