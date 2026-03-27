@@ -118,6 +118,14 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (!cursorInitialized) return false;
 
+            // F1-F7: switch party members
+            if (HandlePartySwitch())
+            {
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
             SuppressInput();
 
             float currentTime = Time.time;
@@ -316,6 +324,33 @@ namespace Wasteland2AccessibilityMod.States
                 ScreenReaderManager.SpeakInterrupt(status);
                 if (cameraFollowsCursor)
                     SnapCameraToCursor();
+                return true;
+            }
+
+            // R: radio call
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                if (!MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat)
+                {
+                    MonoBehaviourSingleton<EventManager>.GetInstance().Publish(ObjectPool.Get<EventInfo_RadioAnswer>());
+                }
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
+            // I: open inventory
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                MonoBehaviourSingleton<GUIManager>.GetInstance().ToggleCharacterInfoMenu();
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
+            // Escape: open pause menu
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                MonoBehaviourSingleton<GUIManager>.GetInstance().OpenPauseMenu();
+                InputSuppressor.ShouldSuppressButtonEvents = true;
                 return true;
             }
 
@@ -746,6 +781,62 @@ namespace Wasteland2AccessibilityMod.States
         }
 
         // --- Input suppression ---
+
+        private bool HandlePartySwitch()
+        {
+            for (int i = 0; i < 7; i++)
+            {
+                KeyCode key = KeyCode.F1 + i;
+                if (Input.GetKeyDown(key))
+                {
+                    SelectPartyMember(i);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void SelectPartyMember(int index)
+        {
+            if (!MonoBehaviourSingleton<Game>.HasInstance() ||
+                !MonoBehaviourSingleton<InputManager>.HasInstance())
+                return;
+
+            var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+            if (party == null || party.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No party members");
+                return;
+            }
+
+            if (index >= party.Count)
+            {
+                ScreenReaderManager.SpeakInterrupt($"No party member at position {index + 1}, {party.Count} available");
+                return;
+            }
+
+            PC pc = party[index];
+            if (pc == null) return;
+
+            var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+
+            if (!Input.GetKey(KeyCode.LeftShift) && !Input.GetKey(KeyCode.RightShift) &&
+                !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl))
+            {
+                inputManager.ClearSelection();
+            }
+
+            PC previousLeader = MonoBehaviourSingleton<Game>.GetInstance().pcLeader;
+            pc.MakeLeader();
+            inputManager.AddToSelection(pc);
+            if (previousLeader != null)
+                previousLeader.ShowSelectedFX(previousLeader.isSelected);
+
+            string name = UITextExtractor.CleanText(
+                Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty));
+            ScreenReaderManager.SpeakInterrupt($"{name}, {index + 1} of {party.Count}");
+            MelonLogger.Msg($"[WorldMapState] Selected party member {index + 1}: {name}");
+        }
 
         private void SuppressInput()
         {

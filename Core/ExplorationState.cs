@@ -113,6 +113,13 @@ namespace Wasteland2AccessibilityMod.Core
                 return true;
             }
 
+            // F1-F7: switch party members
+            if (HandlePartySwitch())
+            {
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
             // Toggle group mode (G) - rebound from Space
             if (Input.GetKeyDown(KeyCode.G))
             {
@@ -135,6 +142,30 @@ namespace Wasteland2AccessibilityMod.Core
                 return true;
             }
 
+            // R: radio call
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(ObjectPool.Get<EventInfo_RadioAnswer>());
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
+            // I: open inventory
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                MonoBehaviourSingleton<GUIManager>.GetInstance().ToggleCharacterInfoMenu(true);
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
+            // Escape: open pause menu
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                MonoBehaviourSingleton<GUIManager>.GetInstance().OpenPauseMenu();
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
             return false;
         }
 
@@ -146,6 +177,70 @@ namespace Wasteland2AccessibilityMod.Core
         public void OnDeactivated()
         {
             // No special deactivation behavior needed
+        }
+
+        private static bool HandlePartySwitch()
+        {
+            for (int i = 0; i < 7; i++)
+            {
+                KeyCode key = KeyCode.F1 + i;
+                if (Input.GetKeyDown(key))
+                {
+                    SelectPartyMember(i);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static void SelectPartyMember(int index)
+        {
+            if (!MonoBehaviourSingleton<Game>.HasInstance() ||
+                !MonoBehaviourSingleton<InputManager>.HasInstance())
+                return;
+
+            var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+            if (party == null || party.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No party members");
+                return;
+            }
+
+            if (index >= party.Count)
+            {
+                ScreenReaderManager.SpeakInterrupt($"No party member at position {index + 1}, {party.Count} available");
+                return;
+            }
+
+            PC pc = party[index];
+            if (pc == null) return;
+
+            var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+
+            // Mirror the game's native Select Player handling from InputManager.OnButtonDown
+            bool wasSelected = pc.isSelected;
+            if (!Input.GetKey(KeyCode.LeftShift) && !Input.GetKey(KeyCode.RightShift) &&
+                !Input.GetKey(KeyCode.LeftControl) && !Input.GetKey(KeyCode.RightControl))
+            {
+                inputManager.ClearSelection();
+            }
+
+            PC previousLeader = MonoBehaviourSingleton<Game>.GetInstance().pcLeader;
+            pc.MakeLeader();
+            inputManager.AddToSelection(pc);
+            if (previousLeader != null)
+                previousLeader.ShowSelectedFX(previousLeader.isSelected);
+
+            // If already selected, center camera on them
+            if (wasSelected && MonoBehaviourSingleton<HUD_Controller>.HasInstance())
+            {
+                MonoBehaviourSingleton<HUD_Controller>.GetInstance().PartyMemberCenterCamera(pc, true);
+            }
+
+            string name = UITextExtractor.CleanText(
+                Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty));
+            ScreenReaderManager.SpeakInterrupt($"{name}, {index + 1} of {party.Count}");
+            MelonLogger.Msg($"[ExplorationState] Selected party member {index + 1}: {name}");
         }
 
         private static void InteractWithSelected()

@@ -608,6 +608,27 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // I: open inventory (only on player's turn)
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                if (MonoBehaviourSingleton<CombatManager>.GetInstance().isPlayersTurn)
+                {
+                    MonoBehaviourSingleton<GUIManager>.GetInstance().ToggleCharacterInfoMenu(true);
+                }
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
+            // Escape: open pause menu (when not in any browsing mode)
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                MonoBehaviourSingleton<GUIManager>.GetInstance().OpenPauseMenu();
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
             // Suppress arrow keys even during repeat delay
             if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.DownArrow) ||
                 Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.RightArrow))
