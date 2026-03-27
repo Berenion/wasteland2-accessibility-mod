@@ -225,12 +225,14 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             // --- Normal cursor mode ---
+            // Suppress game input and button events so mapped keys (X=Swap Weapons,
+            // Tab=Select Next Mob, etc.) don't fire their game actions
+            InputSuppressor.ShouldSuppressGameInput = true;
+            InputSuppressor.ShouldSuppressButtonEvents = true;
 
             // Tab key: open actions menu (skills + items)
             if (Input.GetKeyDown(KeyCode.Tab))
             {
-                InputSuppressor.ShouldSuppressGameInput = true;
-                InputSuppressor.ShouldSuppressButtonEvents = true;
                 OpenActionsMenu();
                 return true;
             }
@@ -275,6 +277,16 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.Space))
             {
                 AnnounceCurrentTile(detailed: true);
+                return true;
+            }
+
+            // X key: examine the first examinable object on the tile
+            if (Input.GetKeyDown(KeyCode.X))
+            {
+                // Suppress hover/gamepad interactable announcements so they don't
+                // interrupt the examine description text
+                Patches.NavigationState.lastKeyboardNavigationTime = Time.time;
+                ExamineObjectOnTile();
                 return true;
             }
 
@@ -856,6 +868,83 @@ namespace Wasteland2AccessibilityMod.States
             return "Object";
         }
 
+        // --- Examine ---
+
+        private void ExamineObjectOnTile()
+        {
+            var interactables = FindInteractablesOnTile();
+            var mobs = FindMobsOnTile();
+
+            // Check interactables for examinable objects
+            foreach (var nexus in interactables)
+            {
+                if (nexus == null) continue;
+
+                // Try Drama.ExamineDrama for objects with SkillObject_Examine
+                if (nexus.drama != null)
+                {
+                    var skobEx = nexus.drama.GetComponent<SkillObject_Examine>();
+                    if (skobEx != null && !skobEx.hidden)
+                    {
+                        PC pc = GetPartyLeader();
+                        if (pc == null) continue;
+
+                        string name = GetInteractableName(nexus) ?? "Object";
+
+                        // Check if ExamineDrama would succeed (dry run) before committing
+                        if (Drama.ExamineDrama(nexus.drama, pc, dontExecute: true))
+                        {
+                            MelonLogger.Msg($"[MapCursorState] Examining: {name}");
+                            ScreenReaderManager.SpeakInterrupt("Examining " + name);
+                            Drama.ExamineDrama(nexus.drama, pc, dontExecute: false);
+                            return;
+                        }
+                    }
+                }
+
+                // Fallback for no-Drama examine objects
+                if (nexus.skobExamine != null && !nexus.skobExamine.hidden &&
+                    nexus.drama == null &&
+                    nexus.skobExamine.difficulty == SkillLevelCategory.None)
+                {
+                    string name = GetInteractableName(nexus) ?? "Object";
+                    MelonLogger.Msg($"[MapCursorState] Examining (description): {name}");
+                    ScreenReaderManager.SpeakInterrupt("Examining " + name);
+
+                    if (MonoBehaviourSingleton<InputManager>.HasInstance())
+                    {
+                        MonoBehaviourSingleton<InputManager>.GetInstance().CheckExamineDrama(nexus.transform);
+                    }
+                    return;
+                }
+            }
+
+            // Check NPCs on tile
+            foreach (var mob in mobs)
+            {
+                if (mob is NPC)
+                {
+                    var drama = mob.GetComponent<Drama>();
+                    if (drama != null)
+                    {
+                        PC pc = GetPartyLeader();
+                        if (pc == null) continue;
+
+                        if (Drama.ExamineDrama(drama, pc, dontExecute: true))
+                        {
+                            string name = GetMobName(mob);
+                            MelonLogger.Msg($"[MapCursorState] Examining NPC: {name}");
+                            ScreenReaderManager.SpeakInterrupt("Examining " + name);
+                            Drama.ExamineDrama(drama, pc, dontExecute: false);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            ScreenReaderManager.SpeakInterrupt("Nothing to examine");
+        }
+
         // --- Context Menu ---
 
         private void OpenContextMenu()
@@ -937,6 +1026,21 @@ namespace Wasteland2AccessibilityMod.States
                             ASIName = kvp.Key
                         });
                     }
+                }
+            }
+
+            // Add Examine option for objects with SkillObject_Examine and a Drama handler
+            if (target.drama != null)
+            {
+                var skobEx = target.drama.GetComponent<SkillObject_Examine>();
+                if (skobEx != null && !skobEx.hidden &&
+                    Drama.ExamineDrama(target.drama, GetPartyLeader(), dontExecute: true))
+                {
+                    contextMenuOptions.Add(new ContextMenuOption
+                    {
+                        DisplayName = "Examine",
+                        ASIName = "examine"
+                    });
                 }
             }
 
@@ -1067,18 +1171,30 @@ namespace Wasteland2AccessibilityMod.States
 
             string name = GetInteractableName(target) ?? "Object";
 
-            // Handle no-Drama examine objects (difficulty None) via CheckExamineDrama
-            // These are simple description objects with no skill requirement
-            if (asiName == "examine" && target.skobExamine != null &&
-                target.drama == null &&
-                target.skobExamine.difficulty == SkillLevelCategory.None)
+            // Handle examine action — use Drama.ExamineDrama for Drama objects,
+            // CheckExamineDrama for no-Drama description objects
+            if (asiName == "examine")
             {
-                MelonLogger.Msg($"[MapCursorState] Examining (no difficulty): {name}");
-                ScreenReaderManager.SpeakInterrupt("Examining " + name);
-
-                if (MonoBehaviourSingleton<InputManager>.HasInstance())
+                if (target.drama != null)
                 {
-                    MonoBehaviourSingleton<InputManager>.GetInstance().CheckExamineDrama(target.transform);
+                    MelonLogger.Msg($"[MapCursorState] Examining: {name}");
+                    ScreenReaderManager.SpeakInterrupt("Examining " + name);
+                    Drama.ExamineDrama(target.drama, pc, dontExecute: false);
+                }
+                else if (target.skobExamine != null &&
+                    target.skobExamine.difficulty == SkillLevelCategory.None)
+                {
+                    MelonLogger.Msg($"[MapCursorState] Examining (description): {name}");
+                    ScreenReaderManager.SpeakInterrupt("Examining " + name);
+
+                    if (MonoBehaviourSingleton<InputManager>.HasInstance())
+                    {
+                        MonoBehaviourSingleton<InputManager>.GetInstance().CheckExamineDrama(target.transform);
+                    }
+                }
+                else
+                {
+                    ScreenReaderManager.SpeakInterrupt("Cannot examine " + name);
                 }
                 return;
             }
