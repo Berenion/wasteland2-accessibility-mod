@@ -667,8 +667,21 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
 
-                // Sort by name to match UIGrid's sorted order
-                children.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.Ordinal));
+                // Sort by save time descending (newest first)
+                var saveTimeField = typeof(SaveGameListEntry).GetField("saveTime",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+                children.Sort((a, b) =>
+                {
+                    var entryA = a.GetComponent<SaveGameListEntry>();
+                    var entryB = b.GetComponent<SaveGameListEntry>();
+                    if (entryA != null && entryB != null && saveTimeField != null)
+                    {
+                        var timeA = (DateTime)saveTimeField.GetValue(entryA);
+                        var timeB = (DateTime)saveTimeField.GetValue(entryB);
+                        return DateTime.Compare(timeB, timeA); // descending
+                    }
+                    return string.Compare(a.name, b.name, StringComparison.Ordinal);
+                });
 
                 foreach (var child in children)
                 {
