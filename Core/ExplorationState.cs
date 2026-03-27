@@ -142,6 +142,14 @@ namespace Wasteland2AccessibilityMod.Core
                 return true;
             }
 
+            // Backspace: stop party movement
+            if (Input.GetKeyDown(KeyCode.Backspace))
+            {
+                StopPartyMovement();
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
             // R: radio call
             if (Input.GetKeyDown(KeyCode.R))
             {
@@ -177,6 +185,32 @@ namespace Wasteland2AccessibilityMod.Core
         public void OnDeactivated()
         {
             // No special deactivation behavior needed
+        }
+
+        private static void StopPartyMovement()
+        {
+            if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
+
+            var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+            if (party == null) return;
+
+            bool anyStopped = false;
+            for (int i = 0; i < party.Count; i++)
+            {
+                PC pc = party[i];
+                if (pc != null && pc.navMeshAgent != null && pc.navMeshAgent.enabled && pc.navMeshAgent.hasPath)
+                {
+                    pc.navMeshAgent.Stop();
+                    pc.navMeshAgent.ResetPath();
+                    anyStopped = true;
+                }
+            }
+
+            if (anyStopped)
+            {
+                ScreenReaderManager.SpeakInterrupt("Party stopped");
+                MelonLogger.Msg("[ExplorationState] Stopped party movement");
+            }
         }
 
         private static bool HandlePartySwitch()
