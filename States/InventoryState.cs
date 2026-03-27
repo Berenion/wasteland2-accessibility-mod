@@ -47,6 +47,8 @@ namespace Wasteland2AccessibilityMod.States
         private NavigationZone suspendedZone;
         private int suspendedIndex = -1;
         private bool hasSuspendedState = false;
+        private bool suspendedWasCharacterInfo = false;
+        private bool suspendedWasPopupInventory = false;
 
         // Item info browser mode
         private bool isInfoBrowsing = false;
@@ -169,6 +171,18 @@ namespace Wasteland2AccessibilityMod.States
             DetectContext();
 
             // Restore suspended state if returning from an overlay (e.g. context menu)
+            // But discard it if the context changed (e.g. was character info, now loot popup)
+            if (hasSuspendedState && suspendedWasCharacterInfo != isCharacterInfoMenu)
+            {
+                MelonLogger.Msg($"[InventoryState] Context changed (charInfo: {suspendedWasCharacterInfo}->{isCharacterInfoMenu}, popup: {suspendedWasPopupInventory}->{isPopupInventoryMenu}), discarding suspended state");
+                hasSuspendedState = false;
+            }
+            if (hasSuspendedState && suspendedWasPopupInventory != isPopupInventoryMenu)
+            {
+                MelonLogger.Msg($"[InventoryState] Context changed (charInfo: {suspendedWasCharacterInfo}->{isCharacterInfoMenu}, popup: {suspendedWasPopupInventory}->{isPopupInventoryMenu}), discarding suspended state");
+                hasSuspendedState = false;
+            }
+
             if (hasSuspendedState)
             {
                 hasSuspendedState = false;
@@ -213,6 +227,8 @@ namespace Wasteland2AccessibilityMod.States
             suspendedZone = currentZone;
             suspendedIndex = currentIndex;
             hasSuspendedState = true;
+            suspendedWasCharacterInfo = isCharacterInfoMenu;
+            suspendedWasPopupInventory = isPopupInventoryMenu;
 
             IsManagedNavigation = false;
             lastAnnouncedText = null;
