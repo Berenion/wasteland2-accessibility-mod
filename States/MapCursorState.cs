@@ -49,11 +49,29 @@ namespace Wasteland2AccessibilityMod.States
         // Layer masks for floor detection raycasting
         private static int floorLayerMask = -1;
 
+        // --- Actions Menu (Tab key) ---
+        private bool browsingActions = false;
+        private int actionIndex = 0;
+        private List<ExplorationAction> actionList = new List<ExplorationAction>();
+
+        // --- Party Member Info ---
+        private bool browsingPartyInfo = false;
+        private List<string> partyInfoLines = new List<string>();
+        private int partyInfoIndex = 0;
+
         // Context menu option
         private struct ContextMenuOption
         {
             public string DisplayName;
             public string ASIName; // null = "Poked" (normal interact), "move" = move to
+        }
+
+        private class ExplorationAction
+        {
+            public string Label;
+            public string Status;
+            public bool IsEnabled;
+            public System.Action Execute;
         }
 
         // Skill ASI to display name mapping
@@ -123,6 +141,83 @@ namespace Wasteland2AccessibilityMod.States
                 if (!cursorInitialized) return false;
             }
 
+            // --- Party info browsing ---
+            if (browsingPartyInfo)
+            {
+                InputSuppressor.ShouldSuppressUINavigation = true;
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+
+                if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    if (partyInfoLines.Count > 0)
+                    {
+                        partyInfoIndex = (partyInfoIndex + 1) % partyInfoLines.Count;
+                        ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    if (partyInfoLines.Count > 0)
+                    {
+                        partyInfoIndex--;
+                        if (partyInfoIndex < 0) partyInfoIndex = partyInfoLines.Count - 1;
+                        ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Return)
+                    || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    browsingPartyInfo = false;
+                    partyInfoLines.Clear();
+                    ScreenReaderManager.SpeakInterrupt("Info closed");
+                    return true;
+                }
+
+                return true;
+            }
+
+            // --- Actions menu browsing (Tab) ---
+            if (browsingActions)
+            {
+                InputSuppressor.ShouldSuppressUINavigation = true;
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+
+                if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    actionIndex = (actionIndex + 1) % actionList.Count;
+                    AnnounceCurrentAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    actionIndex--;
+                    if (actionIndex < 0) actionIndex = actionList.Count - 1;
+                    AnnounceCurrentAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    ExecuteCurrentAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Tab))
+                {
+                    ExitActionsBrowse();
+                    return true;
+                }
+
+                return true;
+            }
+
             // --- Context menu mode ---
             if (contextMenuActive)
             {
@@ -130,6 +225,15 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             // --- Normal cursor mode ---
+
+            // Tab key: open actions menu (skills + items)
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                OpenActionsMenu();
+                return true;
+            }
 
             // Arrow key movement - grid-aligned cardinal directions
             float currentTime = Time.time;
@@ -174,9 +278,17 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Enter to open context menu for objects on tile
+            // Enter: check for party members first (info screen), then interactables
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
+                PC allyOnTile = FindPCOnTile();
+                if (allyOnTile != null)
+                {
+                    OpenPartyMemberInfo(allyOnTile);
+                    SuppressInput();
+                    return true;
+                }
+
                 OpenContextMenu();
                 return true;
             }
@@ -232,6 +344,10 @@ namespace Wasteland2AccessibilityMod.States
 
         public void OnDeactivated()
         {
+            browsingActions = false;
+            actionList.Clear();
+            browsingPartyInfo = false;
+            partyInfoLines.Clear();
             MelonLogger.Msg("[MapCursorState] Deactivated");
         }
 
@@ -1272,6 +1388,273 @@ namespace Wasteland2AccessibilityMod.States
                 current = current.parent;
             }
             return null;
+        }
+
+        // --- Actions Menu (Tab key) ---
+
+        private void OpenActionsMenu()
+        {
+            BuildExplorationActionList();
+
+            if (actionList.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No actions available");
+                return;
+            }
+
+            browsingActions = true;
+            actionIndex = 0;
+
+            PC pc = GetPartyLeader();
+            string header = "Actions";
+            if (pc != null)
+                header += " for " + GetPCDisplayName(pc);
+            header += ", " + actionList.Count + " items";
+
+            ScreenReaderManager.SpeakInterrupt(header + ". " + FormatAction(actionList[0]));
+        }
+
+        private void BuildExplorationActionList()
+        {
+            actionList.Clear();
+
+            PC pc = GetPartyLeader();
+            if (pc == null) return;
+
+            // --- Trained Skills ---
+            try
+            {
+                foreach (string skillName in UseASIManager.SkillASIs)
+                {
+                    if (pc.pcStats.GetSkillLevel(skillName) <= 0) continue;
+
+                    string displayName;
+                    if (!SKILL_DISPLAY_NAMES.TryGetValue(skillName, out displayName))
+                        displayName = skillName;
+
+                    // Try to get skill level for status
+                    int level = pc.pcStats.GetSkillLevel(skillName);
+                    string capturedSkillName = skillName;
+
+                    actionList.Add(new ExplorationAction
+                    {
+                        Label = displayName,
+                        Status = "level " + level,
+                        IsEnabled = true,
+                        Execute = () =>
+                        {
+                            UseASIManager.SetActiveASIName(capturedSkillName);
+                            ScreenReaderManager.SpeakInterrupt(displayName + " active. Target an object with Enter");
+                            MelonLogger.Msg("[MapCursorState] Skill activated: " + capturedSkillName);
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("[MapCursorState] Error building skill list: " + ex.Message);
+            }
+
+            // --- Usable Items ---
+            try
+            {
+                var usableItems = pc.inventory.GetUsableItems(true, true);
+                for (int i = 0; i < usableItems.Count; i++)
+                {
+                    var item = usableItems[i];
+                    if (item == null || item.template == null) continue;
+
+                    var usableTemplate = item.template as ItemTemplate_Usable;
+                    if (usableTemplate == null) continue;
+                    if (!usableTemplate.CanUse(pc)) continue;
+
+                    string itemName = UITextExtractor.CleanText(
+                        Language.Localize(item.template.displayName, false, false, string.Empty));
+
+                    int count = pc.inventory.CountInInventory(item);
+                    string label = "Use " + itemName;
+                    if (count > 1)
+                        label += ", " + count + " remaining";
+
+                    var capturedItem = item;
+                    var capturedPC = pc;
+
+                    actionList.Add(new ExplorationAction
+                    {
+                        Label = label,
+                        Status = "item",
+                        IsEnabled = true,
+                        Execute = () =>
+                        {
+                            UseASIManager.SetActiveASIItem(capturedItem, capturedPC);
+                            UseASIManager.SetActiveASIName("useItem");
+                            ScreenReaderManager.SpeakInterrupt(itemName + " ready. Target with Enter");
+                            MelonLogger.Msg("[MapCursorState] Item activated: " + itemName);
+                        }
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("[MapCursorState] Error building item list: " + ex.Message);
+            }
+        }
+
+        private string FormatAction(ExplorationAction action)
+        {
+            int position = actionList.IndexOf(action) + 1;
+            string result = position + " of " + actionList.Count + ". " + action.Label;
+
+            if (!string.IsNullOrEmpty(action.Status))
+                result += ", " + action.Status;
+
+            if (!action.IsEnabled)
+                result += ", unavailable";
+
+            return result;
+        }
+
+        private void AnnounceCurrentAction()
+        {
+            if (actionIndex < 0 || actionIndex >= actionList.Count) return;
+            ScreenReaderManager.SpeakInterrupt(FormatAction(actionList[actionIndex]));
+        }
+
+        private void ExecuteCurrentAction()
+        {
+            if (actionIndex < 0 || actionIndex >= actionList.Count) return;
+
+            var action = actionList[actionIndex];
+            if (!action.IsEnabled)
+            {
+                ScreenReaderManager.SpeakInterrupt(action.Label + ", unavailable");
+                return;
+            }
+
+            ExitActionsBrowse();
+
+            try
+            {
+                action.Execute();
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("[MapCursorState] Action execution error: " + ex.Message);
+                ScreenReaderManager.SpeakInterrupt("Action failed");
+            }
+        }
+
+        private void ExitActionsBrowse()
+        {
+            browsingActions = false;
+            actionList.Clear();
+            ScreenReaderManager.SpeakInterrupt("Actions closed");
+        }
+
+        // --- Party Member Info ---
+
+        private PC FindPCOnTile()
+        {
+            var mobs = FindMobsOnTile();
+            foreach (var mob in mobs)
+            {
+                if (mob is PC && mob.mobState != Mob.MobState.DEAD)
+                    return mob as PC;
+            }
+            return null;
+        }
+
+        private void OpenPartyMemberInfo(PC pc)
+        {
+            partyInfoLines.Clear();
+            BuildPartyMemberInfo(pc);
+
+            if (partyInfoLines.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt(GetMobName(pc) + ", no info available");
+                return;
+            }
+
+            browsingPartyInfo = true;
+            partyInfoIndex = 0;
+
+            string header = GetMobName(pc) + " info, " + partyInfoLines.Count + " items";
+            ScreenReaderManager.SpeakInterrupt(header + ". " + FormatPartyInfoLine(0));
+        }
+
+        private void BuildPartyMemberInfo(PC pc)
+        {
+            // --- Health ---
+            float maxHP = pc.stats.GetMaxHP();
+            float hpPercent = maxHP > 0 ? (pc.curHP / maxHP) * 100f : 0;
+            string healthLine = "Health: " + Mathf.RoundToInt(pc.curHP) + " of " + Mathf.RoundToInt(maxHP)
+                + " (" + hpPercent.ToString("F0") + "%)";
+
+            if (pc.healthState != PC.HealthState.Healthy)
+                healthLine += ", " + pc.healthState.ToString();
+
+            partyInfoLines.Add(healthLine);
+
+            // --- Weapon ---
+            try
+            {
+                var weaponInstance = pc.pcStats.GetWeaponInstance();
+                if (weaponInstance != null && weaponInstance.template != null)
+                {
+                    string weaponName = UITextExtractor.CleanText(
+                        Language.Localize(weaponInstance.template.displayName, false, false, string.Empty));
+                    string weaponLine = "Weapon: " + weaponName;
+
+                    var ranged = weaponInstance as ItemInstance_WeaponRanged;
+                    if (ranged != null)
+                    {
+                        weaponLine += ", " + ranged.GetAmmoCount() + " of " + ranged.GetClipSize() + " ammo";
+                    }
+                    partyInfoLines.Add(weaponLine);
+                }
+            }
+            catch { }
+
+            // --- Status Effects ---
+            try
+            {
+                if (pc.template != null && pc.template.statusEffects != null
+                    && pc.template.statusEffects.Count > 0)
+                {
+                    foreach (var effect in pc.template.statusEffects)
+                    {
+                        if (effect == null) continue;
+
+                        string effectName = null;
+                        if (!string.IsNullOrEmpty(effect.displayName))
+                        {
+                            effectName = UITextExtractor.CleanText(
+                                Language.Localize(effect.displayName, false, false, string.Empty));
+                        }
+                        else
+                        {
+                            effectName = effect.name;
+                        }
+
+                        if (string.IsNullOrEmpty(effectName)) continue;
+
+                        string effectLine = effectName;
+                        if (effect.positiveEffect)
+                            effectLine += " (buff)";
+                        else
+                            effectLine += " (debuff)";
+
+                        partyInfoLines.Add(effectLine);
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private string FormatPartyInfoLine(int index)
+        {
+            if (index < 0 || index >= partyInfoLines.Count) return "";
+            return (index + 1) + " of " + partyInfoLines.Count + ". " + partyInfoLines[index];
         }
 
         // --- Helpers ---
