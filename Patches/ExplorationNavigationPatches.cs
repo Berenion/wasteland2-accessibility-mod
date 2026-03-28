@@ -78,7 +78,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 if (MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat) return;
 
                 // Suppress hover announcements if keyboard navigation was used recently
-                float timeSinceKeyboardNav = Time.time - NavigationState.lastKeyboardNavigationTime;
+                float timeSinceKeyboardNav = Time.unscaledTime - NavigationState.lastKeyboardNavigationTime;
                 if (timeSinceKeyboardNav < NavigationState.KEYBOARD_NAVIGATION_SUPPRESS_HOVER)
                 {
                     return; // Don't announce hovers while user is navigating with keyboard
@@ -145,7 +145,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 if (MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat) return;
 
                 // Suppress gamepad announcements if keyboard navigation was used recently
-                float timeSinceKeyboardNav = Time.time - NavigationState.lastKeyboardNavigationTime;
+                float timeSinceKeyboardNav = Time.unscaledTime - NavigationState.lastKeyboardNavigationTime;
                 if (timeSinceKeyboardNav < NavigationState.KEYBOARD_NAVIGATION_SUPPRESS_HOVER)
                 {
                     return; // Don't announce gamepad focus while user is navigating with keyboard
