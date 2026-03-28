@@ -598,6 +598,13 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // K: toggle tile announcement order (coordinates first vs object names first)
+            if (Input.GetKeyDown(KeyCode.K))
+            {
+                ModConfig.ToggleObjectNamesFirst();
+                return true;
+            }
+
             // Semicolon: toggle camera follow
             // (F is "Headshot/Precision Shot" in combat, so we avoid it)
             if (Input.GetKeyDown(KeyCode.Semicolon))
@@ -1004,13 +1011,25 @@ namespace Wasteland2AccessibilityMod.States
             string coords = (int)cursorGridId.x + ", " + (int)cursorGridId.z;
             if (cursorGridId.y > 0)
                 coords += ", floor " + ((int)cursorGridId.y + 1);
-            parts.Add(coords);
 
             // Occupants on this tile
             var mobs = FindMobsOnTile();
+            var mobParts = new List<string>();
             foreach (var mob in mobs)
             {
-                parts.Add(FormatMobForTile(mob));
+                mobParts.Add(FormatMobForTile(mob));
+            }
+
+            // Add coords and occupants in configured order
+            if (ModConfig.ObjectNamesFirst && mobParts.Count > 0)
+            {
+                parts.AddRange(mobParts);
+                parts.Add(coords);
+            }
+            else
+            {
+                parts.Add(coords);
+                parts.AddRange(mobParts);
             }
 
             // Note: node.occupant is not used — it can be stale after mobs move.
