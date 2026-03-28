@@ -78,7 +78,7 @@ namespace Wasteland2AccessibilityMod.Core
             // PageDown = next interactable
             if (Input.GetKeyDown(KeyCode.PageDown))
             {
-                NavigationState.lastKeyboardNavigationTime = Time.time;
+                NavigationState.lastKeyboardNavigationTime = Time.unscaledTime;
                 NavigationManager.CycleNext();
                 return true;
             }
@@ -86,7 +86,7 @@ namespace Wasteland2AccessibilityMod.Core
             // PageUp = previous interactable
             if (Input.GetKeyDown(KeyCode.PageUp))
             {
-                NavigationState.lastKeyboardNavigationTime = Time.time;
+                NavigationState.lastKeyboardNavigationTime = Time.unscaledTime;
                 NavigationManager.CyclePrevious();
                 return true;
             }
@@ -94,7 +94,7 @@ namespace Wasteland2AccessibilityMod.Core
             // Repeat last announcement (\)
             if (Input.GetKeyDown(KeyCode.Backslash))
             {
-                NavigationState.lastKeyboardNavigationTime = Time.time;
+                NavigationState.lastKeyboardNavigationTime = Time.unscaledTime;
                 NavigationManager.RepeatLastAnnouncement();
                 return true;
             }
@@ -103,6 +103,13 @@ namespace Wasteland2AccessibilityMod.Core
             if (Input.GetKeyDown(KeyCode.Equals))
             {
                 ModConfig.ToggleClockPositions();
+                return true;
+            }
+
+            // Toggle tile announcement order (K)
+            if (Input.GetKeyDown(KeyCode.K))
+            {
+                ModConfig.ToggleObjectNamesFirst();
                 return true;
             }
 
@@ -135,9 +142,10 @@ namespace Wasteland2AccessibilityMod.Core
                 return true;
             }
 
-            // Block Space from triggering "Toggle Group Mode" via EventManager
+            // Space: tactical pause (also suppresses game's "Toggle Group Mode")
             if (Input.GetKeyDown(KeyCode.Space))
             {
+                TacticalPauseManager.TogglePause();
                 InputSuppressor.ShouldSuppressButtonEvents = true;
                 return true;
             }
@@ -184,7 +192,9 @@ namespace Wasteland2AccessibilityMod.Core
 
         public void OnDeactivated()
         {
-            // No special deactivation behavior needed
+            // Auto-resume tactical pause when leaving exploration
+            // (entering menus, combat, conversations, etc.)
+            TacticalPauseManager.ForceResumeIfPaused();
         }
 
         private static void StopPartyMovement()
