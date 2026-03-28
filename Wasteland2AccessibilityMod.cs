@@ -31,6 +31,7 @@ namespace Wasteland2AccessibilityMod
             MelonLogger.Msg("  = - Toggle direction format");
             MelonLogger.Msg("  ' - Announce party scrap");
             MelonLogger.Msg("  PgUp/PgDn - Cycle categories");
+            MelonLogger.Msg("  Space - Tactical pause (freeze enemies)");
             MelonLogger.Msg("  F10 - Toggle camera lock");
             MelonLogger.Msg("  M - Toggle map cursor mode");
             MelonLogger.Msg("  G - Toggle group mode");
