@@ -135,6 +135,13 @@ namespace Wasteland2AccessibilityMod.States
 
         public bool HandleInput()
         {
+            // Tactical pause toggle (Space) - handle before anything else
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                TacticalPauseManager.TogglePause();
+                return true;
+            }
+
             if (!cursorInitialized)
             {
                 InitializeToPartyPosition();
@@ -238,7 +245,8 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             // Arrow key movement - grid-aligned cardinal directions
-            float currentTime = Time.time;
+            // Use unscaledTime so cursor movement works during tactical pause (timeScale=0)
+            float currentTime = Time.unscaledTime;
             bool canMove = (currentTime - lastMoveTime) >= MOVE_REPEAT_DELAY;
 
             if (canMove)
@@ -273,8 +281,8 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            // Space for detailed scan of current tile
-            if (Input.GetKeyDown(KeyCode.Space))
+            // Backslash for detailed scan of current tile
+            if (Input.GetKeyDown(KeyCode.Backslash))
             {
                 AnnounceCurrentTile(detailed: true);
                 return true;
@@ -285,14 +293,33 @@ namespace Wasteland2AccessibilityMod.States
             {
                 // Suppress hover/gamepad interactable announcements so they don't
                 // interrupt the examine description text
-                Patches.NavigationState.lastKeyboardNavigationTime = Time.time;
+                Patches.NavigationState.lastKeyboardNavigationTime = Time.unscaledTime;
                 ExamineObjectOnTile();
                 return true;
             }
 
-            // Enter: check for party members first (info screen), then interactables
+            // Escape: cancel free aim if active
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                string currentASI = UseASIManager.GetActiveASIName();
+                if (currentASI == "attack" || currentASI == "aoeattack" || currentASI == "coneattack")
+                {
+                    UseASIManager.SetActiveASIName(null);
+                    ScreenReaderManager.SpeakInterrupt("Free aim cancelled");
+                    return true;
+                }
+            }
+
+            // Enter: if attack ASI is active, attack mob on tile; otherwise normal interaction
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
+                string activeASI = UseASIManager.GetActiveASIName();
+                if (activeASI == "attack" || activeASI == "aoeattack" || activeASI == "coneattack")
+                {
+                    AttackMobOnTile();
+                    return true;
+                }
+
                 PC allyOnTile = FindPCOnTile();
                 if (allyOnTile != null)
                 {
@@ -323,6 +350,13 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.End))
             {
                 AnnounceDistanceToSelected();
+                return true;
+            }
+
+            // K: toggle tile announcement order (coordinates first vs object names first)
+            if (Input.GetKeyDown(KeyCode.K))
+            {
+                ModConfig.ToggleObjectNamesFirst();
                 return true;
             }
 
@@ -627,24 +661,36 @@ namespace Wasteland2AccessibilityMod.States
             {
                 coords += ", floor " + ((int)cursorGridId.y + 1);
             }
-            parts.Add(coords);
 
             // Objects on this tile
             var interactables = FindInteractablesOnTile();
             var mobs = FindMobsOnTile();
+            var objectParts = new List<string>();
 
             foreach (var mob in mobs)
             {
                 string mobName = GetMobName(mob);
                 if (!string.IsNullOrEmpty(mobName))
-                    parts.Add(mobName);
+                    objectParts.Add(mobName);
             }
 
             foreach (var interactable in interactables)
             {
                 string name = GetInteractableName(interactable);
                 if (!string.IsNullOrEmpty(name))
-                    parts.Add(name);
+                    objectParts.Add(name);
+            }
+
+            // Add coords and objects in configured order
+            if (ModConfig.ObjectNamesFirst && objectParts.Count > 0)
+            {
+                parts.AddRange(objectParts);
+                parts.Add(coords);
+            }
+            else
+            {
+                parts.Add(coords);
+                parts.AddRange(objectParts);
             }
 
             if (node != null)
@@ -1614,6 +1660,93 @@ namespace Wasteland2AccessibilityMod.States
             {
                 MelonLogger.Warning("[MapCursorState] Error building item list: " + ex.Message);
             }
+
+            // --- Free Aim (weapon attack) ---
+            try
+            {
+                ItemTemplate_Weapon weaponTemplate = pc.stats.GetWeaponTemplate();
+                if (weaponTemplate != null)
+                {
+                    string weaponName = UITextExtractor.CleanText(
+                        Language.Localize(weaponTemplate.displayName, false, false, string.Empty));
+
+                    var weaponInstance = pc.pcStats.GetWeaponInstance();
+                    var rangedWeapon = weaponInstance as ItemInstance_WeaponRanged;
+
+                    if (rangedWeapon != null)
+                    {
+                        // Ranged weapon — add an action per fire mode
+                        var rangedTemplate = weaponTemplate as ItemTemplate_WeaponRanged;
+                        if (rangedTemplate != null && rangedTemplate.firingModeInfos != null)
+                        {
+                            for (int modeIdx = 0; modeIdx < rangedTemplate.firingModeInfos.Length; modeIdx++)
+                            {
+                                var modeInfo = rangedTemplate.firingModeInfos[modeIdx];
+                                string modeName;
+                                if (modeInfo.ammoCost == 1)
+                                    modeName = "Single";
+                                else if (modeInfo.ammoCost == rangedTemplate.clipSize)
+                                    modeName = "Full Auto";
+                                else
+                                    modeName = "Burst";
+
+                                int capturedModeIdx = modeIdx;
+                                string asiName = (weaponTemplate is ItemTemplate_WeaponShotgun) ? "coneattack" : "attack";
+
+                                int currentAmmo = rangedWeapon.GetAmmoCount();
+                                bool hasAmmo = currentAmmo >= modeInfo.ammoCost;
+                                bool isJammed = rangedWeapon.IsJammed();
+                                string status = weaponName + ", " + currentAmmo + " ammo";
+                                if (isJammed) status += ", jammed";
+                                else if (!hasAmmo) status += ", not enough ammo";
+
+                                actionList.Add(new ExplorationAction
+                                {
+                                    Label = "Free Aim, " + modeName,
+                                    Status = status,
+                                    IsEnabled = hasAmmo && !isJammed,
+                                    Execute = () =>
+                                    {
+                                        rangedWeapon.ChangeFiringMode(capturedModeIdx);
+                                        UseASIManager.SetActiveASIName(asiName);
+                                        ScreenReaderManager.SpeakInterrupt(
+                                            "Free aim, " + modeName + " with " + weaponName +
+                                            ". Move to target and press Enter to attack");
+                                        MelonLogger.Msg("[MapCursorState] Free aim activated: " +
+                                            modeName + " with " + weaponName);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Melee or other weapon — single attack action
+                        string asiName = (weaponTemplate.weaponType == WeaponType.Thrown ||
+                                          weaponTemplate.weaponType == WeaponType.RPG)
+                            ? "aoeattack" : "attack";
+
+                        actionList.Add(new ExplorationAction
+                        {
+                            Label = "Free Aim",
+                            Status = weaponName,
+                            IsEnabled = true,
+                            Execute = () =>
+                            {
+                                UseASIManager.SetActiveASIName(asiName);
+                                ScreenReaderManager.SpeakInterrupt(
+                                    "Free aim with " + weaponName +
+                                    ". Move to target and press Enter to attack");
+                                MelonLogger.Msg("[MapCursorState] Free aim activated: " + weaponName);
+                            }
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("[MapCursorState] Error building free aim actions: " + ex.Message);
+            }
         }
 
         private string FormatAction(ExplorationAction action)
@@ -1665,6 +1798,107 @@ namespace Wasteland2AccessibilityMod.States
             browsingActions = false;
             actionList.Clear();
             ScreenReaderManager.SpeakInterrupt("Actions closed");
+        }
+
+        // --- Free Aim Attack ---
+
+        private void AttackMobOnTile()
+        {
+            try
+            {
+                var mobs = FindMobsOnTile();
+                Mob target = null;
+                foreach (var mob in mobs)
+                {
+                    if (mob is PC) continue;
+                    if (mob.mobState == Mob.MobState.DEAD) continue;
+                    target = mob;
+                    break;
+                }
+
+                if (target == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No target on this tile");
+                    return;
+                }
+
+                PC pc = GetPartyLeader();
+                if (pc == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No ranger selected");
+                    return;
+                }
+
+                ItemTemplate_Weapon weaponTemplate = pc.stats.GetWeaponTemplate();
+                if (weaponTemplate == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No weapon equipped");
+                    return;
+                }
+
+                var rangedWeapon = pc.pcStats.GetWeaponInstance() as ItemInstance_WeaponRanged;
+                if (rangedWeapon != null && rangedWeapon.IsJammed())
+                {
+                    ScreenReaderManager.SpeakInterrupt("Weapon is jammed");
+                    return;
+                }
+                if (rangedWeapon != null && rangedWeapon.IsEmpty())
+                {
+                    ScreenReaderManager.SpeakInterrupt("Out of ammo");
+                    return;
+                }
+
+                // Range check — warn the user instead of silently failing
+                float distance = Vector3.Distance(pc.transform.position, target.transform.position);
+                float attackRange = pc.stats.GetAttackRange();
+                if (distance > attackRange)
+                {
+                    string targetName = GetMobName(target);
+                    int dist = Mathf.RoundToInt(distance);
+                    int range = Mathf.RoundToInt(attackRange);
+                    ScreenReaderManager.SpeakInterrupt(
+                        targetName + " is out of range. Distance " + dist +
+                        " meters, weapon range " + range + " meters");
+                    return;
+                }
+
+                // Set the InputManager's selected targetable
+                var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+                inputManager.selectedTargetable = target;
+
+                // Publish attack command
+                EventInfo_CommandAttack attackEvent = ObjectPool.Get<EventInfo_CommandAttack>();
+                attackEvent.pc = pc;
+                attackEvent.target = target;
+                attackEvent.meleeMoveToRange = true;
+
+                if (weaponTemplate is ItemTemplate_WeaponShotgun)
+                {
+                    attackEvent.coneAttack = true;
+                    attackEvent.aimDirection = target.transform.position;
+                    attackEvent.coneTargets = new Targetable[] { target };
+                }
+
+                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(attackEvent);
+
+                string name = GetMobName(target);
+                string weapon = UITextExtractor.CleanText(
+                    Language.Localize(weaponTemplate.displayName, false, false, string.Empty));
+                string modeInfo = "";
+                if (rangedWeapon != null)
+                    modeInfo = ", " + rangedWeapon.GetFiringModeName();
+
+                ScreenReaderManager.SpeakInterrupt("Attacking " + name + " with " + weapon + modeInfo);
+                MelonLogger.Msg("[MapCursorState] Attack command: " + name + " with " + weapon + modeInfo);
+
+                // Clear attack ASI
+                UseASIManager.SetActiveASIName(null);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error("[MapCursorState] Error in AttackMobOnTile: " + ex.Message);
+                ScreenReaderManager.SpeakInterrupt("Attack failed");
+            }
         }
 
         // --- Party Member Info ---
