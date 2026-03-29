@@ -681,16 +681,29 @@ namespace Wasteland2AccessibilityMod.States
                     objectParts.Add(name);
             }
 
-            // Add coords and objects in configured order
-            if (ModConfig.ObjectNamesFirst && objectParts.Count > 0)
+            // Identify obstruction if no grid node exists
+            string obstruction = null;
+            if (node == null)
             {
-                parts.AddRange(objectParts);
+                obstruction = IdentifyObstruction(cursorPosition);
+            }
+
+            // Add coords, objects, and terrain in configured order
+            if (ModConfig.ObjectNamesFirst)
+            {
+                // In object-names-first mode, terrain/obstruction also goes before coords
+                if (!string.IsNullOrEmpty(obstruction))
+                    parts.Add(obstruction);
+                if (objectParts.Count > 0)
+                    parts.AddRange(objectParts);
                 parts.Add(coords);
             }
             else
             {
                 parts.Add(coords);
                 parts.AddRange(objectParts);
+                if (!string.IsNullOrEmpty(obstruction))
+                    parts.Add(obstruction);
             }
 
             if (node != null)
@@ -710,13 +723,6 @@ namespace Wasteland2AccessibilityMod.States
                     if (!string.IsNullOrEmpty(cover))
                         parts.Add(cover);
                 }
-            }
-            else
-            {
-                // No grid node here — identify what's at this position
-                string obstruction = IdentifyObstruction(cursorPosition);
-                if (!string.IsNullOrEmpty(obstruction))
-                    parts.Add(obstruction);
             }
 
             if (detailed)
@@ -1046,6 +1052,17 @@ namespace Wasteland2AccessibilityMod.States
                 var interactions = target.drama.GetAllowedInteractions();
                 if (interactions != null)
                 {
+                    // Log all interactions for debugging
+                    var parts = new System.Collections.Generic.List<string>();
+                    foreach (var kvp in interactions)
+                        parts.Add($"{kvp.Key}={kvp.Value}");
+                    MelonLogger.Msg($"[MapCursorState] Interactions for {targetName}: {string.Join(", ", parts.ToArray())}");
+                    MelonLogger.Msg($"[MapCursorState] Drama type: {target.drama.GetType().Name}, blockPoke={target.drama.blockPoke}");
+                    var invObj = target.drama as InteractableInventoryObject;
+                    if (invObj == null) invObj = target.GetComponent<InteractableInventoryObject>();
+                    if (invObj != null)
+                        MelonLogger.Msg($"[MapCursorState] Container: empty={invObj.empty}, isActive={invObj.isActive}, isLocked={invObj.isLocked}");
+
                     // Add "Interact" (Poked) first if available
                     if (interactions.ContainsKey("Poked") && interactions["Poked"] == 1)
                     {

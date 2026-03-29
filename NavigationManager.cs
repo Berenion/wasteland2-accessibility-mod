@@ -390,11 +390,16 @@ namespace Wasteland2AccessibilityMod
                     return false;
 
                 case InteractableCategory.Containers:
-                    // Lootable containers, lockers, etc.
-                    if (drama != null && drama is InteractableInventoryObject) return true;
-                    // Also check component directly
-                    if (nexus.GetComponent<InteractableInventoryObject>() != null) return true;
-                    return false;
+                    // Only categorize as Container if Poked is actually available,
+                    // matching what a sighted player sees (loot cursor vs examine cursor).
+                    InteractableInventoryObject invObj = drama as InteractableInventoryObject;
+                    if (invObj == null)
+                        invObj = nexus.GetComponent<InteractableInventoryObject>();
+                    if (invObj == null) return false;
+                    var cInteractions = invObj.GetAllowedInteractions();
+                    return cInteractions != null &&
+                           cInteractions.ContainsKey("Poked") &&
+                           cInteractions["Poked"] == 1;
 
                 case InteractableCategory.Objects:
                     // Doors, switches, computers, etc. - InteractableObjects that aren't containers or exits
@@ -403,8 +408,8 @@ namespace Wasteland2AccessibilityMod
                         // Exclude SceneLoad (exits)
                         if (drama is SceneLoad) return false;
 
-                        // Must be an InteractableObject but NOT a container and NOT a character
-                        if (drama is InteractableObject && !(drama is InteractableInventoryObject))
+                        // Must be an InteractableObject but NOT a lootable container and NOT a character
+                        if (drama is InteractableObject && !MatchesCategory(nexus, InteractableCategory.Containers))
                         {
                             Mob mob = drama.GetMob();
                             if (mob == null) return true; // No mob = object
@@ -412,7 +417,7 @@ namespace Wasteland2AccessibilityMod
                     }
                     // Check component directly
                     var io = nexus.GetComponent<InteractableObject>();
-                    if (io != null && nexus.GetComponent<InteractableInventoryObject>() == null)
+                    if (io != null && !MatchesCategory(nexus, InteractableCategory.Containers))
                     {
                         if (drama == null || drama.GetMob() == null) return true;
                     }
@@ -448,14 +453,17 @@ namespace Wasteland2AccessibilityMod
                             if (hasDescriptor || hasPerception)
                             {
                                 // Make sure it's not already covered by other categories
-                                if (!(drama is InteractableInventoryObject) &&
+                                bool isLootableContainer = MatchesCategory(nexus, InteractableCategory.Containers);
+                                if (!isLootableContainer &&
                                     !(drama is InteractableObject) &&
                                     drama.GetMob() == null)
                                 {
                                     return true;
                                 }
                                 // Also include InteractableObjects that only have descriptor interaction
-                                if (drama is InteractableObject && !interactions.ContainsKey("Poked"))
+                                // or locked containers where Poked is unavailable
+                                if (drama is InteractableObject &&
+                                    (!interactions.ContainsKey("Poked") || interactions["Poked"] != 1))
                                 {
                                     return true;
                                 }
@@ -467,6 +475,9 @@ namespace Wasteland2AccessibilityMod
                             typeName.Contains("clue") || typeName.Contains("perception"))
                             return true;
                     }
+                    // Objects with SkillObject_Examine that aren't lootable containers
+                    if (nexus.skobExamine != null && !MatchesCategory(nexus, InteractableCategory.Containers))
+                        return true;
                     // Check object name patterns
                     string examName = nexus.name.ToLower();
                     if (examName.Contains("examine") || examName.Contains("descriptor") ||

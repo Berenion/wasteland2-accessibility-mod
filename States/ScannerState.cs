@@ -253,31 +253,45 @@ namespace Wasteland2AccessibilityMod.States
 
         private void ScanForLoot(Vector3 origin)
         {
-            // Find loot containers (InventoryContainer, PopupInventoryMenu triggers, etc.)
-            InventoryContainer[] containers = UnityEngine.Object.FindObjectsOfType<InventoryContainer>();
-
-            foreach (var container in containers)
+            // Find world containers via InteractableNexus that have InteractableInventoryObject
+            foreach (var nexus in InteractableNexus.interactables)
             {
-                if (container == null || container.gameObject == null) continue;
-                if (!container.gameObject.activeInHierarchy) continue;
-                if (!IsVisibleThroughFOW(container.transform.position)) continue;
+                if (nexus == null || !nexus.isVisible) continue;
+                if (nexus.isPC) continue;
+                if (!IsVisibleThroughFOW(nexus.transform.position)) continue;
 
-                float distance = Vector3.Distance(origin, container.transform.position);
+                // Check if this nexus is a lootable container (Poked must be available)
+                InteractableInventoryObject invObj = nexus.drama as InteractableInventoryObject;
+                if (invObj == null)
+                    invObj = nexus.GetComponent<InteractableInventoryObject>();
+                if (invObj == null) continue;
+                var interactions = invObj.GetAllowedInteractions();
+                if (interactions == null || !interactions.ContainsKey("Poked") || interactions["Poked"] != 1)
+                    continue;
+
+                float distance = Vector3.Distance(origin, nexus.transform.position);
                 if (distance > currentScanRange) continue;
 
-                string containerName = container.gameObject.name;
-                // Clean up name
-                containerName = containerName.Replace("_", " ").Replace("(Clone)", "").Trim();
-                if (string.IsNullOrEmpty(containerName)) containerName = "Container";
+                string containerName = nexus.gameObject.name;
+                // Try to get a better name from Drama
+                if (nexus.drama != null && !string.IsNullOrEmpty(nexus.drama.name))
+                {
+                    containerName = UITextExtractor.CleanText(nexus.drama.name);
+                }
+                else
+                {
+                    containerName = containerName.Replace("_", " ").Replace("(Clone)", "").Trim();
+                    if (string.IsNullOrEmpty(containerName)) containerName = "Container";
+                }
 
                 lastScanResults.Add(new ScanResult
                 {
                     Name = containerName,
                     Category = "Loot",
                     Distance = distance,
-                    Direction = DirectionHelper.GetDirectionDescription(origin, container.transform.position),
-                    Position = container.transform.position,
-                    Source = container
+                    Direction = DirectionHelper.GetDirectionDescription(origin, nexus.transform.position),
+                    Position = nexus.transform.position,
+                    Source = nexus
                 });
             }
         }
@@ -534,13 +548,21 @@ namespace Wasteland2AccessibilityMod.States
 
             var closest = results[0]; // Already sorted by distance
 
-            // Try to select it as an interactable
-            if (closest.Source is InteractableNexus nexus)
+            // Resolve the InteractableNexus for selection
+            InteractableNexus nexus = null;
+            if (closest.Source is InteractableNexus directNexus)
             {
-                if (MonoBehaviourSingleton<InputManager>.HasInstance())
-                {
-                    MonoBehaviourSingleton<InputManager>.GetInstance().selectedInteractable = nexus;
-                }
+                nexus = directNexus;
+            }
+            else if (closest.Source is MonoBehaviour mb && mb != null)
+            {
+                // Try to find InteractableNexus on the same GameObject (for Mob, SceneLoad, etc.)
+                nexus = mb.GetComponent<InteractableNexus>();
+            }
+
+            if (nexus != null && MonoBehaviourSingleton<InputManager>.HasInstance())
+            {
+                MonoBehaviourSingleton<InputManager>.GetInstance().selectedInteractable = nexus;
             }
 
             // Snap camera to the object
