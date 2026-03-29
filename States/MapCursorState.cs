@@ -298,7 +298,7 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Escape: cancel free aim if active
+            // Escape: cancel active ASI (free aim or use item)
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 string currentASI = UseASIManager.GetActiveASIName();
@@ -308,15 +308,29 @@ namespace Wasteland2AccessibilityMod.States
                     ScreenReaderManager.SpeakInterrupt("Free aim cancelled");
                     return true;
                 }
+                if (currentASI == "useItem")
+                {
+                    UseASIManager.SetActiveASIName(null);
+                    ScreenReaderManager.SpeakInterrupt("Item use cancelled");
+                    return true;
+                }
             }
 
-            // Enter: if attack ASI is active, attack mob on tile; otherwise normal interaction
+            // Enter: if attack ASI is active, attack mob on tile; if useItem ASI is active, use item on target; otherwise normal interaction
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 string activeASI = UseASIManager.GetActiveASIName();
                 if (activeASI == "attack" || activeASI == "aoeattack" || activeASI == "coneattack")
                 {
                     AttackMobOnTile();
+                    return true;
+                }
+
+                // useItem ASI active (e.g. Shovel selected from Tab menu) — use item on target
+                if (activeASI == "useItem" && UseASIManager.GetActiveASIItem() != null
+                    && UseASIManager.GetActiveASIItem() is ItemInstance_Usable)
+                {
+                    UseItemOnTile();
                     return true;
                 }
 
@@ -1092,6 +1106,42 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
+            // Check for ItemAcceptingObject components — add "Use [item]" if a matching
+            // item exists in party inventory (e.g. Shovel on diggable objects)
+            if (target.gameObject != null)
+            {
+                var acceptors = target.gameObject.GetComponentsInChildren<ItemAcceptingObject>();
+                if (acceptors != null && acceptors.Length > 0 && MonoBehaviourSingleton<Game>.HasInstance())
+                {
+                    var game = MonoBehaviourSingleton<Game>.GetInstance();
+                    foreach (var acceptor in acceptors)
+                    {
+                        if (!acceptor.enabled || acceptor.desiredItemTemplate == null) continue;
+
+                        // Search party for the matching item
+                        for (int i = 0; i < game.party.Count; i++)
+                        {
+                            PC member = game.party[i];
+                            if (!member.isConscious) continue;
+                            ItemInstance item = member.inventory.inventory.GetInstanceOfTemplate(acceptor.desiredItemTemplate);
+                            if (item != null)
+                            {
+                                string itemDisplayName = UITextExtractor.CleanText(
+                                    Language.Localize(item.template.displayName, false, false, string.Empty));
+                                contextMenuOptions.Add(new ContextMenuOption
+                                {
+                                    DisplayName = "Use " + itemDisplayName,
+                                    ASIName = "useItem_auto"
+                                });
+                                MelonLogger.Msg($"[MapCursorState] Added Use {itemDisplayName} option for {targetName}");
+                                goto doneItemCheck; // Only need one matching item option
+                            }
+                        }
+                    }
+                }
+            }
+            doneItemCheck:
+
             // Add Examine option for objects with SkillObject_Examine and a Drama handler
             if (target.drama != null)
             {
@@ -1234,7 +1284,16 @@ namespace Wasteland2AccessibilityMod.States
 
             string name = GetInteractableName(target) ?? "Object";
 
-            // Handle examine action — use Drama.ExamineDrama for Drama objects,
+            // Handle "Use [item]" from the auto-detected item-accepting option
+            if (asiName == "useItem_auto" && MonoBehaviourSingleton<InputManager>.HasInstance())
+            {
+                var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+                if (ExplorationState.TryUseItemOnObject(target, inputManager, pc))
+                    return;
+                // If TryUseItemOnObject returned false, fall through to normal interaction
+            }
+
+            // Handle examine action - use Drama.ExamineDrama for Drama objects,
             // CheckExamineDrama for no-Drama description objects
             if (asiName == "examine")
             {
@@ -1302,9 +1361,40 @@ namespace Wasteland2AccessibilityMod.States
             MelonLogger.Msg($"[MapCursorState] {displayAction} {name}");
             ScreenReaderManager.SpeakInterrupt(displayAction + " " + name);
 
-            // Trigger the game's interaction system — PC will walk to object and interact
-            // This respects distance (PC must walk there), skill checks, etc.
-            Drama.CheckInstigate(target.drama, pc, false);
+            // Determine instigate distance from the drama
+            float instigateDistance = target.drama.instigateDistance;
+            // Check for specific instigate points that override the distance
+            var outList = new List<Transform>();
+            Drama.FindInstigatePointChildren(target.drama.transform, ref outList);
+            Transform bestPoint = Drama.PickBestInstigatePoint(ref outList, pc.transform);
+            float checkDist = instigateDistance;
+            Vector3 checkPos = target.drama.transform.position;
+            if (bestPoint != null)
+            {
+                checkDist = 0.5f;
+                checkPos = bestPoint.position;
+            }
+
+            float distToObject = Vector3.Distance(
+                new Vector3(pc.transform.position.x, 0f, pc.transform.position.z),
+                new Vector3(checkPos.x, 0f, checkPos.z));
+
+            // If PC is close enough, directly instigate — bypasses bInstigateBlocked
+            // and avoids the grouped-mode bug where AIAction_Instigate checks distance
+            // only once (on its first frame) before MoveInFormation has moved the PC.
+            if (distToObject <= checkDist * 1.25f + 0.5f)
+            {
+                string asiForInstigate = isRealSkillASI ? asiName : null;
+                MelonLogger.Msg($"[MapCursorState] Direct instigate on {name} (dist={distToObject:F1}, threshold={checkDist * 1.25f + 0.5f:F1})");
+                target.drama.Instigate(pc, asiForInstigate, null);
+                if (isRealSkillASI)
+                    UseASIManager.SetActiveASIName(null);
+            }
+            else
+            {
+                // PC needs to walk there — use CheckInstigate for pathfinding
+                Drama.CheckInstigate(target.drama, pc, false);
+            }
         }
 
         // --- Move Party ---
@@ -1817,20 +1907,95 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt("Actions closed");
         }
 
+        // --- Use Item on Target ---
+
+        private void UseItemOnTile()
+        {
+            if (!MonoBehaviourSingleton<InputManager>.HasInstance()) return;
+
+            var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+            var interactables = FindInteractablesOnTile();
+
+            if (interactables.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No target here");
+                return;
+            }
+
+            // Find a targetable on the tile to use the item on
+            Targetable targetable = null;
+            string targetName = null;
+            foreach (var nexus in interactables)
+            {
+                if (nexus == null || nexus.gameObject == null) continue;
+                var t = nexus.gameObject.GetComponent<Targetable>();
+                if (t != null)
+                {
+                    targetable = t;
+                    targetName = GetInteractableName(nexus) ?? nexus.name;
+                    break;
+                }
+            }
+
+            if (targetable == null)
+            {
+                // Fallback: try using PrepareUseItemActions with the first interactable's transform/drama
+                var nexus = interactables[0];
+                if (nexus.drama != null)
+                {
+                    string itemName = UITextExtractor.CleanText(
+                        Language.Localize(UseASIManager.GetActiveASIItem().template.displayName, false, false, string.Empty));
+                    string name = GetInteractableName(nexus) ?? nexus.name;
+                    MelonLogger.Msg($"[MapCursorState] Using {itemName} on {name} (no Targetable, using drama fallback)");
+                    ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {name}");
+                    InputManager.PrepareUseItemActions(nexus.transform, nexus.drama, null, false);
+                    return;
+                }
+                ScreenReaderManager.SpeakInterrupt("Cannot use item here");
+                return;
+            }
+
+            string iName = UITextExtractor.CleanText(
+                Language.Localize(UseASIManager.GetActiveASIItem().template.displayName, false, false, string.Empty));
+            MelonLogger.Msg($"[MapCursorState] Using {iName} on {targetName}");
+            ScreenReaderManager.SpeakInterrupt($"Using {iName} on {targetName}");
+            inputManager.HandleUsableItemClickOnTargetable(targetable);
+        }
+
         // --- Free Aim Attack ---
 
         private void AttackMobOnTile()
         {
             try
             {
+                // First look for a mob target (NPCs, enemies)
+                Targetable target = null;
+                string targetName = null;
+
                 var mobs = FindMobsOnTile();
-                Mob target = null;
                 foreach (var mob in mobs)
                 {
                     if (mob is PC) continue;
                     if (mob.mobState == Mob.MobState.DEAD) continue;
                     target = mob;
+                    targetName = GetMobName(mob);
                     break;
+                }
+
+                // If no mob, look for targetable objects (plants, destructibles, etc.)
+                if (target == null)
+                {
+                    var interactables = FindInteractablesOnTile();
+                    foreach (var nexus in interactables)
+                    {
+                        if (nexus == null || nexus.gameObject == null) continue;
+                        var targetObj = nexus.gameObject.GetComponent<TargetableObject>();
+                        if (targetObj == null) continue;
+                        if (targetObj.curHP <= 0) continue;
+                        target = targetObj;
+                        targetName = nexus.gameObject.name;
+                        break;
+                    }
                 }
 
                 if (target == null)
@@ -1870,7 +2035,6 @@ namespace Wasteland2AccessibilityMod.States
                 float attackRange = pc.stats.GetAttackRange();
                 if (distance > attackRange)
                 {
-                    string targetName = GetMobName(target);
                     int dist = Mathf.RoundToInt(distance);
                     int range = Mathf.RoundToInt(attackRange);
                     ScreenReaderManager.SpeakInterrupt(
@@ -1898,15 +2062,14 @@ namespace Wasteland2AccessibilityMod.States
 
                 MonoBehaviourSingleton<EventManager>.GetInstance().Publish(attackEvent);
 
-                string name = GetMobName(target);
                 string weapon = UITextExtractor.CleanText(
                     Language.Localize(weaponTemplate.displayName, false, false, string.Empty));
                 string modeInfo = "";
                 if (rangedWeapon != null)
                     modeInfo = ", " + rangedWeapon.GetFiringModeName();
 
-                ScreenReaderManager.SpeakInterrupt("Attacking " + name + " with " + weapon + modeInfo);
-                MelonLogger.Msg("[MapCursorState] Attack command: " + name + " with " + weapon + modeInfo);
+                ScreenReaderManager.SpeakInterrupt("Attacking " + targetName + " with " + weapon + modeInfo);
+                MelonLogger.Msg("[MapCursorState] Attack command: " + targetName + " with " + weapon + modeInfo);
 
                 // Clear attack ASI
                 UseASIManager.SetActiveASIName(null);

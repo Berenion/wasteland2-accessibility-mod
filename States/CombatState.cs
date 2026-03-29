@@ -22,6 +22,7 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo curActorField;
         private static FieldInfo combatMapField;
         private static FieldInfo fullMapField;
+        private static FieldInfo actQueueField;
 
         // --- Preview cursor state ---
         private Dictionary<Vector3, CombatAStarNode> combatMap;
@@ -2969,41 +2970,81 @@ namespace Wasteland2AccessibilityMod.States
 
             Mob currentActor = GetCurrentActor();
 
-            var displayQueue = cm.displayQueue;
-            if (displayQueue == null || displayQueue.Count == 0) return;
-
-            for (int i = 0; i < displayQueue.Count; i++)
+            // Use actQueue (private) for accurate current-round turn order
+            if (actQueueField == null)
             {
-                var actor = displayQueue[i];
-                if (actor == null) continue;
+                actQueueField = typeof(CombatManager).GetField("actQueue",
+                    BindingFlags.NonPublic | BindingFlags.Instance);
+            }
 
-                var entry = new InitiativeEntry
-                {
-                    Name = GetDisplayName(actor.name),
-                    IsHostile = actor.isHostile,
-                    IsCurrentActor = false,
-                    Mob = null,
-                    Details = ""
-                };
+            var actQueue = actQueueField?.GetValue(cm) as List<Mob>;
+            var addedMobs = new HashSet<Mob>();
 
-                if (actor.gameObject != null)
+            // First: add mobs from actQueue (remaining turns this round)
+            if (actQueue != null)
+            {
+                foreach (var mob in actQueue)
                 {
-                    var mob = actor.gameObject.GetComponent<Mob>();
-                    if (mob != null)
+                    if (mob == null) continue;
+                    if (mob.mobState == Mob.MobState.DEAD || mob.mobState == Mob.MobState.UNCONSCIOUS) continue;
+
+                    bool hostile = false;
+                    if (mob is NPC) hostile = mob.HatesParty();
+
+                    initiativeList.Add(new InitiativeEntry
                     {
-                        entry.Mob = mob;
-                        entry.IsCurrentActor = (mob == currentActor);
-                        entry.Details = BuildInitiativeMobDetails(mob);
-                    }
+                        Name = GetDisplayName(mob.template != null ? mob.template.displayName : mob.name),
+                        IsHostile = hostile,
+                        IsCurrentActor = (mob == currentActor),
+                        Mob = mob,
+                        Details = BuildInitiativeMobDetails(mob)
+                    });
+                    addedMobs.Add(mob);
                 }
+            }
 
-                if (actor.name == "Bomb")
+            // Second: add remaining active combatants from cm.mobs not already in actQueue
+            // These are combatants who already acted this round or are waiting to join
+            if (cm.mobs != null)
+            {
+                foreach (var mob in cm.mobs)
                 {
-                    entry.Name = "Bomb";
-                    entry.Details = "explosive";
-                }
+                    if (mob == null) continue;
+                    if (addedMobs.Contains(mob)) continue;
+                    if (mob.mobState == Mob.MobState.DEAD || mob.mobState == Mob.MobState.UNCONSCIOUS) continue;
+                    if (mob is NPC && (mob as NPC).waitToJoinCombat) continue;
 
-                initiativeList.Add(entry);
+                    bool hostile = false;
+                    if (mob is NPC) hostile = mob.HatesParty();
+
+                    initiativeList.Add(new InitiativeEntry
+                    {
+                        Name = GetDisplayName(mob.template != null ? mob.template.displayName : mob.name),
+                        IsHostile = hostile,
+                        IsCurrentActor = (mob == currentActor),
+                        Mob = mob,
+                        Details = BuildInitiativeMobDetails(mob)
+                    });
+                }
+            }
+
+            // Also include bombs from displayQueue
+            var displayQueue = cm.displayQueue;
+            if (displayQueue != null)
+            {
+                foreach (var actor in displayQueue)
+                {
+                    if (actor == null) continue;
+                    if (actor.name != "Bomb") continue;
+                    initiativeList.Add(new InitiativeEntry
+                    {
+                        Name = "Bomb",
+                        IsHostile = true,
+                        IsCurrentActor = false,
+                        Mob = null,
+                        Details = "explosive"
+                    });
+                }
             }
         }
 

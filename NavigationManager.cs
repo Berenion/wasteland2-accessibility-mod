@@ -282,7 +282,6 @@ namespace Wasteland2AccessibilityMod
                 // Apply visibility filters
                 if (nexus == null) continue;
                 if (!nexus.isVisible) continue;
-                if (nexus.GetHighlight() == null) continue;
                 if (nexus.transform == null) continue;
                 if (!FOWHelper.IsVisibleThroughFOW(nexus.transform.position)) continue;
 

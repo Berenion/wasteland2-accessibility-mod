@@ -594,6 +594,103 @@ namespace Wasteland2AccessibilityMod.Patches
     }
 
     /// <summary>
+    /// Intercepts "Attach Mod" to open the ModItemMenu weapon selection popup
+    /// instead of silently entering weaponSmith ASI mode (which relies on visual highlights).
+    /// </summary>
+    [HarmonyPatch(typeof(INV_DragDropItem), "AttemptToUse")]
+    public class AttemptToUse_ModItemMenu_Patch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(INV_DragDropItem __instance)
+        {
+            ItemInstance item = __instance.GetItem();
+            if (item == null) return true; // let original handle null
+
+            // Only intercept weapon mods
+            if (!(item is ItemInstance_Mod)) return true;
+
+            // Don't allow during combat (matches original check)
+            if (MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat) return false;
+
+            ItemTemplate_Mod modTemplate = item.template as ItemTemplate_Mod;
+            if (modTemplate == null) return true;
+
+            // Check if anyone has enough weaponSmith skill
+            PC bestSmith = null;
+            int bestSkill = -1;
+            var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+            for (int i = 0; i < party.Count; i++)
+            {
+                int skill = party[i].pcStats.GetSkillLevel("weaponSmith");
+                if (skill > bestSkill)
+                {
+                    bestSkill = skill;
+                    bestSmith = party[i];
+                }
+            }
+
+            int required = modTemplate.requiredStatValues.ContainsKey("weaponSmith")
+                ? modTemplate.requiredStatValues["weaponSmith"] : 0;
+
+            if (bestSkill < required)
+            {
+                ScreenReaderManager.SpeakInterrupt($"Insufficient weaponsmithing skill. Requires level {required}, party best is {bestSkill}");
+                return false;
+            }
+
+            // Check if any weapons support this mod type
+            if (!PCInventory.DoesPartyHaveWeaponsSupportingMods(modTemplate.slot))
+            {
+                ScreenReaderManager.SpeakInterrupt("No weapons in party support this mod type");
+                return false;
+            }
+
+            // Open the ModItemMenu weapon selection popup
+            PC modOwner = __instance.ownerPC ?? bestSmith;
+            MonoBehaviourSingleton<GUIManager>.GetInstance().OpenModItemMenu(item as ItemInstance_Mod, modOwner);
+
+            MelonLogger.Msg($"[InventoryPatches] Opened ModItemMenu for {UITextExtractor.CleanText(item.template.displayName)}");
+            return false; // skip original AttemptToUse
+        }
+    }
+
+    /// <summary>
+    /// Announces context when ModItemMenu opens to show compatible weapons.
+    /// </summary>
+    [HarmonyPatch(typeof(ModItemMenu), "PopulateData", new Type[] { typeof(ItemInstance_Mod), typeof(PC) })]
+    public class ModItemMenu_PopulateData_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(ModItemMenu __instance, ItemInstance_Mod item)
+        {
+            if (item == null || item.template == null) return;
+
+            string modName = UITextExtractor.CleanText(item.template.displayName);
+
+            // Count compatible weapons in the grid
+            int weaponCount = 0;
+            if (__instance.inventoryGrid != null)
+            {
+                Transform gridTransform = __instance.inventoryGrid.transform;
+                for (int i = 0; i < gridTransform.childCount; i++)
+                {
+                    Transform child = gridTransform.GetChild(i);
+                    if (child != null && child.gameObject.activeSelf)
+                    {
+                        INV_DragDropItem dragDrop = child.GetComponent<INV_DragDropItem>();
+                        if (dragDrop != null && dragDrop.GetItem() != null)
+                            weaponCount++;
+                    }
+                }
+            }
+
+            string announcement = $"Select a weapon to attach {modName}. {weaponCount} compatible weapon{(weaponCount != 1 ? "s" : "")}. Use arrows to navigate, Enter to attach, Escape to cancel.";
+            ScreenReaderManager.SpeakInterrupt(announcement);
+            MelonLogger.Msg($"[InventoryPatches] ModItemMenu opened: {weaponCount} weapons for {modName}");
+        }
+    }
+
+    /// <summary>
     /// Adds a "Give to" button to the inventory context menu, enabling keyboard-accessible
     /// item transfers between party members (normally requires drag-and-drop).
     /// </summary>

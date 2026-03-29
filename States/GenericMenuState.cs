@@ -79,16 +79,20 @@ namespace Wasteland2AccessibilityMod.States
                 if (CharacterScreen.instance != null && CharacterScreen.instance.gameObject.activeInHierarchy)
                     return false;
 
+                // Active when ModItemMenu (weapon mod attachment popup) is open, even over inventory
+                var modItemMenu = UnityEngine.Object.FindObjectOfType<ModItemMenu>();
+                bool modItemMenuOpen = modItemMenu != null && modItemMenu.gameObject.activeInHierarchy;
+
                 // Not active when CharacterInfoMenu (in-game) inventory is showing (unless an overlay like ItemInfoMenu is open)
                 var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
                 if (charInfoMenu != null && charInfoMenu.gameObject.activeInHierarchy
-                    && !guiManager.IsItemInfoScreenOpen())
+                    && !guiManager.IsItemInfoScreenOpen() && !modItemMenuOpen)
                     return false;
 
                 // Not active when PopupInventoryMenu is showing (unless an overlay like ItemInfoMenu is open)
                 var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
                 if (popupInv != null && popupInv.gameObject.activeInHierarchy
-                    && !guiManager.IsItemInfoScreenOpen())
+                    && !guiManager.IsItemInfoScreenOpen() && !modItemMenuOpen)
                     return false;
 
                 // Active when any other menu is on top (including submenus over MainMenu)
@@ -1368,6 +1372,16 @@ namespace Wasteland2AccessibilityMod.States
             {
                 current.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
                 MelonLogger.Msg($"[GenericMenuState] Opened popup: {current.name}");
+                return;
+            }
+
+            // Check for INV_DragDropItem (e.g. weapons in ModItemMenu) — trigger via OnButtonDown
+            // which invokes the controllerACallback set by the menu
+            INV_DragDropItem dragDropItem = current.GetComponent<INV_DragDropItem>();
+            if (dragDropItem != null)
+            {
+                dragDropItem.OnButtonDown("Controller A");
+                MelonLogger.Msg($"[GenericMenuState] Controller A on INV_DragDropItem: {current.name}");
                 return;
             }
 

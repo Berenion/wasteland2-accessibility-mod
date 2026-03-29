@@ -97,6 +97,10 @@ namespace Wasteland2AccessibilityMod.States
                 // Yield to GenericMenuState when an overlay screen (e.g. ItemInfoMenu) is open
                 if (guiManager.IsItemInfoScreenOpen()) return false;
 
+                // Yield when ModItemMenu (weapon mod attachment popup) is open
+                var modItemMenu = UnityEngine.Object.FindObjectOfType<ModItemMenu>();
+                if (modItemMenu != null && modItemMenu.gameObject.activeInHierarchy) return false;
+
                 // Check for PopupInventoryMenu (loot containers) FIRST — loot takes priority
                 // because CharacterInfoMenu can coexist and would shadow the popup check
                 var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
