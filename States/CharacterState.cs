@@ -526,10 +526,16 @@ namespace Wasteland2AccessibilityMod.States
             for (int i = 0; i < activeGrid.transform.childCount; i++)
             {
                 var child = activeGrid.transform.GetChild(i);
-                if (child != null && child.gameObject.activeInHierarchy)
-                {
-                    children.Add(child);
-                }
+                if (child == null || !child.gameObject.activeInHierarchy)
+                    continue;
+
+                // Skip disabled skill editors (e.g. Combat Shooting, Southwestern Folklore)
+                // These are DLC skills that can't be learned through normal level-up
+                var skillEditor = child.GetComponent<CHA_SkillEditor>();
+                if (skillEditor != null && !skillEditor.enabled)
+                    continue;
+
+                children.Add(child);
             }
 
             children.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.Ordinal));
