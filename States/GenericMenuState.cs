@@ -1375,13 +1375,24 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            // Check for INV_DragDropItem (e.g. weapons in ModItemMenu) — trigger via OnButtonDown
-            // which invokes the controllerACallback set by the menu
+            // Check for INV_DragDropItem (e.g. weapons/mods in ModItemMenu)
+            // INV_DragDropItem.OnButtonDown requires isGamepadOn=true, so we invoke the
+            // controllerACallback directly via reflection to bypass the gamepad check
             INV_DragDropItem dragDropItem = current.GetComponent<INV_DragDropItem>();
             if (dragDropItem != null)
             {
-                dragDropItem.OnButtonDown("Controller A");
-                MelonLogger.Msg($"[GenericMenuState] Controller A on INV_DragDropItem: {current.name}");
+                var callbackField = typeof(INV_DragDropItem).GetField("controllerACallback", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (callbackField != null)
+                {
+                    var callback = callbackField.GetValue(dragDropItem) as System.Delegate;
+                    if (callback != null)
+                    {
+                        callback.DynamicInvoke(dragDropItem);
+                        MelonLogger.Msg($"[GenericMenuState] Invoked controllerACallback on INV_DragDropItem: {current.name}");
+                        return;
+                    }
+                }
+                MelonLogger.Msg($"[GenericMenuState] INV_DragDropItem has no callback: {current.name}");
                 return;
             }
 

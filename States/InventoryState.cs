@@ -101,6 +101,11 @@ namespace Wasteland2AccessibilityMod.States
                 var modItemMenu = UnityEngine.Object.FindObjectOfType<ModItemMenu>();
                 if (modItemMenu != null && modItemMenu.gameObject.activeInHierarchy) return false;
 
+                // Yield when ModalMessageMenu is open (e.g. mod confirmation dialog)
+                // This ensures inventory rebuilds after the dialog closes and items are consumed
+                var modalMenu = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
+                if (modalMenu != null && modalMenu.gameObject.activeInHierarchy) return false;
+
                 // Check for PopupInventoryMenu (loot containers) FIRST — loot takes priority
                 // because CharacterInfoMenu can coexist and would shadow the popup check
                 var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
