@@ -1796,7 +1796,7 @@ namespace Wasteland2AccessibilityMod.States
                         evt.pc = pc;
                         evt.crouch = !pc.isCrouching;
                         MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
-                        ScreenReaderManager.SpeakInterrupt(pc.isCrouching ? "Crouching" : "Standing");
+                        ScreenReaderManager.SpeakInterrupt(evt.crouch ? "Crouching" : "Standing");
                     }
                 });
             }
