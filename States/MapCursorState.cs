@@ -801,6 +801,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (interactable == null || !interactable.isVisible) continue;
                 if (interactable.isPC) continue;
                 if (!FOWHelper.IsVisibleThroughFOW(interactable.transform.position)) continue;
+                if (FOWHelper.IsPerceptionGated(interactable)) continue;
 
                 if (IsOnCurrentTile(interactable.transform.position))
                 {
@@ -1071,7 +1072,13 @@ namespace Wasteland2AccessibilityMod.States
                     foreach (var kvp in interactions)
                         parts.Add($"{kvp.Key}={kvp.Value}");
                     MelonLogger.Msg($"[MapCursorState] Interactions for {targetName}: {string.Join(", ", parts.ToArray())}");
-                    MelonLogger.Msg($"[MapCursorState] Drama type: {target.drama.GetType().Name}, blockPoke={target.drama.blockPoke}");
+                    MelonLogger.Msg($"[MapCursorState] Drama type: {target.drama.GetType().Name}, blockPoke={target.drama.blockPoke}, bInstigateBlocked={target.drama.bInstigateBlocked}");
+                    var iObj = target.drama as InteractableObject;
+                    if (iObj != null)
+                        MelonLogger.Msg($"[MapCursorState] InteractableObject: IgnorePokedEvent={iObj.IgnorePokedEvent}, isActive={iObj.isActive}, isLocked={iObj.isLocked}");
+                    var teleporter = target.drama as InteractableTeleporter;
+                    if (teleporter != null)
+                        MelonLogger.Msg($"[MapCursorState] Teleporter: mustActivateBeforeTeleport={teleporter.mustActivateBeforeTeleport}, followRules={teleporter.followRules}");
                     var invObj = target.drama as InteractableInventoryObject;
                     if (invObj == null) invObj = target.GetComponent<InteractableInventoryObject>();
                     if (invObj != null)
@@ -1361,40 +1368,18 @@ namespace Wasteland2AccessibilityMod.States
             MelonLogger.Msg($"[MapCursorState] {displayAction} {name}");
             ScreenReaderManager.SpeakInterrupt(displayAction + " " + name);
 
-            // Determine instigate distance from the drama
-            float instigateDistance = target.drama.instigateDistance;
-            // Check for specific instigate points that override the distance
-            var outList = new List<Transform>();
-            Drama.FindInstigatePointChildren(target.drama.transform, ref outList);
-            Transform bestPoint = Drama.PickBestInstigatePoint(ref outList, pc.transform);
-            float checkDist = instigateDistance;
-            Vector3 checkPos = target.drama.transform.position;
-            if (bestPoint != null)
+            // Check if interaction is blocked (e.g. perception-gated objects)
+            if (target.drama.bInstigateBlocked)
             {
-                checkDist = 0.5f;
-                checkPos = bestPoint.position;
-            }
-
-            float distToObject = Vector3.Distance(
-                new Vector3(pc.transform.position.x, 0f, pc.transform.position.z),
-                new Vector3(checkPos.x, 0f, checkPos.z));
-
-            // If PC is close enough, directly instigate — bypasses bInstigateBlocked
-            // and avoids the grouped-mode bug where AIAction_Instigate checks distance
-            // only once (on its first frame) before MoveInFormation has moved the PC.
-            if (distToObject <= checkDist * 1.25f + 0.5f)
-            {
-                string asiForInstigate = isRealSkillASI ? asiName : null;
-                MelonLogger.Msg($"[MapCursorState] Direct instigate on {name} (dist={distToObject:F1}, threshold={checkDist * 1.25f + 0.5f:F1})");
-                target.drama.Instigate(pc, asiForInstigate, null);
+                MelonLogger.Msg($"[MapCursorState] Interaction blocked on {name} (bInstigateBlocked=true)");
+                ScreenReaderManager.SpeakInterrupt("Cannot interact with " + name);
                 if (isRealSkillASI)
                     UseASIManager.SetActiveASIName(null);
+                return;
             }
-            else
-            {
-                // PC needs to walk there — use CheckInstigate for pathfinding
-                Drama.CheckInstigate(target.drama, pc, false);
-            }
+
+            // Use the game's normal interaction system — PC walks to object and interacts
+            Drama.CheckInstigate(target.drama, pc, false);
         }
 
         // --- Move Party ---
@@ -1766,6 +1751,109 @@ namespace Wasteland2AccessibilityMod.States
             catch (Exception ex)
             {
                 MelonLogger.Warning("[MapCursorState] Error building item list: " + ex.Message);
+            }
+
+            // --- Swap Weapons ---
+            try
+            {
+                var secondary = pc.pcStats.GetSecondaryWeaponInstance();
+                string swapInfo = "";
+                if (secondary != null && secondary.template != null)
+                    swapInfo = ", to " + UITextExtractor.CleanText(
+                        Language.Localize(secondary.template.displayName, false, false, string.Empty));
+
+                actionList.Add(new ExplorationAction
+                {
+                    Label = "Swap weapons" + swapInfo,
+                    Status = "",
+                    IsEnabled = true,
+                    Execute = () =>
+                    {
+                        MonoBehaviourSingleton<InputManager>.GetInstance().OnSwapWeaponsClicked(pc);
+                        ScreenReaderManager.SpeakInterrupt("Weapons swapped");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("[MapCursorState] Error building swap weapons action: " + ex.Message);
+            }
+
+            // --- Crouch / Stand ---
+            try
+            {
+                bool isCrouching = pc.isCrouching;
+                bool canChangeStance = !pc.IsInCover();
+
+                actionList.Add(new ExplorationAction
+                {
+                    Label = isCrouching ? "Stand up" : "Crouch",
+                    Status = pc.IsInCover() ? "in cover" : "",
+                    IsEnabled = canChangeStance,
+                    Execute = () =>
+                    {
+                        var evt = ObjectPool.Get<EventInfo_CommandChangeStance>();
+                        evt.pc = pc;
+                        evt.crouch = !pc.isCrouching;
+                        MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+                        ScreenReaderManager.SpeakInterrupt(pc.isCrouching ? "Crouching" : "Standing");
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("[MapCursorState] Error building crouch action: " + ex.Message);
+            }
+
+            // --- Reload ---
+            try
+            {
+                var weaponInstance = pc.pcStats.GetWeaponInstance();
+                var rangedWeapon = weaponInstance as ItemInstance_WeaponRanged;
+                if (rangedWeapon != null)
+                {
+                    if (rangedWeapon.IsJammed())
+                    {
+                        actionList.Add(new ExplorationAction
+                        {
+                            Label = "Unjam weapon",
+                            Status = "",
+                            IsEnabled = pc.CanUnjam(),
+                            Execute = () =>
+                            {
+                                var evt = ObjectPool.Get<EventInfo_CommandUnjam>();
+                                evt.target = pc;
+                                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+                                ScreenReaderManager.SpeakInterrupt("Unjamming weapon");
+                            }
+                        });
+                    }
+                    else
+                    {
+                        int currentAmmo = rangedWeapon.GetAmmoCount();
+                        int clipSize = rangedWeapon.GetClipSize();
+                        bool canReload = pc.CanReload();
+                        string ammoStatus = currentAmmo + " of " + clipSize;
+
+                        actionList.Add(new ExplorationAction
+                        {
+                            Label = "Reload",
+                            Status = ammoStatus,
+                            IsEnabled = canReload,
+                            Execute = () =>
+                            {
+                                var evt = ObjectPool.Get<EventInfo_CommandReload>();
+                                evt.mob = pc;
+                                MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+                                ScreenReaderManager.SpeakInterrupt("Reloading");
+                            }
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("[MapCursorState] Error building reload action: " + ex.Message);
             }
 
             // --- Free Aim (weapon attack) ---
