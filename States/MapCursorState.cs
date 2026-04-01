@@ -681,11 +681,31 @@ namespace Wasteland2AccessibilityMod.States
             var mobs = FindMobsOnTile();
             var objectParts = new List<string>();
 
+            // Check if we're in free aim mode for hit chance announcements
+            string activeASIForTile = UseASIManager.GetActiveASIName();
+            bool inFreeAim = activeASIForTile == "attack" || activeASIForTile == "aoeattack" || activeASIForTile == "coneattack";
+            PC aimingPC = inFreeAim ? GetPartyLeader() : null;
+
             foreach (var mob in mobs)
             {
                 string mobName = GetMobName(mob);
                 if (!string.IsNullOrEmpty(mobName))
+                {
+                    // Add hit/crit chance when in free aim mode and mob is a valid target
+                    if (inFreeAim && aimingPC != null && !(mob is PC) && mob.mobState != Mob.MobState.DEAD)
+                    {
+                        try
+                        {
+                            int hitChance = Mathf.Clamp(aimingPC.GetChanceToHit(mob, false), 0, 100);
+                            int critChance = Mathf.Clamp(aimingPC.GetChanceToCriticalHit(mob), 0, 100);
+                            mobName += ", " + hitChance + "% hit";
+                            if (critChance > 0)
+                                mobName += ", " + critChance + "% crit";
+                        }
+                        catch (Exception) { }
+                    }
                     objectParts.Add(mobName);
+                }
             }
 
             foreach (var interactable in interactables)
@@ -2156,8 +2176,20 @@ namespace Wasteland2AccessibilityMod.States
                 if (rangedWeapon != null)
                     modeInfo = ", " + rangedWeapon.GetFiringModeName();
 
-                ScreenReaderManager.SpeakInterrupt("Attacking " + targetName + " with " + weapon + modeInfo);
-                MelonLogger.Msg("[MapCursorState] Attack command: " + targetName + " with " + weapon + modeInfo);
+                // Include hit/crit chance in the attack announcement
+                string chanceInfo = "";
+                try
+                {
+                    int hitChance = Mathf.Clamp(pc.GetChanceToHit(target, false), 0, 100);
+                    int critChance = Mathf.Clamp(pc.GetChanceToCriticalHit(target), 0, 100);
+                    chanceInfo = ", " + hitChance + "% hit";
+                    if (critChance > 0)
+                        chanceInfo += ", " + critChance + "% crit";
+                }
+                catch (Exception) { }
+
+                ScreenReaderManager.SpeakInterrupt("Attacking " + targetName + " with " + weapon + modeInfo + chanceInfo);
+                MelonLogger.Msg("[MapCursorState] Attack command: " + targetName + " with " + weapon + modeInfo + chanceInfo);
 
                 // Clear attack ASI
                 UseASIManager.SetActiveASIName(null);
