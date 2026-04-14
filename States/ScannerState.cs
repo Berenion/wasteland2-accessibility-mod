@@ -259,15 +259,22 @@ namespace Wasteland2AccessibilityMod.States
                 if (nexus == null || !nexus.isVisible) continue;
                 if (nexus.isPC) continue;
                 if (!IsVisibleThroughFOW(nexus.transform.position)) continue;
+                if (FOWHelper.IsPerceptionGated(nexus)) continue;
 
-                // Check if this nexus is a lootable container (Poked must be available)
+                // Check if this nexus is a lootable container (unlocked or locked)
                 InteractableInventoryObject invObj = nexus.drama as InteractableInventoryObject;
                 if (invObj == null)
                     invObj = nexus.GetComponent<InteractableInventoryObject>();
                 if (invObj == null) continue;
                 var interactions = invObj.GetAllowedInteractions();
-                if (interactions == null || !interactions.ContainsKey("Poked") || interactions["Poked"] != 1)
-                    continue;
+                if (interactions == null) continue;
+                // Include if pokeable (unlocked) or has any skill interaction (locked)
+                bool hasInteraction = false;
+                foreach (var kvp in interactions)
+                {
+                    if (kvp.Value != 0) { hasInteraction = true; break; }
+                }
+                if (!hasInteraction) continue;
 
                 float distance = Vector3.Distance(origin, nexus.transform.position);
                 if (distance > currentScanRange) continue;
@@ -336,6 +343,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (interactable == null || !interactable.isVisible) continue;
                 if (interactable.isPC) continue;
                 if (!IsVisibleThroughFOW(interactable.transform.position)) continue;
+                if (FOWHelper.IsPerceptionGated(interactable)) continue;
 
                 float distance = Vector3.Distance(origin, interactable.transform.position);
                 if (distance > currentScanRange) continue;

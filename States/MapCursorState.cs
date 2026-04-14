@@ -681,6 +681,7 @@ namespace Wasteland2AccessibilityMod.States
             var mobs = FindMobsOnTile();
             var objectParts = new List<string>();
 
+
             // Check if we're in free aim mode for hit chance announcements
             string activeASIForTile = UseASIManager.GetActiveASIName();
             bool inFreeAim = activeASIForTile == "attack" || activeASIForTile == "aoeattack" || activeASIForTile == "coneattack";
@@ -815,10 +816,25 @@ namespace Wasteland2AccessibilityMod.States
         private List<InteractableNexus> FindInteractablesOnTile()
         {
             List<InteractableNexus> onTile = new List<InteractableNexus>();
+            FOWHelper.UpdateActivationTracking();
 
             foreach (var interactable in InteractableNexus.interactables)
             {
-                if (interactable == null || !interactable.isVisible) continue;
+                if (interactable == null) continue;
+                if (!interactable.isVisible)
+                {
+                    // Diagnose ShortcutDoor area
+                    if (interactable.transform != null)
+                    {
+                        Vector3 p = interactable.transform.position;
+                        if (p.x > 85f && p.x < 95f && p.z > 108f && p.z < 118f)
+                        {
+                            bool hasTp = interactable.GetComponent<InteractableTeleporter>() != null;
+                            MelonLogger.Msg($"  [TileReject] {interactable.name} at {p}: failed isVisible (isHidden={interactable.isHidden}, active={interactable.gameObject.activeInHierarchy}, dramaType={(interactable.drama != null ? interactable.drama.GetType().Name : "null")}, hasTpComponent={hasTp})");
+                        }
+                    }
+                    continue;
+                }
                 if (interactable.isPC) continue;
                 if (!FOWHelper.IsVisibleThroughFOW(interactable.transform.position)) continue;
                 if (FOWHelper.IsPerceptionGated(interactable)) continue;
@@ -1115,10 +1131,13 @@ namespace Wasteland2AccessibilityMod.States
                     }
 
                     // Add skill interactions
+                    // Value meanings: 1 = available, 0 = failed/used, -1 = not yet prodded.
+                    // The game sets prodded when the mouse hovers the object (UpdateCursor),
+                    // which never happens with our keyboard cursor. Treat -1 the same as 1.
                     foreach (var kvp in interactions)
                     {
                         if (kvp.Key == "Poked") continue;
-                        if (kvp.Value != 1) continue; // Only available skills
+                        if (kvp.Value == 0) continue; // Skill check failed or already used
 
                         string displayName;
                         if (!SKILL_DISPLAY_NAMES.TryGetValue(kvp.Key, out displayName))
@@ -1307,6 +1326,16 @@ namespace Wasteland2AccessibilityMod.States
             if (MonoBehaviourSingleton<InputManager>.HasInstance())
             {
                 MonoBehaviourSingleton<InputManager>.GetInstance().selectedInteractable = target;
+            }
+
+            // Prod the object so the game registers it as "seen" — normally happens
+            // when the mouse cursor hovers over the object's Highlight component.
+            // Without this, locked containers report skills as -1 (undiscovered)
+            // and CheckInstigate may not process the interaction correctly.
+            var interactableObj = target.drama as InteractableObject;
+            if (interactableObj != null && !interactableObj.HasBeenProdded())
+            {
+                interactableObj.ProdIt();
             }
 
             string name = GetInteractableName(target) ?? "Object";
@@ -1599,6 +1628,14 @@ namespace Wasteland2AccessibilityMod.States
 
             // Try to get a meaningful name from the object or its parents
             string objectName = GetMeaningfulName(hit.transform);
+
+            // If the raycast hit an object with an InteractableNexus that is
+            // perception-gated, don't reveal its name — return null so it's
+            // treated as generic terrain/obstruction instead.
+            var nexus = go.GetComponent<InteractableNexus>();
+            if (nexus == null) nexus = go.GetComponentInParent<InteractableNexus>();
+            if (nexus != null && FOWHelper.IsPerceptionGated(nexus))
+                return null;
 
             // Categorize by layer
             if (layerName == "Wall" || layerName == "FadedWall")

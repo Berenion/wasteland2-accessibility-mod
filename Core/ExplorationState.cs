@@ -328,6 +328,14 @@ namespace Wasteland2AccessibilityMod.Core
                     if (TryUseItemOnObject(nexus, inputManager, pc))
                         return;
 
+                    // Check if interaction is blocked (e.g. perception-gated objects)
+                    if (nexus.drama.bInstigateBlocked)
+                    {
+                        MelonLogger.Msg($"[ExplorationState] Interaction blocked on {nexus.name} (bInstigateBlocked=true)");
+                        ScreenReaderManager.SpeakInterrupt("Cannot interact with " + nexus.name);
+                        return;
+                    }
+
                     MelonLogger.Msg($"[ExplorationState] Interacting with: {nexus.name}");
                     Drama.CheckInstigate(nexus.drama, pc, false);
                     return;
@@ -465,5 +473,6 @@ namespace Wasteland2AccessibilityMod.Core
                 MelonLogger.Error($"Error announcing scrap: {ex.Message}");
             }
         }
+
     }
 }
