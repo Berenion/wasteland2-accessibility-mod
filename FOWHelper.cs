@@ -11,10 +11,11 @@ namespace Wasteland2AccessibilityMod
     public static class FOWHelper
     {
         /// <summary>
-        /// Maximum distance from a party member for the proximity bypass.
-        /// Objects within this range pass even if the FOW grid hasn't revealed their cell.
+        /// Maximum distance from a party member for detecting newly-activated
+        /// teleporters that appear in the interactables list at runtime.
+        /// Only used for activation tracking, NOT for general visibility.
         /// </summary>
-        private const float PartyProximityRange = 40f;
+        private const float NewTeleporterDetectionRange = 10f;
 
         /// <summary>
         /// Tracks teleporter nexuses that were observed as inactive (SetActive false)
@@ -34,15 +35,7 @@ namespace Wasteland2AccessibilityMod
         public static bool IsVisibleThroughFOW(Vector3 position)
         {
             if (FOWSystem.instance == null) return true;
-            if (FOWSystem.instance.IsVisible(position)) return true;
-
-            // Objects near a party member are treated as visible even if the
-            // FOW grid cell hasn't been walked through yet. This handles objects
-            // activated at runtime (e.g. ShortcutDoors after a perception check)
-            // whose grid cell the party hasn't physically entered.
-            if (IsNearParty(position, PartyProximityRange)) return true;
-
-            return false;
+            return FOWSystem.instance.IsVisible(position);
         }
 
         private static bool IsNearParty(Vector3 position, float range)
@@ -100,7 +93,7 @@ namespace Wasteland2AccessibilityMod
                     recentlyActivated.Add(nexus);
                     seenInactive.Remove(nexus);
                 }
-                else if (isNew && active && IsNearParty(nexus.transform.position, PartyProximityRange))
+                else if (isNew && active && IsNearParty(nexus.transform.position, NewTeleporterDetectionRange))
                 {
                     // Teleporter just appeared in the interactables list near the party.
                     // This handles doors that were never in the list while inactive

@@ -292,9 +292,6 @@ namespace Wasteland2AccessibilityMod.States
             // X key: examine the first examinable object on the tile
             if (Input.GetKeyDown(KeyCode.X))
             {
-                // Suppress hover/gamepad interactable announcements so they don't
-                // interrupt the examine description text
-                Patches.NavigationState.lastKeyboardNavigationTime = Time.unscaledTime;
                 ExamineObjectOnTile();
                 return true;
             }

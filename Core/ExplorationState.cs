@@ -1,6 +1,5 @@
 using MelonLoader;
 using UnityEngine;
-using Wasteland2AccessibilityMod.Patches;
 
 namespace Wasteland2AccessibilityMod.Core
 {
@@ -78,7 +77,6 @@ namespace Wasteland2AccessibilityMod.Core
             // PageDown = next interactable
             if (Input.GetKeyDown(KeyCode.PageDown))
             {
-                NavigationState.lastKeyboardNavigationTime = Time.unscaledTime;
                 NavigationManager.CycleNext();
                 return true;
             }
@@ -86,7 +84,6 @@ namespace Wasteland2AccessibilityMod.Core
             // PageUp = previous interactable
             if (Input.GetKeyDown(KeyCode.PageUp))
             {
-                NavigationState.lastKeyboardNavigationTime = Time.unscaledTime;
                 NavigationManager.CyclePrevious();
                 return true;
             }
@@ -94,7 +91,6 @@ namespace Wasteland2AccessibilityMod.Core
             // Repeat last announcement (\)
             if (Input.GetKeyDown(KeyCode.Backslash))
             {
-                NavigationState.lastKeyboardNavigationTime = Time.unscaledTime;
                 NavigationManager.RepeatLastAnnouncement();
                 return true;
             }
