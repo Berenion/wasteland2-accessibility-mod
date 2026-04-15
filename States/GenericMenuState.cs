@@ -95,6 +95,11 @@ namespace Wasteland2AccessibilityMod.States
                     && !guiManager.IsItemInfoScreenOpen() && !modItemMenuOpen)
                     return false;
 
+                // Not active when ModalMessageMenu is the top screen - DialogState handles that
+                GUIScreen topScreen = FindTopScreen();
+                if (topScreen is ModalMessageMenu)
+                    return false;
+
                 // Active when any other menu is on top (including submenus over MainMenu)
                 return true;
             }
