@@ -45,6 +45,7 @@ namespace Wasteland2AccessibilityMod.States
         private List<ContextMenuOption> contextMenuOptions = new List<ContextMenuOption>();
         private int contextMenuIndex = -1;
         private InteractableNexus contextMenuTarget = null;
+        private List<PC> contextMenuPCs = new List<PC>(); // PCs stored when tile has party members and interactables
 
         // Layer masks for floor detection raycasting
         private static int floorLayerMask = -1;
@@ -334,10 +335,18 @@ namespace Wasteland2AccessibilityMod.States
                     return true;
                 }
 
-                PC allyOnTile = FindPCOnTile();
-                if (allyOnTile != null)
+                var pcsOnTile = FindPCsOnTile();
+                if (pcsOnTile.Count > 0)
                 {
-                    OpenPartyMemberInfo(allyOnTile);
+                    var interactables = FindInteractablesOnTile();
+                    if (pcsOnTile.Count > 1 || interactables.Count > 0)
+                    {
+                        // Multiple PCs, or PC(s) + interactable(s) — present a selection list
+                        OpenTileSelectionMenu(pcsOnTile, interactables);
+                        return true;
+                    }
+                    // Single PC, no interactables — open info directly
+                    OpenPartyMemberInfo(pcsOnTile[0]);
                     SuppressInput();
                     return true;
                 }
@@ -1093,6 +1102,44 @@ namespace Wasteland2AccessibilityMod.States
             BuildActionMenu(target);
         }
 
+        private void OpenTileSelectionMenu(List<PC> pcs, List<InteractableNexus> interactables)
+        {
+            contextMenuOptions.Clear();
+            contextMenuPCs.Clear();
+            contextMenuPCs.AddRange(pcs);
+
+            // Add each party member
+            for (int i = 0; i < pcs.Count; i++)
+            {
+                string pcName = GetMobName(pcs[i]);
+                contextMenuOptions.Add(new ContextMenuOption
+                {
+                    DisplayName = pcName + " (party member)",
+                    ASIName = "partyinfo_" + i
+                });
+            }
+
+            // Add each interactable
+            foreach (var nexus in interactables)
+            {
+                string name = GetInteractableName(nexus);
+                if (string.IsNullOrEmpty(name)) name = "Object";
+                contextMenuOptions.Add(new ContextMenuOption
+                {
+                    DisplayName = name,
+                    ASIName = "select_" + interactables.IndexOf(nexus)
+                });
+            }
+
+            contextMenuTarget = null;
+            contextMenuActive = true;
+            contextMenuIndex = 0;
+
+            string announcement = contextMenuOptions.Count + " things on tile. " + contextMenuOptions[0].DisplayName;
+            ScreenReaderManager.SpeakInterrupt(announcement);
+            MelonLogger.Msg($"[MapCursorState] Tile selection menu opened with {contextMenuOptions.Count} options ({pcs.Count} PCs + {interactables.Count} interactables)");
+        }
+
         private void BuildActionMenu(InteractableNexus target)
         {
             contextMenuOptions.Clear();
@@ -1265,6 +1312,21 @@ namespace Wasteland2AccessibilityMod.States
             {
                 var option = contextMenuOptions[contextMenuIndex];
 
+                // If this was a party member selection, open their info
+                if (option.ASIName != null && option.ASIName.StartsWith("partyinfo_"))
+                {
+                    int pcIndex;
+                    if (int.TryParse(option.ASIName.Substring(10), out pcIndex)
+                        && pcIndex >= 0 && pcIndex < contextMenuPCs.Count)
+                    {
+                        PC pc = contextMenuPCs[pcIndex];
+                        CloseContextMenu();
+                        OpenPartyMemberInfo(pc);
+                        SuppressInput();
+                        return true;
+                    }
+                }
+
                 // If this was a multi-object selection menu, drill into that object
                 if (option.ASIName != null && option.ASIName.StartsWith("select_"))
                 {
@@ -1309,6 +1371,7 @@ namespace Wasteland2AccessibilityMod.States
             contextMenuOptions.Clear();
             contextMenuIndex = -1;
             contextMenuTarget = null;
+            contextMenuPCs.Clear();
         }
 
         private void ExecuteInteraction(InteractableNexus target, string asiName)
@@ -2249,6 +2312,18 @@ namespace Wasteland2AccessibilityMod.States
                     return mob as PC;
             }
             return null;
+        }
+
+        private List<PC> FindPCsOnTile()
+        {
+            var result = new List<PC>();
+            var mobs = FindMobsOnTile();
+            foreach (var mob in mobs)
+            {
+                if (mob is PC && mob.mobState != Mob.MobState.DEAD)
+                    result.Add(mob as PC);
+            }
+            return result;
         }
 
         private void OpenPartyMemberInfo(PC pc)
