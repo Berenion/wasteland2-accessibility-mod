@@ -44,6 +44,9 @@ namespace Wasteland2AccessibilityMod.States
         // Cached SaveLoadScreen reference
         private SaveLoadScreen cachedSaveLoadScreen = null;
 
+        // Cached HUD_SkillUseMenu reference (item-use popup from skill targeting)
+        private HUD_SkillUseMenu cachedSkillUseMenu = null;
+
         // Text field editing mode (SaveLoadScreen name input)
         private bool isEditingTextField = false;
         private string editingOriginalValue = "";
@@ -348,6 +351,7 @@ namespace Wasteland2AccessibilityMod.States
             optionsControlIndex = -1;
             cachedOptionsMenu = null;
             cachedSaveLoadScreen = null;
+            cachedSkillUseMenu = null;
             cachedTopScreen = null;
             blockUIInput = false;
             isEditingTextField = false;
@@ -374,6 +378,7 @@ namespace Wasteland2AccessibilityMod.States
             // Detect specialized screens
             cachedOptionsMenu = topScreen as OptionsMenu;
             cachedSaveLoadScreen = topScreen as SaveLoadScreen;
+            cachedSkillUseMenu = topScreen as HUD_SkillUseMenu;
 
             // Build appropriate control list
             if (cachedOptionsMenu != null)
@@ -382,6 +387,8 @@ namespace Wasteland2AccessibilityMod.States
             }
             else if (cachedSaveLoadScreen != null)
                 BuildSaveLoadControlList();
+            else if (cachedSkillUseMenu != null)
+                BuildSkillUseMenuControlList();
             else
                 BuildGridButtonList(topScreen);
 
@@ -413,6 +420,12 @@ namespace Wasteland2AccessibilityMod.States
             {
                 menuName = "Options, " + GetActiveTabName(cachedOptionsMenu);
                 menuName += ". Page Up and Page Down to switch tabs";
+            }
+            else if (cachedSkillUseMenu != null)
+            {
+                menuName = cachedSkillUseMenu.titleLabel != null
+                    ? UITextExtractor.CleanText(cachedSkillUseMenu.titleLabel.text)
+                    : "Select an Item To Use";
             }
             else
             {
@@ -726,6 +739,37 @@ namespace Wasteland2AccessibilityMod.States
 
             optionsControlIndex = 0;
             MelonLogger.Msg($"[GenericMenuState] Built SaveLoad control list: {optionsControls.Count} controls");
+            for (int i = 0; i < optionsControls.Count; i++)
+                MelonLogger.Msg($"  [{i}] {optionsControls[i].name}");
+        }
+
+        // ========== Skill Use Menu Control List ==========
+
+        private void BuildSkillUseMenuControlList()
+        {
+            if (cachedSkillUseMenu == null) return;
+
+            optionsControls = new List<GameObject>();
+
+            if (cachedSkillUseMenu.buttonGrid != null)
+            {
+                for (int i = 0; i < cachedSkillUseMenu.buttonGrid.transform.childCount; i++)
+                {
+                    Transform child = cachedSkillUseMenu.buttonGrid.transform.GetChild(i);
+                    if (child == null || !child.gameObject.activeInHierarchy) continue;
+                    if (child.GetComponent<HUD_HotkeyOptionButton>() != null)
+                        optionsControls.Add(child.gameObject);
+                }
+            }
+
+            if (cachedSkillUseMenu.closeButton != null
+                && cachedSkillUseMenu.closeButton.gameObject.activeInHierarchy)
+            {
+                optionsControls.Add(cachedSkillUseMenu.closeButton.gameObject);
+            }
+
+            optionsControlIndex = 0;
+            MelonLogger.Msg($"[GenericMenuState] Built SkillUseMenu control list: {optionsControls.Count} options");
             for (int i = 0; i < optionsControls.Count; i++)
                 MelonLogger.Msg($"  [{i}] {optionsControls[i].name}");
         }
@@ -1082,6 +1126,32 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (element == null) return null;
 
+            // Check for HUD_HotkeyOptionButton (SkillUseMenu item/skill options)
+            HUD_HotkeyOptionButton hotkeyOpt = element.GetComponent<HUD_HotkeyOptionButton>();
+            if (hotkeyOpt != null)
+            {
+                string name = hotkeyOpt.nameLabel != null
+                    ? UITextExtractor.CleanText(hotkeyOpt.nameLabel.text)
+                    : element.name;
+                string result = name;
+                string countText = (hotkeyOpt.countLabel != null && hotkeyOpt.countLabel.enabled)
+                    ? UITextExtractor.CleanText(hotkeyOpt.countLabel.text) : "";
+
+                if (hotkeyOpt.skill != null)
+                {
+                    if (!string.IsNullOrEmpty(countText))
+                        result += $", {countText} success";
+                    result += ", skill";
+                }
+                else
+                {
+                    if (!string.IsNullOrEmpty(countText))
+                        result += $", count {countText}";
+                    result += ", item";
+                }
+                return result;
+            }
+
             // Check for SaveGameListEntry - announce name, location, and time
             SaveGameListEntry saveEntry = element.GetComponent<SaveGameListEntry>();
             if (saveEntry == null) saveEntry = element.GetComponentInParent<SaveGameListEntry>();
@@ -1232,6 +1302,28 @@ namespace Wasteland2AccessibilityMod.States
                 current = UICamera.selectedObject;
 
             if (current == null) return;
+
+            // Check for HUD_HotkeyOptionButton (SkillUseMenu item/skill option)
+            HUD_HotkeyOptionButton hotkeyOpt = current.GetComponent<HUD_HotkeyOptionButton>();
+            if (hotkeyOpt != null && cachedSkillUseMenu != null)
+            {
+                var method = typeof(HUD_SkillUseMenu).GetMethod("OnHotkeyOptionButtonClicked",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                if (method != null)
+                {
+                    method.Invoke(cachedSkillUseMenu, new object[] { current });
+                    string name = hotkeyOpt.nameLabel != null
+                        ? UITextExtractor.CleanText(hotkeyOpt.nameLabel.text) : current.name;
+                    MelonLogger.Msg($"[GenericMenuState] SkillUseMenu selected: {name}");
+                    ScreenReaderManager.SpeakInterrupt($"Using {name}");
+                }
+                else
+                {
+                    current.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    MelonLogger.Warning("[GenericMenuState] OnHotkeyOptionButtonClicked method not found, fell back to SendMessage");
+                }
+                return;
+            }
 
             // Check for SaveGameListEntry - select the entry and trigger save/load.
             // OnSaveClicked/OnLoadClicked handle confirmation dialogs (overwrite, incompatible version, etc.)

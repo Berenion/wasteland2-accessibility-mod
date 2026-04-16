@@ -47,6 +47,9 @@ namespace Wasteland2AccessibilityMod.States
         private int contextMenuIndex = -1;
         private InteractableNexus contextMenuTarget = null;
         private List<PC> contextMenuPCs = new List<PC>(); // PCs stored when tile has party members and interactables
+        // Callback fired when the user picks a PC from a multi-PC selection menu
+        // (e.g. choosing which stacked party member to heal with fieldMedic)
+        private System.Action<PC> pendingPCSelectionCallback = null;
 
         // Layer masks for floor detection raycasting
         private static int floorLayerMask = -1;
@@ -1372,6 +1375,23 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
 
+                // If this was a pending-action PC selection (e.g. skill/item target on stacked tile),
+                // fire the callback with the chosen PC
+                if (option.ASIName != null && option.ASIName.StartsWith("pcselect_"))
+                {
+                    int pcIndex;
+                    if (int.TryParse(option.ASIName.Substring(9), out pcIndex)
+                        && pcIndex >= 0 && pcIndex < contextMenuPCs.Count)
+                    {
+                        PC pc = contextMenuPCs[pcIndex];
+                        var callback = pendingPCSelectionCallback;
+                        CloseContextMenu();
+                        if (callback != null) callback(pc);
+                        SuppressInput();
+                        return true;
+                    }
+                }
+
                 // If this was a multi-object selection menu, drill into that object
                 if (option.ASIName != null && option.ASIName.StartsWith("select_"))
                 {
@@ -1417,6 +1437,32 @@ namespace Wasteland2AccessibilityMod.States
             contextMenuIndex = -1;
             contextMenuTarget = null;
             contextMenuPCs.Clear();
+            pendingPCSelectionCallback = null;
+        }
+
+        private void OpenPCSelectionMenu(List<PC> pcs, string header, System.Action<PC> callback)
+        {
+            contextMenuOptions.Clear();
+            contextMenuPCs.Clear();
+            contextMenuPCs.AddRange(pcs);
+
+            for (int i = 0; i < pcs.Count; i++)
+            {
+                contextMenuOptions.Add(new ContextMenuOption
+                {
+                    DisplayName = GetMobName(pcs[i]),
+                    ASIName = "pcselect_" + i
+                });
+            }
+
+            pendingPCSelectionCallback = callback;
+            contextMenuTarget = null;
+            contextMenuActive = true;
+            contextMenuIndex = 0;
+
+            string announcement = header + ". " + contextMenuOptions[0].DisplayName + ". " + pcs.Count + " party members";
+            ScreenReaderManager.SpeakInterrupt(announcement);
+            MelonLogger.Msg($"[MapCursorState] PC selection menu: {header} ({pcs.Count} PCs)");
         }
 
         private void ExecuteInteraction(InteractableNexus target, string asiName)
@@ -2175,7 +2221,18 @@ namespace Wasteland2AccessibilityMod.States
 
             // Party members first — healing items (trauma kits, pain relievers) target PCs
             var pcsOnTile = FindPCsOnTile();
-            if (pcsOnTile.Count > 0)
+            if (pcsOnTile.Count > 1)
+            {
+                OpenPCSelectionMenu(pcsOnTile, $"Use {itemName} on", (pc) =>
+                {
+                    string pcName = GetMobName(pc);
+                    MelonLogger.Msg($"[MapCursorState] Using {itemName} on {pcName}");
+                    ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {pcName}");
+                    MonoBehaviourSingleton<InputManager>.GetInstance().HandleUsableItemClickOnTargetable(pc);
+                });
+                return;
+            }
+            if (pcsOnTile.Count == 1)
             {
                 var pc = pcsOnTile[0];
                 string pcName = GetMobName(pc);
@@ -2252,7 +2309,20 @@ namespace Wasteland2AccessibilityMod.States
 
             // Party members first — doctor/fieldMedic target PCs
             var pcsOnTile = FindPCsOnTile();
-            if (pcsOnTile.Count > 0)
+            if (pcsOnTile.Count > 1)
+            {
+                string asiCapture = activeASI;
+                string skillCapture = skillName;
+                OpenPCSelectionMenu(pcsOnTile, $"{skillName} on", (pc) =>
+                {
+                    string pcName = GetMobName(pc);
+                    MelonLogger.Msg($"[MapCursorState] Using {asiCapture} on {pcName}");
+                    ScreenReaderManager.SpeakInterrupt($"Using {skillCapture} on {pcName}");
+                    MonoBehaviourSingleton<InputManager>.GetInstance().HandleSkillClick(pc.transform, doubleClick: false);
+                });
+                return;
+            }
+            if (pcsOnTile.Count == 1)
             {
                 var pc = pcsOnTile[0];
                 string pcName = GetMobName(pc);
