@@ -4,6 +4,7 @@ using System.Reflection;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod.States
 {
@@ -1985,34 +1986,9 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     foreach (var effect in pc.template.statusEffects)
                     {
-                        if (effect == null) continue;
-
-                        string effectName = null;
-                        if (!string.IsNullOrEmpty(effect.displayName))
-                        {
-                            effectName = UITextExtractor.CleanText(
-                                Language.Localize(effect.displayName, false, false, string.Empty));
-                        }
-                        else
-                        {
-                            effectName = effect.name;
-                        }
-
-                        if (string.IsNullOrEmpty(effectName)) continue;
-
-                        string effectLine = effectName;
-                        if (effect.positiveEffect)
-                            effectLine += " (buff)";
-                        else
-                            effectLine += " (debuff)";
-
-                        if (effect.expires || effect.expiresByTurns)
-                        {
-                            if (effect.expiresByTurns && effect.turnsRemaining > 0)
-                                effectLine += ", " + effect.turnsRemaining + " turns";
-                        }
-
-                        partyInfoLines.Add(effectLine);
+                        string line = Helpers.StatusEffectHelper.BuildEffectLine(effect);
+                        if (!string.IsNullOrEmpty(line))
+                            partyInfoLines.Add(line);
                     }
                 }
             }
@@ -2771,17 +2747,9 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     foreach (var effect in target.template.statusEffects)
                     {
-                        if (effect == null) continue;
-                        string effectName = UITextExtractor.CleanText(
-                            Language.Localize(effect.displayName, false, false, string.Empty));
-                        if (string.IsNullOrEmpty(effectName)) continue;
-
-                        string effectLine = "Effect: " + effectName;
-                        if (effect.positiveEffect)
-                            effectLine += " (buff)";
-                        if (effect.turnsRemaining > 0)
-                            effectLine += ", " + effect.turnsRemaining + " turns remaining";
-                        targetInfoLines.Add(effectLine);
+                        string line = Helpers.StatusEffectHelper.BuildEffectLine(effect);
+                        if (!string.IsNullOrEmpty(line))
+                            targetInfoLines.Add("Effect: " + line);
                     }
                 }
             }
