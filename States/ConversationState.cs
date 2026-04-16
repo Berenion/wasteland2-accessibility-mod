@@ -92,6 +92,13 @@ namespace Wasteland2AccessibilityMod.States
         {
             get
             {
+                // Yield to ShopState when the vendor screen is open — the game keeps
+                // the conversation panel active behind the shop UI, but ShopState
+                // should handle all input while the shop is visible.
+                if (MonoBehaviourSingleton<GUIManager>.HasInstance() &&
+                    MonoBehaviourSingleton<GUIManager>.GetInstance().IsVendorScreenOpen())
+                    return false;
+
                 return IsInAdvanceMode || IsInInputMode;
             }
         }
