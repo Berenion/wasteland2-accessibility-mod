@@ -143,15 +143,19 @@ namespace Wasteland2AccessibilityMod
 
                     if (textKindName != "AudioConversation") continue;
 
-                    // Check if this bubble text has an audio name set (meaning it will play audio)
+                    // Check if this bubble text has an audio name that maps to a real audio file
                     FieldInfo audioNameField = btInfoType.GetField("audioName");
                     if (audioNameField != null)
                     {
                         string audioName = audioNameField.GetValue(btInfo) as string;
-                        // "__" is a placeholder used when no actual voice file exists
                         if (!string.IsNullOrEmpty(audioName) && audioName.Length > 0 && audioName != "__")
                         {
-                            return true;
+                            // Verify the audio file actually exists in the audio system
+                            if (AudioManager.IsValidAudioID(audioName))
+                            {
+                                return true;
+                            }
+                            // audioName was set but no audio file exists — skip
                         }
                     }
                 }

@@ -41,7 +41,30 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             LastPrintTextKind = textKind;
             // audioName "__" is a placeholder used when no actual voice file exists
-            LastPrintHadAudio = !string.IsNullOrEmpty(audioName) && audioName.Length > 0 && audioName != "__";
+            bool hasAudioName = !string.IsNullOrEmpty(audioName) && audioName.Length > 0 && audioName != "__";
+
+            // Even if audioName is set, verify the audio file actually exists in the audio system.
+            // Many Director's Cut lines have audioName entries but no actual audio files.
+            if (hasAudioName)
+            {
+                try
+                {
+                    LastPrintHadAudio = AudioManager.IsValidAudioID(audioName);
+                    if (!LastPrintHadAudio)
+                    {
+                        MelonLogger.Msg($"[BubbleTextPrint] Audio ID '{audioName}' not found in audio system — treating as unvoiced");
+                    }
+                }
+                catch
+                {
+                    // If AudioManager isn't ready, fall back to trusting the audioName
+                    LastPrintHadAudio = true;
+                }
+            }
+            else
+            {
+                LastPrintHadAudio = false;
+            }
 
             if (textKind == BubbleTextKind.Conversation ||
                 textKind == BubbleTextKind.DescConversation ||
