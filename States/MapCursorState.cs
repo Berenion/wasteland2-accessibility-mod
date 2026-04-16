@@ -687,7 +687,6 @@ namespace Wasteland2AccessibilityMod.States
             var mobs = FindMobsOnTile();
             var objectParts = new List<string>();
 
-
             // Check if we're in free aim mode for hit chance announcements
             string activeASIForTile = UseASIManager.GetActiveASIName();
             bool inFreeAim = activeASIForTile == "attack" || activeASIForTile == "aoeattack" || activeASIForTile == "coneattack";
@@ -719,7 +718,9 @@ namespace Wasteland2AccessibilityMod.States
             {
                 string name = GetInteractableName(interactable);
                 if (!string.IsNullOrEmpty(name))
+                {
                     objectParts.Add(name);
+                }
             }
 
             // Identify obstruction if no grid node exists
@@ -819,6 +820,53 @@ namespace Wasteland2AccessibilityMod.States
             return dx <= TILE_MATCH_RADIUS && dz <= TILE_MATCH_RADIUS;
         }
 
+        /// <summary>
+        /// Checks if the target position is on the other side of a wall from the cursor,
+        /// using the pathfinding grid's neighbor connectivity. If the object is near the
+        /// tile edge and there's no walkable neighbor in that direction, a wall blocks it.
+        /// </summary>
+        private bool IsBlockedByWall(Vector3 targetPos)
+        {
+            CombatAStarNode cursorNode = GetNodeAtGridId(cursorGridId);
+            if (cursorNode == null) return false;
+
+            float dx = targetPos.x - cursorPosition.x;
+            float dz = targetPos.z - cursorPosition.z;
+
+            // Threshold: if the object is beyond this distance from tile center
+            // in a cardinal direction, check for a walkable neighbor that way.
+            // Objects near tile edges in walled-off directions get rejected.
+            float edgeThreshold = GRID_SQUARE_SIZE * 0.4f;
+
+            bool blocked = false;
+
+            if (dx > edgeThreshold)
+            {
+                // Object extends east — check for east neighbor
+                if (GetNeighborInDirection(cursorNode, Vector3.right) == null)
+                    blocked = true;
+            }
+            else if (dx < -edgeThreshold)
+            {
+                if (GetNeighborInDirection(cursorNode, Vector3.left) == null)
+                    blocked = true;
+            }
+
+            if (dz > edgeThreshold)
+            {
+                // Object extends north — check for north neighbor
+                if (GetNeighborInDirection(cursorNode, Vector3.forward) == null)
+                    blocked = true;
+            }
+            else if (dz < -edgeThreshold)
+            {
+                if (GetNeighborInDirection(cursorNode, Vector3.back) == null)
+                    blocked = true;
+            }
+
+            return blocked;
+        }
+
         private List<InteractableNexus> FindInteractablesOnTile()
         {
             List<InteractableNexus> onTile = new List<InteractableNexus>();
@@ -827,26 +875,14 @@ namespace Wasteland2AccessibilityMod.States
             foreach (var interactable in InteractableNexus.interactables)
             {
                 if (interactable == null) continue;
-                if (!interactable.isVisible)
-                {
-                    // Diagnose ShortcutDoor area
-                    if (interactable.transform != null)
-                    {
-                        Vector3 p = interactable.transform.position;
-                        if (p.x > 85f && p.x < 95f && p.z > 108f && p.z < 118f)
-                        {
-                            bool hasTp = interactable.GetComponent<InteractableTeleporter>() != null;
-                            MelonLogger.Msg($"  [TileReject] {interactable.name} at {p}: failed isVisible (isHidden={interactable.isHidden}, active={interactable.gameObject.activeInHierarchy}, dramaType={(interactable.drama != null ? interactable.drama.GetType().Name : "null")}, hasTpComponent={hasTp})");
-                        }
-                    }
-                    continue;
-                }
+                if (!interactable.isVisible) continue;
                 if (interactable.isPC) continue;
                 if (!FOWHelper.IsVisibleThroughFOW(interactable.transform.position)) continue;
                 if (FOWHelper.IsPerceptionGated(interactable)) continue;
 
                 if (IsOnCurrentTile(interactable.transform.position))
                 {
+                    if (IsBlockedByWall(interactable.transform.position)) continue;
                     onTile.Add(interactable);
                 }
             }
@@ -869,10 +905,12 @@ namespace Wasteland2AccessibilityMod.States
                         if (npc == null || npc.gameObject == null) continue;
                         if (!npc.gameObject.activeInHierarchy) continue;
                         if (npc.mobState == Mob.MobState.DEAD) continue;
+                        if (npc.isHidden) continue;
                         if (!FOWHelper.IsVisibleThroughFOW(npc.transform.position)) continue;
 
                         if (IsOnCurrentTile(npc.transform.position))
                         {
+                            if (IsBlockedByWall(npc.transform.position)) continue;
                             onTile.Add(npc);
                         }
                     }
@@ -884,10 +922,12 @@ namespace Wasteland2AccessibilityMod.States
                     {
                         if (follower == null || follower.gameObject == null) continue;
                         if (!follower.gameObject.activeInHierarchy) continue;
+                        if (follower.isHidden) continue;
                         if (!FOWHelper.IsVisibleThroughFOW(follower.transform.position)) continue;
 
                         if (IsOnCurrentTile(follower.transform.position))
                         {
+                            if (IsBlockedByWall(follower.transform.position)) continue;
                             onTile.Add(follower);
                         }
                     }
