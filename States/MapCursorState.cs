@@ -4,6 +4,7 @@ using System.Reflection;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod.States
 {
@@ -329,6 +330,13 @@ namespace Wasteland2AccessibilityMod.States
                     && UseASIManager.GetActiveASIItem() is ItemInstance_Usable)
                 {
                     UseItemOnTile();
+                    return true;
+                }
+
+                // Skill ASI active (e.g. doctor, fieldMedic from Tab menu) — apply skill to target
+                if (!string.IsNullOrEmpty(activeASI) && UseASIManager.IsSkillASI(activeASI))
+                {
+                    UseSkillOnTile(activeASI);
                     return true;
                 }
 
@@ -1855,7 +1863,10 @@ namespace Wasteland2AccessibilityMod.States
                         Execute = () =>
                         {
                             UseASIManager.SetActiveASIName(capturedSkillName);
-                            ScreenReaderManager.SpeakInterrupt(displayName + " active. Target an object with Enter");
+                            string targetHint = UseASIManager.IsSkillItemASI(capturedSkillName)
+                                ? " active. Target a party member with Enter"
+                                : " active. Target an object with Enter";
+                            ScreenReaderManager.SpeakInterrupt(displayName + targetHint);
                             MelonLogger.Msg("[MapCursorState] Skill activated: " + capturedSkillName);
                         }
                     });
@@ -1899,7 +1910,7 @@ namespace Wasteland2AccessibilityMod.States
                         {
                             UseASIManager.SetActiveASIItem(capturedItem, capturedPC);
                             UseASIManager.SetActiveASIName("useItem");
-                            ScreenReaderManager.SpeakInterrupt(itemName + " ready. Target with Enter");
+                            ScreenReaderManager.SpeakInterrupt(itemName + " ready. Target a party member or object with Enter");
                             MelonLogger.Msg("[MapCursorState] Item activated: " + itemName);
                         }
                     });
@@ -2159,6 +2170,33 @@ namespace Wasteland2AccessibilityMod.States
             if (!MonoBehaviourSingleton<InputManager>.HasInstance()) return;
 
             var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+            string itemName = UITextExtractor.CleanText(
+                Language.Localize(UseASIManager.GetActiveASIItem().template.displayName, false, false, string.Empty));
+
+            // Party members first — healing items (trauma kits, pain relievers) target PCs
+            var pcsOnTile = FindPCsOnTile();
+            if (pcsOnTile.Count > 0)
+            {
+                var pc = pcsOnTile[0];
+                string pcName = GetMobName(pc);
+                MelonLogger.Msg($"[MapCursorState] Using {itemName} on {pcName}");
+                ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {pcName}");
+                inputManager.HandleUsableItemClickOnTargetable(pc);
+                return;
+            }
+
+            // Non-PC mobs (NPCs, enemies) — some items target them directly
+            foreach (var mob in FindMobsOnTile())
+            {
+                if (mob is PC) continue;
+                if (mob.mobState == Mob.MobState.DEAD) continue;
+                string mobName = GetMobName(mob);
+                MelonLogger.Msg($"[MapCursorState] Using {itemName} on {mobName}");
+                ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {mobName}");
+                inputManager.HandleUsableItemClickOnTargetable(mob);
+                return;
+            }
+
             var interactables = FindInteractablesOnTile();
 
             if (interactables.Count == 0)
@@ -2188,8 +2226,6 @@ namespace Wasteland2AccessibilityMod.States
                 var nexus = interactables[0];
                 if (nexus.drama != null)
                 {
-                    string itemName = UITextExtractor.CleanText(
-                        Language.Localize(UseASIManager.GetActiveASIItem().template.displayName, false, false, string.Empty));
                     string name = GetInteractableName(nexus) ?? nexus.name;
                     MelonLogger.Msg($"[MapCursorState] Using {itemName} on {name} (no Targetable, using drama fallback)");
                     ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {name}");
@@ -2200,11 +2236,56 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            string iName = UITextExtractor.CleanText(
-                Language.Localize(UseASIManager.GetActiveASIItem().template.displayName, false, false, string.Empty));
-            MelonLogger.Msg($"[MapCursorState] Using {iName} on {targetName}");
-            ScreenReaderManager.SpeakInterrupt($"Using {iName} on {targetName}");
+            MelonLogger.Msg($"[MapCursorState] Using {itemName} on {targetName}");
+            ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {targetName}");
             inputManager.HandleUsableItemClickOnTargetable(targetable);
+        }
+
+        private void UseSkillOnTile(string activeASI)
+        {
+            if (!MonoBehaviourSingleton<InputManager>.HasInstance()) return;
+
+            var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+            string skillName;
+            if (!SKILL_DISPLAY_NAMES.TryGetValue(activeASI, out skillName))
+                skillName = activeASI;
+
+            // Party members first — doctor/fieldMedic target PCs
+            var pcsOnTile = FindPCsOnTile();
+            if (pcsOnTile.Count > 0)
+            {
+                var pc = pcsOnTile[0];
+                string pcName = GetMobName(pc);
+                MelonLogger.Msg($"[MapCursorState] Using {activeASI} on {pcName}");
+                ScreenReaderManager.SpeakInterrupt($"Using {skillName} on {pcName}");
+                inputManager.HandleSkillClick(pc.transform, doubleClick: false);
+                return;
+            }
+
+            // Non-PC mobs (animals for animalWhisperer, etc.)
+            foreach (var mob in FindMobsOnTile())
+            {
+                if (mob is PC) continue;
+                if (mob.mobState == Mob.MobState.DEAD) continue;
+                string mobName = GetMobName(mob);
+                MelonLogger.Msg($"[MapCursorState] Using {activeASI} on {mobName}");
+                ScreenReaderManager.SpeakInterrupt($"Using {skillName} on {mobName}");
+                inputManager.HandleSkillClick(mob.transform, doubleClick: false);
+                return;
+            }
+
+            // Interactable objects (doors, locks, safes, etc.)
+            foreach (var nexus in FindInteractablesOnTile())
+            {
+                if (nexus == null || nexus.drama == null) continue;
+                string name = GetInteractableName(nexus) ?? nexus.name;
+                MelonLogger.Msg($"[MapCursorState] Using {activeASI} on {name}");
+                ScreenReaderManager.SpeakInterrupt($"Using {skillName} on {name}");
+                inputManager.HandleSkillClick(nexus.transform, doubleClick: false);
+                return;
+            }
+
+            ScreenReaderManager.SpeakInterrupt("No target on this tile");
         }
 
         // --- Free Aim Attack ---
@@ -2422,28 +2503,9 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     foreach (var effect in pc.template.statusEffects)
                     {
-                        if (effect == null) continue;
-
-                        string effectName = null;
-                        if (!string.IsNullOrEmpty(effect.displayName))
-                        {
-                            effectName = UITextExtractor.CleanText(
-                                Language.Localize(effect.displayName, false, false, string.Empty));
-                        }
-                        else
-                        {
-                            effectName = effect.name;
-                        }
-
-                        if (string.IsNullOrEmpty(effectName)) continue;
-
-                        string effectLine = effectName;
-                        if (effect.positiveEffect)
-                            effectLine += " (buff)";
-                        else
-                            effectLine += " (debuff)";
-
-                        partyInfoLines.Add(effectLine);
+                        string line = Helpers.StatusEffectHelper.BuildEffectLine(effect);
+                        if (!string.IsNullOrEmpty(line))
+                            partyInfoLines.Add(line);
                     }
                 }
             }
