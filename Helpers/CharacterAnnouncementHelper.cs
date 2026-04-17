@@ -477,6 +477,39 @@ namespace Wasteland2AccessibilityMod.Helpers
             ScreenReaderManager.SpeakInterrupt(string.Join(", ", parts.ToArray()));
         }
 
+        // ========== XP ==========
+
+        public static string BuildXPAnnouncement(PC pc)
+        {
+            if (pc == null || pc.pcTemplate == null)
+                return null;
+
+            var tmpl = pc.pcTemplate;
+            int level = tmpl.GetCurrentLevel();
+
+            if (tmpl.IsAtMaxLevel())
+                return $"Level {level}, max level. Experience {tmpl.GetXP()}";
+
+            int xpCur = tmpl.GetXP();
+            int xpNext = tmpl.GetXPForLevel(level + 1);
+            string msg = $"Level {level}. Experience {xpCur} of {xpNext}";
+            if (pc.CanLevelUp(ignoreHealthState: true))
+                msg += ". Level up available";
+            return msg;
+        }
+
+        public static void AnnounceXP(PC pc, bool interrupt = true)
+        {
+            string msg = BuildXPAnnouncement(pc);
+            if (string.IsNullOrEmpty(msg))
+            {
+                ScreenReaderManager.SpeakInterrupt("No character selected");
+                return;
+            }
+            if (interrupt) ScreenReaderManager.SpeakInterrupt(msg);
+            else ScreenReaderManager.Speak(msg);
+        }
+
         // ========== Value Adjustment ==========
 
         public static void AdjustAttribute(CHA_AttributeEditor editor, int direction, Action announceCallback)

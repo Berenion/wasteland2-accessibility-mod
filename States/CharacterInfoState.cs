@@ -462,6 +462,7 @@ namespace Wasteland2AccessibilityMod.States
             AddDossierLabel("Name", dossier.nameLabel);
             AddDossierLabel("Age", dossier.ageLabel);
             AddDossierLabel("Level", dossier.levelLabel);
+            AddDossierXP(GetCurrentPC(menu));
             AddDossierLabel("Religion", dossier.religionLabel);
             AddDossierLabel("Ethnicity", dossier.ethnicityLabel);
             AddDossierLabel("Kills", dossier.killLabel);
@@ -517,6 +518,26 @@ namespace Wasteland2AccessibilityMod.States
             string text = UITextExtractor.CleanText(label.text);
             if (string.IsNullOrEmpty(text)) return;
             dossierLines.Add($"{prefix}: {text}");
+        }
+
+        private void AddDossierXP(PC pc)
+        {
+            if (pc == null || pc.pcTemplate == null) return;
+            var tmpl = pc.pcTemplate;
+
+            if (tmpl.IsAtMaxLevel())
+            {
+                dossierLines.Add($"Experience: {tmpl.GetXP()}, max level");
+                return;
+            }
+
+            int level = tmpl.GetCurrentLevel();
+            int xpCur = tmpl.GetXP();
+            int xpNext = tmpl.GetXPForLevel(level + 1);
+            string line = $"Experience: {xpCur} of {xpNext}";
+            if (pc.CanLevelUp(ignoreHealthState: true))
+                line += ", level up available";
+            dossierLines.Add(line);
         }
 
         private void AddGridChildren(UIGrid grid)
@@ -686,6 +707,16 @@ namespace Wasteland2AccessibilityMod.States
             // F1-F7 switch party member
             if (HandlePartySwitch(menu))
                 return true;
+
+            // E: announce current XP / next level XP
+            if (Input.GetKeyDown(KeyCode.E))
+            {
+                PC pc = GetCurrentPC(menu);
+                if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                    pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+                CharacterAnnouncementHelper.AnnounceXP(pc);
+                return true;
+            }
 
             // Escape: close the character info menu
             if (Input.GetKeyDown(KeyCode.Escape))

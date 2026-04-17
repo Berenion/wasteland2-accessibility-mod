@@ -2607,6 +2607,15 @@ namespace Wasteland2AccessibilityMod.States
 
             partyInfoLines.Add(healthLine);
 
+            // --- Level / XP ---
+            try
+            {
+                string xpLine = CharacterAnnouncementHelper.BuildXPAnnouncement(pc);
+                if (!string.IsNullOrEmpty(xpLine))
+                    partyInfoLines.Add(xpLine);
+            }
+            catch { }
+
             // --- Weapon ---
             try
             {
