@@ -51,6 +51,10 @@ namespace Wasteland2AccessibilityMod.Core
         [HarmonyPrefix]
         public static bool Prefix()
         {
+            // Never block the game during a cutscene — players need Enter/Escape
+            // to reach the game's native cutscene/movie skip + pause-menu paths.
+            if (CutsceneDetector.IsActive) return true;
+
             if (InputSuppressor.ShouldSuppressGameInput)
             {
                 return false; // Skip original InputManager.Update()
@@ -69,6 +73,8 @@ namespace Wasteland2AccessibilityMod.Core
         [HarmonyPrefix]
         public static bool Prefix()
         {
+            if (CutsceneDetector.IsActive) return true;
+
             if (InputSuppressor.ShouldSuppressUINavigation)
             {
                 return false; // Skip NGUI navigation processing
@@ -90,6 +96,10 @@ namespace Wasteland2AccessibilityMod.Core
         [HarmonyPrefix]
         public static bool Prefix()
         {
+            // MoviePlayerCamera.OnButtonDown is registered as a button event handler;
+            // blocking EventManager.Update would swallow the key that skips the movie.
+            if (CutsceneDetector.IsActive) return true;
+
             if (InputSuppressor.ShouldSuppressButtonEvents)
             {
                 return false; // Skip EventManager button dispatch

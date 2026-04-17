@@ -51,10 +51,16 @@ namespace Wasteland2AccessibilityMod.Core
             // Reset suppression flags each frame
             InputSuppressor.Reset();
 
+            // During a cutscene or movie, step out of the way entirely so the game's
+            // native skip path (MoviePlayerCamera.OnButtonDown, HUD_Controller.OnButtonDown)
+            // receives Enter/Escape. We still fire deactivation callbacks below so
+            // states that were active a frame ago clean up properly.
+            bool cutsceneActive = CutsceneDetector.IsActive;
+
             for (int i = 0; i < states.Count; i++)
             {
                 IAccessibilityState state = states[i];
-                bool currentlyActive = state.IsActive;
+                bool currentlyActive = !cutsceneActive && state.IsActive;
                 bool wasActive = previousActiveState[state];
 
                 // Fire activation/deactivation callbacks
