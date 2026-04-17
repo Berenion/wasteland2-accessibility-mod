@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MelonLoader;
 using UnityEngine;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod
 {
@@ -202,8 +203,7 @@ namespace Wasteland2AccessibilityMod
             if (player == null) return;
 
             string name = GetInteractableName(nexus);
-            float distance = Vector3.Distance(player.transform.position, nexus.InstigatePoint);
-            string distanceStr = $"{Mathf.RoundToInt(distance)} meters";
+            string distanceStr = TileCoordinateSystem.GetDistanceText(player.transform.position, nexus.InstigatePoint);
             string direction = DirectionHelper.GetDirectionDescription(player.transform.position, nexus.InstigatePoint);
 
             // Format: "Name, Distance, Direction"

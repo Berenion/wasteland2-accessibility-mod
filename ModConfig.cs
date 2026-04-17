@@ -7,9 +7,11 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Category configCategory;
         private static MelonPreferences_Entry<bool> useClockPositionsEntry;
         private static MelonPreferences_Entry<bool> objectNamesFirstEntry;
+        private static MelonPreferences_Entry<bool> useTileDistancesEntry;
 
         public static bool UseClockPositions { get; private set; } = false;
         public static bool ObjectNamesFirst { get; private set; } = false;
+        public static bool UseTileDistances { get; private set; } = true;
 
         public static void Initialize()
         {
@@ -32,16 +34,35 @@ namespace Wasteland2AccessibilityMod
                 "If true, announces object/entity names before tile coordinates. If false, announces coordinates first."
             );
 
+            useTileDistancesEntry = configCategory.CreateEntry(
+                "UseTileDistances",
+                true,
+                "Use Tile Distances",
+                "If true, reports distances in grid tiles (1 tile = 1.6 meters) when a combat grid is available in the current scene. If false, always reports meters."
+            );
+
             // Load saved preferences
             LoadConfig();
 
-            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}");
+            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}");
         }
 
         public static void LoadConfig()
         {
             UseClockPositions = useClockPositionsEntry.Value;
             ObjectNamesFirst = objectNamesFirstEntry.Value;
+            UseTileDistances = useTileDistancesEntry.Value;
+        }
+
+        public static void ToggleTileDistances()
+        {
+            UseTileDistances = !UseTileDistances;
+            useTileDistancesEntry.Value = UseTileDistances;
+            configCategory.SaveToFile();
+
+            string mode = UseTileDistances ? "tiles" : "meters";
+            MelonLogger.Msg($"Distance units changed to: {mode}");
+            ScreenReaderManager.SpeakInterrupt($"Distance in {mode}");
         }
 
         public static void ToggleClockPositions()

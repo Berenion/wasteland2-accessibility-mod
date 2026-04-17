@@ -2493,11 +2493,11 @@ namespace Wasteland2AccessibilityMod.States
                 float attackRange = pc.stats.GetAttackRange();
                 if (distance > attackRange)
                 {
-                    int dist = Mathf.RoundToInt(distance);
-                    int range = Mathf.RoundToInt(attackRange);
+                    string distStr = TileCoordinateSystem.GetDistanceText(pc.transform.position, target.transform.position);
+                    string rangeStr = TileCoordinateSystem.GetRangeText(attackRange);
                     ScreenReaderManager.SpeakInterrupt(
-                        targetName + " is out of range. Distance " + dist +
-                        " meters, weapon range " + range + " meters");
+                        targetName + " is out of range. Distance " + distStr +
+                        ", weapon range " + rangeStr);
                     return;
                 }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod.States
 {
@@ -428,7 +429,7 @@ namespace Wasteland2AccessibilityMod.States
 
             // Build summary
             List<string> summaryParts = new List<string>();
-            summaryParts.Add($"Scan complete, range {currentScanRange:F0} meters");
+            summaryParts.Add($"Scan complete, range {TileCoordinateSystem.GetRangeText(currentScanRange)}");
 
             int totalFound = lastScanResults.Count;
             if (totalFound == 0)
@@ -532,7 +533,7 @@ namespace Wasteland2AccessibilityMod.States
             for (int i = 0; i < maxAnnounce; i++)
             {
                 var result = results[i];
-                announcements.Add($"{result.Name}, {result.Distance:F0} meters {result.Direction}");
+                announcements.Add($"{result.Name}, {TileCoordinateSystem.GetRangeText(result.Distance)} {result.Direction}");
             }
 
             if (results.Count > 5)
@@ -583,7 +584,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            ScreenReaderManager.SpeakInterrupt($"Selected: {closest.Name}, {closest.Distance:F0} meters {closest.Direction}");
+            ScreenReaderManager.SpeakInterrupt($"Selected: {closest.Name}, {TileCoordinateSystem.GetRangeText(closest.Distance)} {closest.Direction}");
 
             // Exit scan mode after selection
             scanInProgress = false;

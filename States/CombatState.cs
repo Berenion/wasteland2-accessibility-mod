@@ -2836,8 +2836,8 @@ namespace Wasteland2AccessibilityMod.States
                 Mob actor = GetCurrentActor();
                 if (actor != null)
                 {
-                    float dist = Vector3.Distance(actor.transform.position, target.transform.position);
-                    targetInfoLines.Add("Distance: " + dist.ToString("F0") + " meters");
+                    string distStr = TileCoordinateSystem.GetDistanceText(actor.transform.position, target.transform.position);
+                    targetInfoLines.Add("Distance: " + distStr);
                 }
 
                 // Status effects
