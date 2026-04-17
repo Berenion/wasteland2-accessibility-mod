@@ -370,6 +370,22 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            bool shiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+
+            // Shift+Home to jump cursor to party leader
+            if (shiftHeld && Input.GetKeyDown(KeyCode.Home))
+            {
+                JumpToParty();
+                return true;
+            }
+
+            // Shift+End to announce distance and direction from cursor to party leader
+            if (shiftHeld && Input.GetKeyDown(KeyCode.End))
+            {
+                AnnounceDistanceToParty();
+                return true;
+            }
+
             // Home to jump cursor to selected interactable (from PageUp/Down cycling)
             if (Input.GetKeyDown(KeyCode.Home))
             {
@@ -1726,6 +1742,52 @@ namespace Wasteland2AccessibilityMod.States
 
             string name = GetInteractableName(selected);
             string announcement = (name ?? "Object") + ", " + tileDist + (tileDist == 1 ? " tile " : " tiles ") + direction;
+            ScreenReaderManager.SpeakInterrupt(announcement);
+        }
+
+        private void JumpToParty()
+        {
+            PC pc = GetPartyLeader();
+            if (pc == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No party leader");
+                return;
+            }
+
+            InitializeToPartyPosition();
+            if (!cursorInitialized) return;
+
+            SnapCameraToCursor();
+            AnnounceCurrentTile(detailed: false);
+        }
+
+        private void AnnounceDistanceToParty()
+        {
+            PC pc = GetPartyLeader();
+            if (pc == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No party leader");
+                return;
+            }
+
+            Vector3 targetWorldPos = pc.transform.position;
+            int targetGridX = Mathf.RoundToInt(targetWorldPos.x / GRID_SQUARE_SIZE);
+            int targetGridZ = Mathf.RoundToInt(targetWorldPos.z / GRID_SQUARE_SIZE);
+
+            CombatAStarNode targetNode = FindNodeAtPosition(targetWorldPos);
+            if (targetNode != null)
+            {
+                targetGridX = (int)targetNode.id.x;
+                targetGridZ = (int)targetNode.id.z;
+            }
+
+            int tileDistX = Mathf.Abs((int)cursorGridId.x - targetGridX);
+            int tileDistZ = Mathf.Abs((int)cursorGridId.z - targetGridZ);
+            int tileDist = Mathf.Max(tileDistX, tileDistZ);
+            string direction = DirectionHelper.GetDirectionDescription(cursorPosition, targetWorldPos);
+
+            string name = UITextExtractor.CleanText(GetPCDisplayName(pc)) ?? "Party";
+            string announcement = name + ", " + tileDist + (tileDist == 1 ? " tile " : " tiles ") + direction;
             ScreenReaderManager.SpeakInterrupt(announcement);
         }
 

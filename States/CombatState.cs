@@ -592,10 +592,36 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Home: jump cursor to current actor
-            if (Input.GetKeyDown(KeyCode.Home))
+            bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+
+            // Shift+Home: jump cursor to current actor
+            if (shift && Input.GetKeyDown(KeyCode.Home))
             {
                 JumpToCurrentActor();
+                SuppressInput();
+                return true;
+            }
+
+            // Shift+End: announce distance/direction from cursor to current actor
+            if (shift && Input.GetKeyDown(KeyCode.End))
+            {
+                AnnounceDistanceToCurrentActor();
+                SuppressInput();
+                return true;
+            }
+
+            // Home: jump cursor to selected combatant (from PageUp/Down cycling)
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                JumpToSelectedCombatant();
+                SuppressInput();
+                return true;
+            }
+
+            // End: announce distance/direction from cursor to selected combatant
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                AnnounceDistanceToSelectedCombatant();
                 SuppressInput();
                 return true;
             }
@@ -1357,6 +1383,78 @@ namespace Wasteland2AccessibilityMod.States
 
             // Announce with full combat details
             string announcement = FormatMobForCycle(mob);
+            ScreenReaderManager.SpeakInterrupt(announcement);
+        }
+
+        private void JumpToSelectedCombatant()
+        {
+            if (combatantList.Count == 0 || combatantIndex < 0 || combatantIndex >= combatantList.Count)
+            {
+                ScreenReaderManager.SpeakInterrupt("No combatant selected");
+                return;
+            }
+
+            Mob mob = combatantList[combatantIndex];
+            if (mob == null || mob.mobState == Mob.MobState.DEAD)
+            {
+                ScreenReaderManager.SpeakInterrupt("Selected combatant no longer valid");
+                return;
+            }
+
+            JumpToCombatant(mob);
+        }
+
+        private void AnnounceDistanceToSelectedCombatant()
+        {
+            if (combatantList.Count == 0 || combatantIndex < 0 || combatantIndex >= combatantList.Count)
+            {
+                ScreenReaderManager.SpeakInterrupt("No combatant selected");
+                return;
+            }
+
+            Mob mob = combatantList[combatantIndex];
+            if (mob == null || mob.mobState == Mob.MobState.DEAD)
+            {
+                ScreenReaderManager.SpeakInterrupt("Selected combatant no longer valid");
+                return;
+            }
+
+            AnnounceDistanceToMob(mob);
+        }
+
+        private void AnnounceDistanceToCurrentActor()
+        {
+            Mob actor = GetCurrentActor();
+            if (actor == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No active actor");
+                return;
+            }
+            AnnounceDistanceToMob(actor);
+        }
+
+        private void AnnounceDistanceToMob(Mob mob)
+        {
+            Vector3 targetPos = mob.transform.position;
+            int targetGridX, targetGridZ;
+            if (mob.currentSquare != null)
+            {
+                targetGridX = (int)mob.currentSquare.id.x;
+                targetGridZ = (int)mob.currentSquare.id.z;
+            }
+            else
+            {
+                targetGridX = Mathf.RoundToInt(targetPos.x / GRID_SQUARE_SIZE);
+                targetGridZ = Mathf.RoundToInt(targetPos.z / GRID_SQUARE_SIZE);
+            }
+
+            int tileDistX = Mathf.Abs((int)cursorGridId.x - targetGridX);
+            int tileDistZ = Mathf.Abs((int)cursorGridId.z - targetGridZ);
+            int tileDist = Mathf.Max(tileDistX, tileDistZ);
+            string direction = DirectionHelper.GetDirectionDescription(cursorPosition, targetPos);
+
+            string name = GetMobName(mob) ?? "Target";
+            string announcement = name + ", " + tileDist + (tileDist == 1 ? " tile " : " tiles ") + direction;
             ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
