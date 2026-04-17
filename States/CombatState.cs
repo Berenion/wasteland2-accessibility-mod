@@ -2929,6 +2929,15 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(summary);
         }
 
+        // True if any Ranger-faction mob (the player party) has line of sight to the target.
+        // Filters out hostile enemies in the initiative list that haven't been spotted yet.
+        private bool IsMobRevealedToParty(CombatManager cm, Mob target)
+        {
+            if (cm == null || target == null) return true;
+            try { return cm.IsTargetVisibleToFaction(target, Faction.Ranger); }
+            catch { return true; }
+        }
+
         private void BuildInitiativeList()
         {
             initiativeList.Clear();
@@ -2959,6 +2968,9 @@ namespace Wasteland2AccessibilityMod.States
                     bool hostile = false;
                     if (mob is NPC) hostile = mob.HatesParty();
 
+                    // Hide hostile enemies the party has not yet spotted
+                    if (hostile && !IsMobRevealedToParty(cm, mob)) continue;
+
                     initiativeList.Add(new InitiativeEntry
                     {
                         Name = GetDisplayName(mob.template != null ? mob.template.displayName : mob.name),
@@ -2984,6 +2996,9 @@ namespace Wasteland2AccessibilityMod.States
 
                     bool hostile = false;
                     if (mob is NPC) hostile = mob.HatesParty();
+
+                    // Hide hostile enemies the party has not yet spotted
+                    if (hostile && !IsMobRevealedToParty(cm, mob)) continue;
 
                     initiativeList.Add(new InitiativeEntry
                     {
