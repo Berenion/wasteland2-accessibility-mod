@@ -1658,55 +1658,40 @@ namespace Wasteland2AccessibilityMod.States
 
             Vector3 worldPos = selected.transform.position;
 
-            // Jump cursor to the selected interactable's grid position
-            CombatAStarNode targetNode = FindNodeAtPosition(worldPos);
-            if (targetNode != null)
+            // Snap to the object's natural tile (raw-rounded from world position).
+            // This is where the object visually belongs, independent of whether
+            // a walkable A* node exists there. Falling back to a "nearest node"
+            // can place the cursor one tile off when the object's tile is
+            // unwalkable (walls, props) and the nearest node is on a neighbor.
+            int naturalX = Mathf.RoundToInt(worldPos.x / GRID_SQUARE_SIZE);
+            int naturalZ = Mathf.RoundToInt(worldPos.z / GRID_SQUARE_SIZE);
+
+            // If a node happens to exist at the natural tile, use its position
+            // for an accurate Y (floor height). Otherwise synthesize from the
+            // object's Y.
+            CombatAStarNode naturalTileNode = null;
+            if (fullMap != null)
             {
-                cursorGridId = targetNode.id;
-                cursorPosition = targetNode.position;
+                for (int f = 0; f <= 5; f++)
+                {
+                    CombatAStarNode node;
+                    if (fullMap.TryGetValue(new Vector3(naturalX, f, naturalZ), out node))
+                    {
+                        naturalTileNode = node;
+                        break;
+                    }
+                }
+            }
+
+            if (naturalTileNode != null)
+            {
+                cursorGridId = naturalTileNode.id;
+                cursorPosition = naturalTileNode.position;
             }
             else
             {
-                // No grid node — compute grid ID from world position
-                int gridX = Mathf.RoundToInt(worldPos.x / GRID_SQUARE_SIZE);
-                int gridZ = Mathf.RoundToInt(worldPos.z / GRID_SQUARE_SIZE);
-                cursorGridId = new Vector3(gridX, 0, gridZ);
-                cursorPosition = new Vector3(gridX * GRID_SQUARE_SIZE, worldPos.y, gridZ * GRID_SQUARE_SIZE);
-            }
-
-            // Verify the interactable is actually on the tile we landed on.
-            // Objects near tile boundaries can round to the wrong grid cell.
-            if (!IsOnCurrentTile(worldPos))
-            {
-                // Snap directly to the interactable's position instead
-                int gridX = Mathf.FloorToInt(worldPos.x / GRID_SQUARE_SIZE + 0.5f);
-                int gridZ = Mathf.FloorToInt(worldPos.z / GRID_SQUARE_SIZE + 0.5f);
-
-                // Try adjacent tiles to find one that contains the object
-                int bestX = gridX, bestZ = gridZ;
-                float bestDist = float.MaxValue;
-                for (int dx = -1; dx <= 1; dx++)
-                {
-                    for (int dz = -1; dz <= 1; dz++)
-                    {
-                        float tileX = (gridX + dx) * GRID_SQUARE_SIZE;
-                        float tileZ = (gridZ + dz) * GRID_SQUARE_SIZE;
-                        float dist = (worldPos.x - tileX) * (worldPos.x - tileX) +
-                                     (worldPos.z - tileZ) * (worldPos.z - tileZ);
-                        if (dist < bestDist)
-                        {
-                            bestDist = dist;
-                            bestX = gridX + dx;
-                            bestZ = gridZ + dz;
-                        }
-                    }
-                }
-
-                MelonLogger.Msg($"[MapCursorState] Jump correction: object at ({worldPos.x:F2}, {worldPos.z:F2}) " +
-                    $"was on tile ({cursorGridId.x}, {cursorGridId.z}), moved to ({bestX}, {bestZ})");
-
-                cursorGridId = new Vector3(bestX, cursorGridId.y, bestZ);
-                cursorPosition = new Vector3(bestX * GRID_SQUARE_SIZE, cursorPosition.y, bestZ * GRID_SQUARE_SIZE);
+                cursorGridId = new Vector3(naturalX, 0, naturalZ);
+                cursorPosition = new Vector3(naturalX * GRID_SQUARE_SIZE, worldPos.y, naturalZ * GRID_SQUARE_SIZE);
             }
 
             SnapCameraToCursor();
