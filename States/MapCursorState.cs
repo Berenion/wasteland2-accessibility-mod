@@ -1615,6 +1615,22 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
+            // InputManager.Update() is suppressed while MapCursor is active, so
+            // activePCs goes stale. MoveInFormation iterates activePCs when ungrouped
+            // (InputManager.GetMovementPCs), and a stale/destroyed entry NREs there.
+            // Rebuild from selectedMobs as Update would.
+            inputManager.activePCs.Clear();
+            foreach (Mob mob in inputManager.selectedMobs)
+            {
+                if (mob != null && mob.asPartyPC != null)
+                    inputManager.activePCs.Add(mob.asPartyPC);
+            }
+            if (inputManager.activePCs.Count == 0)
+            {
+                PC leader = MonoBehaviourSingleton<Game>.GetInstance().pcLeader;
+                if (leader != null) inputManager.activePCs.Add(leader);
+            }
+
             inputManager.MoveInFormation(inputManager.formation, cursorPosition,
                 false, null, 0f, null, true);
 
