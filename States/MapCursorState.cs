@@ -2223,7 +2223,7 @@ namespace Wasteland2AccessibilityMod.States
         private string FormatAction(ExplorationAction action)
         {
             int position = actionList.IndexOf(action) + 1;
-            string result = position + " of " + actionList.Count + ". " + action.Label;
+            string result = action.Label;
 
             if (!string.IsNullOrEmpty(action.Status))
                 result += ", " + action.Status;
@@ -2231,6 +2231,7 @@ namespace Wasteland2AccessibilityMod.States
             if (!action.IsEnabled)
                 result += ", unavailable";
 
+            result += ", " + position + " of " + actionList.Count;
             return result;
         }
 
@@ -2656,7 +2657,7 @@ namespace Wasteland2AccessibilityMod.States
         private string FormatPartyInfoLine(int index)
         {
             if (index < 0 || index >= partyInfoLines.Count) return "";
-            return (index + 1) + " of " + partyInfoLines.Count + ". " + partyInfoLines[index];
+            return partyInfoLines[index] + ", " + (index + 1) + " of " + partyInfoLines.Count;
         }
 
         // --- Helpers ---

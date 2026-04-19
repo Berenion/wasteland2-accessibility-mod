@@ -421,18 +421,14 @@ namespace Wasteland2AccessibilityMod.States
 
         private string BuildOptionAnnouncement(ConversationOption opt)
         {
-            // Build announcement: "1 of 3: response text, skill info"
-            string announcement = $"{selectedIndex + 1} of {currentOptions.Count}: ";
+            // Build announcement: "response text, skill info, 1 of 3"
+            string announcement;
 
             // Prefer full response text over keyword label
             if (!string.IsNullOrEmpty(opt.FullResponseText))
-            {
-                announcement += opt.FullResponseText;
-            }
+                announcement = opt.FullResponseText;
             else
-            {
-                announcement += opt.DisplayText;
-            }
+                announcement = opt.DisplayText;
 
             // Add skill info
             if (!string.IsNullOrEmpty(opt.SkillInfo))
@@ -446,6 +442,7 @@ namespace Wasteland2AccessibilityMod.States
                 announcement += ", ends conversation";
             }
 
+            announcement += $", {selectedIndex + 1} of {currentOptions.Count}";
             return announcement;
         }
 

@@ -1871,7 +1871,7 @@ namespace Wasteland2AccessibilityMod.States
         private string FormatAction(CombatAction action)
         {
             int position = actionList.IndexOf(action) + 1;
-            string result = position + " of " + actionList.Count + ". " + action.Label;
+            string result = action.Label;
 
             if (!string.IsNullOrEmpty(action.Status))
                 result += ", " + action.Status;
@@ -1879,6 +1879,7 @@ namespace Wasteland2AccessibilityMod.States
             if (!action.IsEnabled)
                 result += ", unavailable";
 
+            result += ", " + position + " of " + actionList.Count;
             return result;
         }
 
@@ -2096,7 +2097,7 @@ namespace Wasteland2AccessibilityMod.States
         private string FormatPartyInfoLine(int index)
         {
             if (index < 0 || index >= partyInfoLines.Count) return "";
-            return (index + 1) + " of " + partyInfoLines.Count + ". " + partyInfoLines[index];
+            return partyInfoLines[index] + ", " + (index + 1) + " of " + partyInfoLines.Count;
         }
 
         // =====================================================================
@@ -2700,7 +2701,7 @@ namespace Wasteland2AccessibilityMod.States
         private string FormatTargetAction(CombatAction action)
         {
             int position = targetActionList.IndexOf(action) + 1;
-            string result = position + " of " + targetActionList.Count + ". " + action.Label;
+            string result = action.Label;
 
             if (!string.IsNullOrEmpty(action.Status))
                 result += ", " + action.Status;
@@ -2708,6 +2709,7 @@ namespace Wasteland2AccessibilityMod.States
             if (!action.IsEnabled)
                 result += ", unavailable";
 
+            result += ", " + position + " of " + targetActionList.Count;
             return result;
         }
 
@@ -2862,7 +2864,7 @@ namespace Wasteland2AccessibilityMod.States
         private string FormatInfoLine(int index)
         {
             if (index < 0 || index >= targetInfoLines.Count) return "";
-            return (index + 1) + " of " + targetInfoLines.Count + ". " + targetInfoLines[index];
+            return targetInfoLines[index] + ", " + (index + 1) + " of " + targetInfoLines.Count;
         }
 
         // =====================================================================
@@ -3001,7 +3003,7 @@ namespace Wasteland2AccessibilityMod.States
             if (index < 0 || index >= log.Count) return "";
             // Show position from newest: entry 1 is the most recent
             int fromNewest = log.Count - index;
-            return fromNewest + " of " + log.Count + ". " + log[index];
+            return log[index] + ", " + fromNewest + " of " + log.Count;
         }
 
         // =====================================================================
