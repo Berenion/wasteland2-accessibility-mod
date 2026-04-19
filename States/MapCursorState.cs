@@ -2490,20 +2490,7 @@ namespace Wasteland2AccessibilityMod.States
                     return;
                 }
 
-                // Range check — warn the user instead of silently failing
-                float distance = Vector3.Distance(pc.transform.position, target.transform.position);
-                float attackRange = pc.stats.GetAttackRange();
-                if (distance > attackRange)
-                {
-                    string distStr = TileCoordinateSystem.GetDistanceText(pc.transform.position, target.transform.position);
-                    string rangeStr = TileCoordinateSystem.GetRangeText(attackRange);
-                    ScreenReaderManager.SpeakInterrupt(
-                        targetName + " is out of range. Distance " + distStr +
-                        ", weapon range " + rangeStr);
-                    return;
-                }
-
-                // Line of sight check — the game would reject the shot silently otherwise
+                // Line of sight check first (matches game order in Highlight.cs:572-589)
                 try
                 {
                     if (!pc.TargetVisible(target))
@@ -2513,6 +2500,28 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
                 catch (Exception) { }
+
+                // Range check — match game formula: distance - additionalHitRange > attackRange
+                // (Highlight.cs:581, PC.cs:1328). Large mobs have a hit sphere that extends
+                // their effective target point outward.
+                float distance = Vector3.Distance(pc.transform.position, target.transform.position);
+                float additionalHitRange = 0f;
+                var targetMob = target as Mob;
+                if (targetMob != null)
+                {
+                    try { additionalHitRange = targetMob.GetAdditionalHitRange(); }
+                    catch (Exception) { }
+                }
+                float attackRange = pc.stats.GetAttackRange();
+                if (distance - additionalHitRange > attackRange)
+                {
+                    string distStr = TileCoordinateSystem.GetDistanceText(pc.transform.position, target.transform.position);
+                    string rangeStr = TileCoordinateSystem.GetRangeText(attackRange);
+                    ScreenReaderManager.SpeakInterrupt(
+                        targetName + " is out of range. Distance " + distStr +
+                        ", weapon range " + rangeStr);
+                    return;
+                }
 
                 // Set the InputManager's selected targetable
                 var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
