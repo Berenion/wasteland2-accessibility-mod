@@ -2145,6 +2145,29 @@ namespace Wasteland2AccessibilityMod.States
                 // Look for a targetable on the tile: mob, destructible object, or explosive
                 Targetable target = FindTargetableOnTile();
 
+                // Validate range and line of sight before firing — the game rejects
+                // these shots silently, so the user needs explicit feedback
+                if (target != null)
+                {
+                    string tName = GetTargetableName(target);
+                    float distance = Vector3.Distance(freeAimUser.transform.position, target.transform.position);
+                    float attackRange = freeAimUser.stats.GetAttackRange();
+                    if (distance > attackRange)
+                    {
+                        ScreenReaderManager.SpeakInterrupt(tName + " is out of range");
+                        return;
+                    }
+                    try
+                    {
+                        if (!freeAimUser.TargetVisible(target))
+                        {
+                            ScreenReaderManager.SpeakInterrupt("No line of sight to " + tName);
+                            return;
+                        }
+                    }
+                    catch (Exception) { }
+                }
+
                 var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
                 inputManager.ClearSelectedSquare();
 

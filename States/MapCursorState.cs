@@ -2502,6 +2502,17 @@ namespace Wasteland2AccessibilityMod.States
                     return;
                 }
 
+                // Line of sight check — the game would reject the shot silently otherwise
+                try
+                {
+                    if (!pc.TargetVisible(target))
+                    {
+                        ScreenReaderManager.SpeakInterrupt("No line of sight to " + targetName);
+                        return;
+                    }
+                }
+                catch (Exception) { }
+
                 // Set the InputManager's selected targetable
                 var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
                 inputManager.selectedTargetable = target;
