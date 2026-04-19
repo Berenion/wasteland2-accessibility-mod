@@ -300,7 +300,7 @@ namespace Wasteland2AccessibilityMod.States
                     hint = ". Up and Down to navigate, F to switch section, Left and Right for category";
                     break;
                 case CharacterInfoMenu.InfoPanel.Traits:
-                    hint = ". Up and Down to navigate, I for description";
+                    hint = ". Up and Down to navigate, I for description, P for perk points";
                     break;
                 case CharacterInfoMenu.InfoPanel.Dossier:
                     hint = ". Up and Down to browse";
@@ -1167,7 +1167,28 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // P for perk points remaining
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                AnnouncePerkPointsRemaining(menu);
+                return true;
+            }
+
             return false;
+        }
+
+        private void AnnouncePerkPointsRemaining(CharacterInfoMenu menu)
+        {
+            PC pc = GetCurrentPC(menu);
+            if (pc != null && pc.pcTemplate != null)
+            {
+                int points = pc.pcTemplate.availableTraitPoints;
+                ScreenReaderManager.SpeakInterrupt($"{points} perk point{(points == 1 ? "" : "s")} remaining");
+            }
+            else
+            {
+                ScreenReaderManager.SpeakInterrupt("No points information available");
+            }
         }
 
         #endregion
