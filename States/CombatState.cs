@@ -1349,7 +1349,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             combatantIndex = (combatantIndex + 1) % combatantList.Count;
-            JumpToCombatant(combatantList[combatantIndex]);
+            AnnounceCombatant(combatantList[combatantIndex]);
         }
 
         private void CyclePreviousCombatant()
@@ -1363,7 +1363,13 @@ namespace Wasteland2AccessibilityMod.States
 
             combatantIndex--;
             if (combatantIndex < 0) combatantIndex = combatantList.Count - 1;
-            JumpToCombatant(combatantList[combatantIndex]);
+            AnnounceCombatant(combatantList[combatantIndex]);
+        }
+
+        private void AnnounceCombatant(Mob mob)
+        {
+            string announcement = FormatMobForCycle(mob);
+            ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
         private void JumpToCombatant(Mob mob)
@@ -1462,9 +1468,6 @@ namespace Wasteland2AccessibilityMod.States
         {
             var parts = new List<string>();
 
-            // Position in list
-            parts.Add((combatantIndex + 1) + " of " + combatantList.Count);
-
             // Name and faction
             string name = GetMobName(mob);
             parts.Add(name);
@@ -1515,6 +1518,9 @@ namespace Wasteland2AccessibilityMod.States
                 if (!string.IsNullOrEmpty(rangeInfo))
                     parts.Add(rangeInfo);
             }
+
+            // Position in list (at end)
+            parts.Add((combatantIndex + 1) + " of " + combatantList.Count);
 
             return string.Join(", ", parts.ToArray());
         }
