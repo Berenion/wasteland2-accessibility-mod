@@ -58,6 +58,11 @@ namespace Wasteland2AccessibilityMod.States
         // Announcement tracking
         private string lastAnnouncedText = null;
 
+        // Detects back-to-back loot windows (old popup destroyed, new created on same/next frame
+        // without IsActive flipping false). When the instance id changes we reset announcement
+        // state and announce the new container's first item.
+        private int trackedPopupInstanceId = 0;
+
         // Reflection caches
         private static bool reflectionCached = false;
         private static MethodInfo openContextMenuMethod;
@@ -144,6 +149,11 @@ namespace Wasteland2AccessibilityMod.States
                 RebuildCurrentList();
             }
 
+            // Detect back-to-back loot windows: the old PopupInventoryMenu can be destroyed
+            // and a new one created without IsActive flipping false (same-frame swap). When
+            // the instance id changes, treat it like a fresh activation for this container.
+            DetectPopupInstanceChange();
+
             // Retry if list was empty — the game may populate the loot grid
             // after the popup becomes active (async container setup)
             if (currentList.Count == 0 && currentZone == NavigationZone.ContainerItems)
@@ -206,6 +216,9 @@ namespace Wasteland2AccessibilityMod.States
                 else
                     currentIndex = -1;
 
+                if (isPopupInventoryMenu)
+                    trackedPopupInstanceId = GetPopupInstanceId();
+
                 AnnounceCurrentItem(interrupt: true);
                 MelonLogger.Msg($"[InventoryState] Restored from suspend, zone={currentZone}, index={currentIndex}, items={currentList.Count}");
                 return;
@@ -221,11 +234,17 @@ namespace Wasteland2AccessibilityMod.States
             {
                 currentZone = NavigationZone.ContainerItems;
                 BuildContainerItemList();
+                trackedPopupInstanceId = GetPopupInstanceId();
                 ScreenReaderManager.SpeakInterrupt("Loot");
             }
 
             if (currentList.Count > 0 && currentIndex < 0)
                 currentIndex = 0;
+
+            // Announce the first item after the zone header so users don't need to press
+            // an arrow to hear what's in the container / inventory.
+            if (currentList.Count > 0 && currentIndex >= 0)
+                AnnounceCurrentItem(interrupt: false);
 
             MelonLogger.Msg($"[InventoryState] Activated, zone={currentZone}, items={currentList.Count}");
         }
@@ -241,6 +260,7 @@ namespace Wasteland2AccessibilityMod.States
 
             IsManagedNavigation = false;
             lastAnnouncedText = null;
+            trackedPopupInstanceId = 0;
             currentList.Clear();
             isDirty = false;
             isInfoBrowsing = false;
@@ -623,6 +643,16 @@ namespace Wasteland2AccessibilityMod.States
 
         private void NavigateList(int direction)
         {
+            // If the list is empty but the loot grid hasn't populated yet, try to rebuild
+            // before giving up — keeps us from announcing "Container is empty" in the brief
+            // window between popup open and item population.
+            if (currentList.Count == 0 && currentZone == NavigationZone.ContainerItems)
+            {
+                BuildContainerItemList();
+                if (currentList.Count > 0 && currentIndex < 0)
+                    currentIndex = 0;
+            }
+
             if (currentList.Count == 0)
             {
                 ScreenReaderManager.SpeakInterrupt(GetZoneEmptyMessage());
@@ -638,6 +668,9 @@ namespace Wasteland2AccessibilityMod.States
                 newIndex = 0;
 
             currentIndex = newIndex;
+            // User pressed an arrow — always speak, even if the new item matches the
+            // previous announcement (e.g. wrapping in a 1-item list).
+            lastAnnouncedText = null;
             AnnounceCurrentItem(interrupt: true);
         }
 
@@ -1598,6 +1631,33 @@ namespace Wasteland2AccessibilityMod.States
                 return UITextExtractor.CleanText(popupInv.sourceLabel.text);
 
             return "Container";
+        }
+
+        private int GetPopupInstanceId()
+        {
+            var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+            return popupInv != null ? popupInv.GetInstanceID() : 0;
+        }
+
+        private void DetectPopupInstanceChange()
+        {
+            var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+            if (popupInv == null || !popupInv.gameObject.activeInHierarchy) return;
+
+            int currentId = popupInv.GetInstanceID();
+            if (trackedPopupInstanceId == 0 || currentId == trackedPopupInstanceId) return;
+
+            MelonLogger.Msg($"[InventoryState] Popup swap detected (old={trackedPopupInstanceId}, new={currentId}), re-announcing");
+            trackedPopupInstanceId = currentId;
+            lastAnnouncedText = null;
+            currentZone = NavigationZone.ContainerItems;
+            BuildContainerItemList();
+            if (currentList.Count > 0 && currentIndex < 0)
+                currentIndex = 0;
+
+            ScreenReaderManager.SpeakInterrupt("Loot");
+            if (currentList.Count > 0 && currentIndex >= 0)
+                AnnounceCurrentItem(interrupt: false);
         }
 
         private string GetZoneEmptyMessage()
