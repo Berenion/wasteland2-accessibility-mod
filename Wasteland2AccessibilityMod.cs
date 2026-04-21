@@ -93,6 +93,9 @@ namespace Wasteland2AccessibilityMod
 
             // Update the audio-aware announcement manager every frame
             AudioAwareAnnouncementManager.Instance.Update();
+
+            // Track whether FOW has had an unpaused frame to converge since last LoadMap
+            FOWHelper.Tick();
         }
 
         public override void OnDeinitializeMelon()

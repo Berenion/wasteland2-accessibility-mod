@@ -61,6 +61,12 @@ namespace Wasteland2AccessibilityMod
         /// </summary>
         public static void NextCategory()
         {
+            if (!FOWHelper.IsFOWReady())
+            {
+                ScreenReaderManager.SpeakInterrupt("Still loading, try again");
+                return;
+            }
+
             int currentIdx = System.Array.IndexOf(categoryOrder, currentCategory);
             currentIdx = (currentIdx + 1) % categoryOrder.Length;
             currentCategory = categoryOrder[currentIdx];
@@ -83,6 +89,12 @@ namespace Wasteland2AccessibilityMod
         /// </summary>
         public static void PreviousCategory()
         {
+            if (!FOWHelper.IsFOWReady())
+            {
+                ScreenReaderManager.SpeakInterrupt("Still loading, try again");
+                return;
+            }
+
             int currentIdx = System.Array.IndexOf(categoryOrder, currentCategory);
             currentIdx--;
             if (currentIdx < 0) currentIdx = categoryOrder.Length - 1;
@@ -120,6 +132,12 @@ namespace Wasteland2AccessibilityMod
 
         public static void CycleNext()
         {
+            if (!FOWHelper.IsFOWReady())
+            {
+                ScreenReaderManager.SpeakInterrupt("Still loading, try again");
+                return;
+            }
+
             UpdateFilteredList();
 
             if (filteredInteractables.Count == 0)
@@ -138,6 +156,12 @@ namespace Wasteland2AccessibilityMod
 
         public static void CyclePrevious()
         {
+            if (!FOWHelper.IsFOWReady())
+            {
+                ScreenReaderManager.SpeakInterrupt("Still loading, try again");
+                return;
+            }
+
             UpdateFilteredList();
 
             if (filteredInteractables.Count == 0)

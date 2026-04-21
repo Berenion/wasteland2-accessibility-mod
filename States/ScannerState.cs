@@ -139,6 +139,12 @@ namespace Wasteland2AccessibilityMod.States
 
         private void PerformScan()
         {
+            if (!FOWHelper.IsFOWReady())
+            {
+                ScreenReaderManager.SpeakInterrupt("Still loading, try again");
+                return;
+            }
+
             scanInProgress = true;
             currentCategory = 0;
             lastScanResults.Clear();

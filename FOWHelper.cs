@@ -32,10 +32,59 @@ namespace Wasteland2AccessibilityMod
         /// </summary>
         private static HashSet<InteractableNexus> knownTeleporters = new HashSet<InteractableNexus>();
 
+        // FOW readiness tracking. Whenever Game.cs calls FOWSystem.LoadMap (save
+        // restore, world-map transition, etc.), mBuffer1.r is written to 255 for
+        // every explored cell (FOWSystem.cs:851). IsVisible reads
+        // mBuffer1.r || mBuffer0.r, so every explored cell reads as visible until
+        // UpdateBuffer runs. UpdateBuffer is gated by Time.time, which tactical
+        // pause freezes — so if the player pauses before FOW converges, the stale
+        // state persists indefinitely. FOWSystem_LoadMap_Patch calls
+        // NotifyFOWMapLoaded to mark the window; Tick clears it once we've had
+        // enough real time + at least one unpaused frame.
+        private const float LoadMapGraceSeconds = 1.0f;
+        private static float lastLoadMapRealtime = float.NegativeInfinity;
+        private static bool sawUnpausedFrameSinceLoadMap = true;
+
         public static bool IsVisibleThroughFOW(Vector3 position)
         {
             if (FOWSystem.instance == null) return true;
             return FOWSystem.instance.IsVisible(position);
+        }
+
+        /// <summary>
+        /// Returns true once FOWSystem has had real time and at least one unpaused
+        /// frame since the last LoadMap call. Callers that rely on IsVisibleThroughFOW
+        /// should refuse to scan/filter while this is false to avoid the stale-buffer
+        /// window where every explored cell reports as visible.
+        /// </summary>
+        public static bool IsFOWReady()
+        {
+            if (lastLoadMapRealtime == float.NegativeInfinity) return true;
+            if (!sawUnpausedFrameSinceLoadMap) return false;
+            return (Time.realtimeSinceStartup - lastLoadMapRealtime) >= LoadMapGraceSeconds;
+        }
+
+        /// <summary>
+        /// Called from the FOWSystem.LoadMap Harmony postfix. Resets the readiness
+        /// state so the next scan waits for FOW to converge.
+        /// </summary>
+        public static void NotifyFOWMapLoaded()
+        {
+            lastLoadMapRealtime = Time.realtimeSinceStartup;
+            sawUnpausedFrameSinceLoadMap = false;
+            ClearActivationTracking();
+            MelonLoader.MelonLogger.Msg("[FOWHelper] LoadMap detected — waiting for FOW to converge");
+        }
+
+        /// <summary>
+        /// Per-frame tick. Records whether we've seen an unpaused frame since the
+        /// last LoadMap call — FOWSystem's UpdateBuffer is driven by Time.time, so
+        /// it only converges while Time.timeScale > 0.
+        /// </summary>
+        public static void Tick()
+        {
+            if (!sawUnpausedFrameSinceLoadMap && Time.timeScale > 0f)
+                sawUnpausedFrameSinceLoadMap = true;
         }
 
         private static bool IsNearParty(Vector3 position, float range)

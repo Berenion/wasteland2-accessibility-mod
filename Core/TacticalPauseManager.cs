@@ -23,7 +23,21 @@ namespace Wasteland2AccessibilityMod.Core
         {
             if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
 
-            MonoBehaviourSingleton<Game>.GetInstance().Pause();
+            Game game = MonoBehaviourSingleton<Game>.GetInstance();
+
+            // Game.Pause() is reference-counted via pauseCounter. During scene loads
+            // the game calls Pause(forLoad: true) which sets pauseCounter = 9999.
+            // If we stack our own Pause() on top, the counter never unwinds back to 0
+            // and Time.timeScale stays frozen forever — stranding every mod hotkey.
+            // Refuse to pause while the game is already paused by something else.
+            if (game.IsPaused())
+            {
+                ScreenReaderManager.SpeakInterrupt("Still loading, try again");
+                MelonLogger.Msg("[TacticalPause] Refused — game already paused (pauseCounter>0)");
+                return;
+            }
+
+            game.Pause();
             IsPaused = true;
 
             ScreenReaderManager.SpeakInterrupt("Tactical pause");
