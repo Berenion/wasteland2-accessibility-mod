@@ -731,11 +731,10 @@ namespace Wasteland2AccessibilityMod.States
                 lastTrackedActor = actor;
                 InitializeCursorToMob(actor);
 
+                // Queue (not interrupt) so the previous turn's combat log and floating
+                // text finish speaking before we announce the new turn.
                 string turnName = GetMobName(actor);
-                if (actor is PC)
-                    ScreenReaderManager.SpeakInterrupt(turnName + "'s turn");
-                else
-                    ScreenReaderManager.Speak(turnName + "'s turn");
+                ScreenReaderManager.Speak(turnName + "'s turn");
             }
 
             // Fallback: if cursor was never initialized, try current actor
@@ -2945,14 +2944,17 @@ namespace Wasteland2AccessibilityMod.States
                     return;
                 }
 
-                // Check if tile is occupied by another mob
-                if (targetNode.occupant != null && targetNode.occupant != pc)
+                var combatAStar = MonoBehaviourSingleton<CombatAStar>.GetInstance();
+
+                // Check if tile is occupied. Use IsNodeOpen, which consults the A*'s
+                // current `closed` dict (refreshed each turn and on mob death). The raw
+                // node.occupant field is persistent and goes stale when mobs move away.
+                if (!combatAStar.IsNodeOpen(targetNode))
                 {
                     ScreenReaderManager.SpeakInterrupt("Tile is occupied");
                     return;
                 }
 
-                var combatAStar = MonoBehaviourSingleton<CombatAStar>.GetInstance();
                 int standCost = pc.GetActionPointsToStand();
                 int availableAP = pc.combatActionPointsRemaining - standCost;
 

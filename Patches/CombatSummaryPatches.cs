@@ -40,7 +40,9 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 string announcement = string.Join(". ", parts.ToArray());
                 MelonLogger.Msg("[CombatSummary] " + announcement);
-                ScreenReaderManager.SpeakInterrupt(announcement);
+                // Queue so the final kill's combat log / floating text finishes before
+                // the summary plays, instead of being cut off.
+                ScreenReaderManager.Speak(announcement);
             }
             catch (Exception ex)
             {
