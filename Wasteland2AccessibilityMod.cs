@@ -58,6 +58,7 @@ namespace Wasteland2AccessibilityMod
             // Phase 2: Menu/dialog states
             InputRouter.Register(new DialogState());       // Priority 70 - modal dialogs (highest menu priority)
             InputRouter.Register(new MainMenuState());     // Priority 60 - main menu navigation
+            InputRouter.Register(new KeypadState());       // Priority 58 - safe/passcode keypad popup
             InputRouter.Register(new GenericMenuState());  // Priority 55 - generic popup menus (Options, Load/Save, etc.)
             InputRouter.Register(new ConversationState()); // Priority 50 - dialogue navigation
             InputRouter.Register(new InventoryState());    // Priority 50 - inventory navigation

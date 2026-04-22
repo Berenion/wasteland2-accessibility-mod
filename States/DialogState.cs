@@ -238,14 +238,12 @@ namespace Wasteland2AccessibilityMod.States
 
         private bool IsModalDialogOpen()
         {
-            if (!MonoBehaviourSingleton<GUIManager>.HasInstance()) return false;
-
-            // Check if any modal message menu is active in the screen stack
-            var guiManager = MonoBehaviourSingleton<GUIManager>.GetInstance();
-            if (!guiManager.IsAnyMenuActive()) return false;
-
             // ModalMessageMenu is created as a child of menuRoot, not GUIManager,
             // so GetComponentInChildren on GUIManager won't find it. Use FindObjectOfType instead.
+            // Note: we intentionally do NOT gate on GUIManager.IsAnyMenuActive() because
+            // some callers (e.g. PassphraseInventoryObject_Sturdy.OnKeypadEnter) create the
+            // modal via CreateMessageMenu() without calling AddScreen, so the modal never
+            // appears in GUIManager.screens even though it is visible and interactive.
             var modal = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
             return modal != null && modal.gameObject.activeInHierarchy;
         }

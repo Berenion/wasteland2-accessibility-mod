@@ -103,6 +103,10 @@ namespace Wasteland2AccessibilityMod.States
                 if (topScreen is ModalMessageMenu)
                     return false;
 
+                // Not active when the safe / passcode keypad is the top screen - KeypadState handles that
+                if (topScreen is KeypadMenu)
+                    return false;
+
                 // Active when any other menu is on top (including submenus over MainMenu)
                 return true;
             }
