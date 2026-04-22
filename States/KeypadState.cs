@@ -1,5 +1,4 @@
 using System.Reflection;
-using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
 
@@ -53,7 +52,6 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (Input.GetKeyDown(KeyCode.Alpha0 + d) || Input.GetKeyDown(KeyCode.Keypad0 + d))
                 {
-                    MelonLogger.Msg($"[KeypadState] Digit key pressed: {d}");
                     EnterDigit(d);
                     return true;
                 }
@@ -62,7 +60,6 @@ namespace Wasteland2AccessibilityMod.States
             // Backspace deletes last digit
             if (Input.GetKeyDown(KeyCode.Backspace))
             {
-                MelonLogger.Msg("[KeypadState] Backspace pressed");
                 Backspace();
                 return true;
             }
@@ -70,7 +67,6 @@ namespace Wasteland2AccessibilityMod.States
             // C clears the field (matches the on-screen Clear button)
             if (Input.GetKeyDown(KeyCode.C))
             {
-                MelonLogger.Msg("[KeypadState] C pressed - clearing");
                 cachedMenu.OnClearClicked();
                 ScreenReaderManager.SpeakInterrupt("Cleared");
                 return true;
@@ -80,10 +76,6 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 int value = cachedMenu.GetValue();
-                string raw = currentValueField != null
-                    ? (currentValueField.GetValue(cachedMenu) as string ?? string.Empty)
-                    : "<unknown>";
-                MelonLogger.Msg($"[KeypadState] Enter pressed, GetValue={value}, currentValue='{raw}'");
                 ScreenReaderManager.SpeakInterrupt($"Submitting {value}");
                 cachedMenu.OnEnterClicked(null);
                 return true;
@@ -92,7 +84,6 @@ namespace Wasteland2AccessibilityMod.States
             // Escape cancels
             if (Input.GetKeyDown(KeyCode.Escape))
             {
-                MelonLogger.Msg("[KeypadState] Escape pressed - cancelling");
                 ScreenReaderManager.SpeakInterrupt("Cancelled");
                 cachedMenu.OnCancelClicked();
                 return true;
@@ -105,11 +96,6 @@ namespace Wasteland2AccessibilityMod.States
         {
             Active = true;
             cachedMenu = UnityEngine.Object.FindObjectOfType<KeypadMenu>();
-            MelonLogger.Msg($"[KeypadState] Activated, menu={cachedMenu}, currentValueField={currentValueField != null}, addToValueMethod={addToValueMethod != null}");
-            if (cachedMenu != null)
-            {
-                MelonLogger.Msg($"[KeypadState] Menu active={cachedMenu.gameObject.activeInHierarchy}, isTopMenu={cachedMenu.isTopMenu}, displayLabel={cachedMenu.displayLabel != null}");
-            }
             ScreenReaderManager.SpeakInterrupt(
                 "Enter passcode. Type digits, Backspace to delete, C to clear, Enter to submit, Escape to cancel.");
         }
@@ -118,7 +104,6 @@ namespace Wasteland2AccessibilityMod.States
         {
             Active = false;
             cachedMenu = null;
-            MelonLogger.Msg("[KeypadState] Deactivated");
         }
 
         private void EnterDigit(int digit)
@@ -139,10 +124,6 @@ namespace Wasteland2AccessibilityMod.States
             {
                 addToValueMethod.Invoke(cachedMenu, new object[] { digit });
             }
-            string after = currentValueField != null
-                ? (currentValueField.GetValue(cachedMenu) as string ?? string.Empty)
-                : "<unknown>";
-            MelonLogger.Msg($"[KeypadState] EnterDigit({digit}) => currentValue='{after}'");
             ScreenReaderManager.SpeakInterrupt(digit.ToString());
         }
 
