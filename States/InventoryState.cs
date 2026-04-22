@@ -1151,9 +1151,34 @@ namespace Wasteland2AccessibilityMod.States
                         : $"Damage: {minDmg} to {maxDmg}");
                 }
 
-                int range = weapon.GetAttackRange();
-                if (range > 0)
-                    infoLines.Add($"Range: {range}");
+                // Ranged-specific: loaded ammo, reserve ammo, caliber, range brackets, firing modes
+                if (weapon is ItemInstance_WeaponRanged rangedInst && wt is ItemTemplate_WeaponRanged)
+                {
+                    int clip = rangedInst.GetClipSize();
+                    if (clip > 0)
+                        infoLines.Add($"Ammo loaded: {rangedInst.GetAmmoCount()} of {clip}");
+
+                    string reserveLine = InventoryPatches.BuildReserveAmmoLine(rangedInst, pc);
+                    if (!string.IsNullOrEmpty(reserveLine))
+                        infoLines.Add(reserveLine);
+
+                    string caliber = InventoryPatches.GetWeaponCaliberDisplay(wt);
+                    if (!string.IsNullOrEmpty(caliber))
+                        infoLines.Add($"Uses: {caliber}");
+
+                    foreach (string line in InventoryPatches.BuildRangeBracketLines(rangedInst, pc))
+                        infoLines.Add(line);
+
+                    foreach (string line in InventoryPatches.BuildFiringModeLines(rangedInst))
+                        infoLines.Add(line);
+                }
+                else
+                {
+                    // Melee / thrown / RPG: raw max range only
+                    int range = weapon.GetAttackRange();
+                    if (range > 0)
+                        infoLines.Add($"Range: {range}");
+                }
 
                 // PC-aware accuracy & crit (matches the on-screen ItemInfoBox values)
                 int acc = InventoryPatches.ComputeAccuracyPercent(weapon, pc);
@@ -1163,20 +1188,12 @@ namespace Wasteland2AccessibilityMod.States
                 if (crit >= 0)
                     infoLines.Add($"Critical chance: {crit} percent");
 
+                // Operational stats (AP to attack, AP to reload, chance to jam, jammed flag)
+                foreach (string line in InventoryPatches.BuildWeaponOperationalLines(weapon))
+                    infoLines.Add(line);
+
                 if (wt.armorPenetration > 0)
                     infoLines.Add($"Armor penetration: {wt.armorPenetration}");
-
-                // Ranged weapons: caliber + current loaded/clip
-                if (weapon is ItemInstance_WeaponRanged rangedInst && wt is ItemTemplate_WeaponRanged)
-                {
-                    string caliber = InventoryPatches.GetWeaponCaliberDisplay(wt);
-                    if (!string.IsNullOrEmpty(caliber))
-                        infoLines.Add($"Uses: {caliber}");
-
-                    int clip = rangedInst.GetClipSize();
-                    if (clip > 0)
-                        infoLines.Add($"Ammo loaded: {rangedInst.GetAmmoCount()} of {clip}");
-                }
 
                 // Status-effect afflictor
                 string afflictor = InventoryPatches.BuildAfflictorLine(weapon);

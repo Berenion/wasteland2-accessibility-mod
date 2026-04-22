@@ -116,14 +116,7 @@ namespace Wasteland2AccessibilityMod.Patches
                             : $"Damage {minDmg} to {maxDmg}");
                     }
 
-                    // Range — instance getter includes mod bonuses
-                    int range = weapon.GetAttackRange();
-                    if (range > 0)
-                    {
-                        details.Add($"Range {range}");
-                    }
-
-                    // Ranged-specific: loaded ammo and caliber
+                    // Ranged-specific: loaded ammo, reserve ammo, caliber, range brackets, firing modes
                     if (weapon is ItemInstance_WeaponRanged rangedInst
                         && weaponTemplate is ItemTemplate_WeaponRanged)
                     {
@@ -132,11 +125,23 @@ namespace Wasteland2AccessibilityMod.Patches
                         {
                             details.Add($"Ammo {rangedInst.GetAmmoCount()} of {clip}");
                         }
+                        string reserveLine = BuildReserveAmmoLine(rangedInst, pc);
+                        if (!string.IsNullOrEmpty(reserveLine))
+                            details.Add(reserveLine);
                         string caliber = GetWeaponCaliberDisplay(weaponTemplate);
                         if (!string.IsNullOrEmpty(caliber))
                         {
                             details.Add($"Uses {caliber}");
                         }
+                        details.AddRange(BuildRangeBracketLines(rangedInst, pc));
+                        details.AddRange(BuildFiringModeLines(rangedInst));
+                    }
+                    else
+                    {
+                        // Melee / thrown / RPG: raw max range only
+                        int range = weapon.GetAttackRange();
+                        if (range > 0)
+                            details.Add($"Range {range}");
                     }
 
                     // PC-aware accuracy & crit (mirrors what sighted users see in ItemInfoBox)
@@ -146,6 +151,9 @@ namespace Wasteland2AccessibilityMod.Patches
                     int crit = ComputeCritChancePercent(weapon, pc);
                     if (crit >= 0)
                         details.Add($"Critical chance {crit} percent");
+
+                    // Operational stats (AP to attack, AP to reload, chance to jam, jammed flag)
+                    details.AddRange(BuildWeaponOperationalLines(weapon));
 
                     // Penetration (template only — mods adjust via armorPenetration elsewhere)
                     if (weaponTemplate.armorPenetration > 0)
@@ -803,6 +811,127 @@ namespace Wasteland2AccessibilityMod.Patches
             string sign = value > 0 ? "+" : "";
             string goodBad = (isNegativeStat && value > 0) ? " (penalty)" : "";
             return $"{sign}{valueStr} {displayName}{goodBad}";
+        }
+
+        /// <summary>
+        /// One line per firing mode: "Single: 3 AP, 1 ammo", annotating the currently-selected
+        /// mode with " (current)". Mirrors how sighted players see AttackModePanel.
+        /// </summary>
+        internal static List<string> BuildFiringModeLines(ItemInstance_WeaponRanged weapon)
+        {
+            var result = new List<string>();
+            if (weapon == null) return result;
+            var wt = weapon.template as ItemTemplate_WeaponRanged;
+            if (wt == null || wt.firingModeInfos == null || wt.firingModeInfos.Length == 0) return result;
+
+            int currentIdx = weapon.firingModeIndex;
+            int currentAttackAp = weapon.GetActionPointsToAttack();
+            for (int i = 0; i < wt.firingModeInfos.Length; i++)
+            {
+                var info = wt.firingModeInfos[i];
+                if (info == null) continue;
+
+                // Use the same ammoCost-based rule as GetFiringModeName, but compute per-mode.
+                string modeName;
+                if (info.ammoCost == 1) modeName = "Single";
+                else if (info.ammoCost == wt.clipSize) modeName = "Full auto";
+                else modeName = $"Burst ({info.ammoCost} shots)";
+
+                // Only the current firing mode's AP cost includes installed-mod AP bonuses.
+                // For other modes, fall back to the template AP cost.
+                int apCost = (i == currentIdx) ? currentAttackAp : info.actionPointCost;
+
+                string line = $"{modeName}: {apCost} AP, {info.ammoCost} ammo";
+                if (info.chanceToHitPenalty != 0)
+                    line += $", {info.chanceToHitPenalty:+0;-#} percent to hit";
+                if (i == currentIdx) line += " (current)";
+                result.Add(line);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Three lines for the three range brackets of a ranged weapon:
+        /// point-blank, optimal, maximum. Each line shows meters and the %-to-hit
+        /// modifier at that range. Mirrors WeaponRangeTooltip.SetWeapon.
+        /// </summary>
+        internal static List<string> BuildRangeBracketLines(ItemInstance_WeaponRanged weapon, PC pc)
+        {
+            var result = new List<string>();
+            if (weapon == null) return result;
+            var wt = weapon.template as ItemTemplate_WeaponRanged;
+            if (wt == null) return result;
+
+            int pbRange = weapon.GetPointBlankRange();
+            int optRange = weapon.GetOptimalRange();
+            int maxRange = weapon.GetAttackRange();
+
+            int pbCth = wt.hitChanceAtPointBlankRange + weapon.GetPointBlankChanceToHit();
+            int optCth = 0;
+            int maxCth = wt.hitChancePastOptimalRange + weapon.GetOutsideOptimalChanceToHit();
+
+            // Apply point-blank trait adjustments (matches tooltip when a PC is supplied).
+            if (pc != null && pc.pcTemplate != null)
+            {
+                try
+                {
+                    var traits = pc.pcTemplate.GetActiveTraits();
+                    for (int i = 0; i < traits.Count; i++)
+                        traits[i].OnPCCalculateWeaponPointBlankChanceToHit(pc, weapon, ref pbCth);
+                }
+                catch { /* trait hook may throw on headless weapons — ignore */ }
+            }
+
+            result.Add($"Point blank: up to {pbRange} meters, {pbCth:+0;-#} percent to hit");
+            result.Add($"Optimal: {pbRange} to {optRange} meters, {optCth:+0;-#} percent to hit");
+            if (optRange != maxRange)
+                result.Add($"Maximum: {optRange} to {maxRange} meters, {maxCth:+0;-#} percent to hit");
+            else
+                result.Add($"Maximum: {maxRange} meters, {maxCth:+0;-#} percent to hit");
+            return result;
+        }
+
+        /// <summary>
+        /// Operational per-weapon stats: AP to attack (current firing mode), AP to reload
+        /// (ranged only), and chance-to-jam (ranged only). Includes mod bonuses.
+        /// </summary>
+        internal static List<string> BuildWeaponOperationalLines(ItemInstance_Weapon weapon)
+        {
+            var result = new List<string>();
+            if (weapon == null) return result;
+
+            int attackAp = weapon.GetActionPointsToAttack();
+            if (attackAp > 0)
+                result.Add($"{attackAp} AP to attack");
+
+            if (weapon is ItemInstance_WeaponRanged ranged)
+            {
+                int reloadAp = ranged.GetActionPointsToReload();
+                if (reloadAp > 0)
+                    result.Add($"{reloadAp} AP to reload");
+
+                int jam = ranged.GetChanceToJam();
+                if (jam > 0)
+                    result.Add($"{jam} percent chance to jam");
+
+                if (ranged.IsJammed())
+                    result.Add("Currently jammed");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Line showing the PC's reserve ammo for this weapon's caliber (sum across inventory),
+        /// or null if the weapon isn't ranged / PC is missing.
+        /// </summary>
+        internal static string BuildReserveAmmoLine(ItemInstance_WeaponRanged weapon, PC pc)
+        {
+            if (weapon == null || pc == null || pc.inventory == null) return null;
+            var wt = weapon.template as ItemTemplate_WeaponRanged;
+            if (wt == null) return null;
+
+            int reserves = pc.inventory.GetAmmoCountForCaliber(wt.caliber);
+            return $"Reserve ammo: {reserves}";
         }
 
         /// <summary>
