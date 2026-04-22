@@ -1155,9 +1155,13 @@ namespace Wasteland2AccessibilityMod.States
                 if (range > 0)
                     infoLines.Add($"Range: {range}");
 
-                int critBonus = weapon.GetCriticalHitChanceBonus();
-                if (critBonus > 0)
-                    infoLines.Add($"Critical chance bonus: {critBonus} percent");
+                // PC-aware accuracy & crit (matches the on-screen ItemInfoBox values)
+                int acc = InventoryPatches.ComputeAccuracyPercent(weapon, pc);
+                if (acc >= 0)
+                    infoLines.Add($"Accuracy: {acc} percent");
+                int crit = InventoryPatches.ComputeCritChancePercent(weapon, pc);
+                if (crit >= 0)
+                    infoLines.Add($"Critical chance: {crit} percent");
 
                 if (wt.armorPenetration > 0)
                     infoLines.Add($"Armor penetration: {wt.armorPenetration}");
@@ -1178,6 +1182,14 @@ namespace Wasteland2AccessibilityMod.States
                 string afflictor = InventoryPatches.BuildAfflictorLine(weapon);
                 if (!string.IsNullOrEmpty(afflictor))
                     infoLines.Add(afflictor);
+
+                // Energy-weapon notes + above/below threshold multipliers
+                foreach (string line in InventoryPatches.BuildEnergyWeaponLines(wt))
+                    infoLines.Add(line);
+
+                // Mod slots (installed mods + empty slots)
+                foreach (string line in InventoryPatches.BuildModSlotLines(weapon))
+                    infoLines.Add(line);
             }
 
             // Armor stats
@@ -1186,6 +1198,10 @@ namespace Wasteland2AccessibilityMod.States
                 int armorValue = eqt.GetStat("armor");
                 if (armorValue > 0)
                     infoLines.Add($"Armor value: {armorValue}");
+
+                // Mod slots on armor (if any)
+                foreach (string line in InventoryPatches.BuildModSlotLines(armor))
+                    infoLines.Add(line);
             }
 
             // Ammo stats
@@ -1218,28 +1234,16 @@ namespace Wasteland2AccessibilityMod.States
                 if (ut.actionPoints > 0)
                     infoLines.Add($"AP cost: {ut.actionPoints}");
 
-                if (ut is ItemTemplate_UsableSkill skillTemplate && skillTemplate.itemEffects != null)
-                {
-                    foreach (var effect in skillTemplate.itemEffects)
-                    {
-                        string effectType = effect.effectType.ToString();
-                        if (effectType == "Heal" || effectType == "HealPercent")
-                        {
-                            if (effect.minHeal > 0 || effect.maxHeal > 0)
-                            {
-                                if (effect.minHeal == effect.maxHeal)
-                                    infoLines.Add($"Heals: {effect.maxHeal}");
-                                else
-                                    infoLines.Add($"Heals: {effect.minHeal} to {effect.maxHeal}");
-                            }
-                        }
-                    }
+                // All skill-driven effect types, with PC-skill-adjusted heal values
+                foreach (string line in InventoryPatches.BuildConsumableEffectLines(usable, pc))
+                    infoLines.Add($"Effect: {line}");
 
-                    if (!string.IsNullOrEmpty(skillTemplate.associatedSkill) && skillTemplate.associatedSkill != "NONE")
-                    {
-                        string skillName = skillTemplate.associatedSkill.Replace("_", " ");
-                        infoLines.Add($"Requires skill: {skillName}");
-                    }
+                // Skill-book / XP-giver items (e.g. "+1 Surgeon skill")
+                if (ut is ItemTemplate_UsableXPGiver xpGiver)
+                {
+                    string xpLine = InventoryPatches.BuildXPGiverLine(xpGiver);
+                    if (!string.IsNullOrEmpty(xpLine))
+                        infoLines.Add($"Grants: {xpLine}");
                 }
 
                 if (ut.aoeRadius > 0)
@@ -1252,6 +1256,13 @@ namespace Wasteland2AccessibilityMod.States
             if (item is ItemInstance_Trinket)
             {
                 infoLines.Add("Trinket");
+            }
+
+            // Weapon mod info (slot, stat bonuses, requirements, allowed weapons)
+            if (item is ItemInstance_Mod modItem)
+            {
+                foreach (string line in InventoryPatches.BuildWeaponModLines(modItem, pc))
+                    infoLines.Add(line);
             }
 
             // Junk
@@ -1273,6 +1284,10 @@ namespace Wasteland2AccessibilityMod.States
             // Attribute requirements (annotated with met/not met for the current PC)
             foreach (string req in InventoryPatches.BuildRequirementLines(item, pc))
                 infoLines.Add(req);
+
+            // Trait-specific item modifiers (e.g. Psychopath, Mysterious Stranger)
+            foreach (string traitLine in InventoryPatches.BuildTraitItemModifierLines(item, pc))
+                infoLines.Add(traitLine);
 
             // Weight
             float weight = item.GetWeight();

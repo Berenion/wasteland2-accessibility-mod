@@ -139,12 +139,13 @@ namespace Wasteland2AccessibilityMod.Patches
                         }
                     }
 
-                    // Crit bonus from template + mods (not the full PC-calculated crit %)
-                    int critBonus = weapon.GetCriticalHitChanceBonus();
-                    if (critBonus > 0)
-                    {
-                        details.Add($"Critical chance bonus {critBonus} percent");
-                    }
+                    // PC-aware accuracy & crit (mirrors what sighted users see in ItemInfoBox)
+                    int acc = ComputeAccuracyPercent(weapon, pc);
+                    if (acc >= 0)
+                        details.Add($"Accuracy {acc} percent");
+                    int crit = ComputeCritChancePercent(weapon, pc);
+                    if (crit >= 0)
+                        details.Add($"Critical chance {crit} percent");
 
                     // Penetration (template only — mods adjust via armorPenetration elsewhere)
                     if (weaponTemplate.armorPenetration > 0)
@@ -156,6 +157,12 @@ namespace Wasteland2AccessibilityMod.Patches
                     string afflictor = BuildAfflictorLine(weapon);
                     if (!string.IsNullOrEmpty(afflictor))
                         details.Add(afflictor);
+
+                    // Energy-weapon notes + threshold multipliers
+                    details.AddRange(BuildEnergyWeaponLines(weaponTemplate));
+
+                    // Mod slots (installed mods + empty slots)
+                    details.AddRange(BuildModSlotLines(weapon));
                 }
             }
             else if (item is ItemInstance_Armor armor)
@@ -170,6 +177,9 @@ namespace Wasteland2AccessibilityMod.Patches
                         details.Add($"Armor value {armorValue}");
                     }
                 }
+
+                // Mod slots on armor (e.g. trinket-like slots) — same readout as weapons
+                details.AddRange(BuildModSlotLines(armor));
             }
             else if (item is ItemInstance_Ammo ammo)
             {
@@ -230,35 +240,14 @@ namespace Wasteland2AccessibilityMod.Patches
                         details.Add($"Costs {usableTemplate.actionPoints} action points");
                     }
 
-                    // Check if it's a medical/skill item
-                    if (usableTemplate is ItemTemplate_UsableSkill skillTemplate && skillTemplate.itemEffects != null && skillTemplate.itemEffects.Count > 0)
-                    {
-                        // Find healing effects
-                        foreach (var effect in skillTemplate.itemEffects)
-                        {
-                            if (effect.effectType.ToString() == "Heal" || effect.effectType.ToString() == "HealPercent")
-                            {
-                                if (effect.minHeal > 0 || effect.maxHeal > 0)
-                                {
-                                    if (effect.minHeal == effect.maxHeal)
-                                    {
-                                        details.Add($"Heals {effect.maxHeal} health");
-                                    }
-                                    else
-                                    {
-                                        details.Add($"Heals {effect.minHeal} to {effect.maxHeal} health");
-                                    }
-                                }
+                    // Skill-driven effects (heal amounts use PC's skill-bonus-adjusted values)
+                    details.AddRange(BuildConsumableEffectLines(usableItem, pc));
 
-                                // Associated skill
-                                if (!string.IsNullOrEmpty(skillTemplate.associatedSkill) && skillTemplate.associatedSkill != "NONE")
-                                {
-                                    string skillName = skillTemplate.associatedSkill.Replace("_", " ");
-                                    details.Add($"Uses {skillName} skill");
-                                }
-                                break;
-                            }
-                        }
+                    // Skill-book / XP-giver items (e.g. "+1 Surgeon skill")
+                    if (usableTemplate is ItemTemplate_UsableXPGiver xpGiver)
+                    {
+                        string xpLine = BuildXPGiverLine(xpGiver);
+                        if (!string.IsNullOrEmpty(xpLine)) details.Add(xpLine);
                     }
 
                     // AoE radius
@@ -273,6 +262,11 @@ namespace Wasteland2AccessibilityMod.Patches
                         details.Add("Consumed when used");
                     }
                 }
+            }
+            else if (item is ItemInstance_Mod modItem)
+            {
+                // Weapon mod: slot, stat bonuses, requirements, allowed-weapons list
+                details.AddRange(BuildWeaponModLines(modItem, pc));
             }
             else if (item is ItemInstance_Component)
             {
@@ -292,6 +286,9 @@ namespace Wasteland2AccessibilityMod.Patches
 
             // Attribute requirements (e.g. "Requires 5 Coordination (met)")
             details.AddRange(BuildRequirementLines(item, pc));
+
+            // Trait-specific item modifiers (e.g. Psychopath, Mysterious Stranger)
+            details.AddRange(BuildTraitItemModifierLines(item, pc));
 
             // Description
             if (!string.IsNullOrEmpty(item.template.description))
@@ -430,6 +427,382 @@ namespace Wasteland2AccessibilityMod.Patches
             if (rt == null) return null;
             string s = ItemTemplate_Ammo.GetCaliberDisplayString(rt.caliber);
             return string.IsNullOrEmpty(s) ? null : UITextExtractor.CleanText(s);
+        }
+
+        /// <summary>
+        /// Replicates ItemInfoBox.OnWeaponSelected accuracy calculation for the given PC
+        /// (lines 474-496 of ItemInfoBox.cs). Returns -1 when not applicable (e.g. no PC).
+        /// Thrown / RPG weapons return 100. Includes weapon-mod bonuses, ranged hit bonus,
+        /// trait multipliers, and the missing-attribute penalty.
+        /// </summary>
+        internal static int ComputeAccuracyPercent(ItemInstance_Weapon weapon, PC pc)
+        {
+            if (weapon == null) return -1;
+            var wt = weapon.template as ItemTemplate_Weapon;
+            if (wt == null) return -1;
+            if (pc == null) return -1;
+
+            if (wt.weaponType == WeaponType.Thrown || wt.weaponType == WeaponType.RPG)
+                return 100;
+
+            int skillLevel = pc.pcStats.GetSkillLevel(wt.skill);
+            int num = Table_ChanceToHit.GetValue(wt.skill, skillLevel) + weapon.GetChanceToHit();
+
+            if (weapon is ItemInstance_WeaponRanged)
+                num += pc.pcStats.GetDerivedStat(PCStatsManager.bonusRangedHitChance);
+
+            var activeTraits = pc.pcTemplate.GetActiveTraits();
+            for (int i = 0; i < activeTraits.Count; i++)
+            {
+                var trait = activeTraits[i];
+                float statPercent = trait.GetStatPercent(PCStatsManager.chanceToHit);
+                num += trait.GetStat(PCStatsManager.chanceToHit);
+                num = Mathf.RoundToInt((float)num * statPercent);
+            }
+
+            int penalty = Table_MissingAttributeRequirements.GetMissingWeaponAttributePenalty(wt, pc.pcTemplate);
+            return num - penalty;
+        }
+
+        /// <summary>
+        /// Replicates ItemInfoBox.OnWeaponSelected crit calculation for the given PC
+        /// (lines 464-472). Energy weapons / Thrown / RPG return 0.
+        /// </summary>
+        internal static int ComputeCritChancePercent(ItemInstance_Weapon weapon, PC pc)
+        {
+            if (weapon == null) return -1;
+            var wt = weapon.template as ItemTemplate_Weapon;
+            if (wt == null) return -1;
+            if (pc == null) return -1;
+
+            if (wt is ItemTemplate_WeaponEnergy
+                || wt is ItemTemplate_WeaponMeleeEnergy
+                || wt.weaponType == WeaponType.Thrown
+                || wt.weaponType == WeaponType.RPG)
+                return 0;
+
+            float f = pc.pcStats.GetBaseChanceToCriticalHitWithSkill(wt.skill)
+                      + weapon.GetCriticalHitChanceBonus();
+            return Mathf.RoundToInt(f);
+        }
+
+        /// <summary>
+        /// One line per UseEffects entry in a consumable, with skill-bonus-adjusted heal
+        /// values when a PC is supplied. Mirrors ItemInfoBox.BuildFieldMedicString.
+        /// Also adds the "Requires X skill of Y" and "Requirements not met" lines when
+        /// applicable.
+        /// </summary>
+        internal static List<string> BuildConsumableEffectLines(ItemInstance_Usable item, PC pc)
+        {
+            var result = new List<string>();
+            if (item == null) return result;
+            var skillTemplate = item.template as ItemTemplate_UsableSkill;
+            if (skillTemplate == null || skillTemplate.itemEffects == null) return result;
+
+            int skillLevel = 0;
+            if (pc != null
+                && !string.IsNullOrEmpty(skillTemplate.associatedSkill)
+                && skillTemplate.associatedSkill != ItemTemplate_UsableSkill.NONESKILL)
+            {
+                skillLevel = pc.pcStats.GetSkillLevel(skillTemplate.associatedSkill);
+            }
+
+            for (int i = 0; i < skillTemplate.itemEffects.Count; i++)
+            {
+                var ee = skillTemplate.itemEffects[i];
+                switch (ee.effectType)
+                {
+                    case ItemTemplate_UsableSkill.UseEffects.Heal:
+                    {
+                        int hMin = ItemTemplate_UsableSkill.CalcHealMin(ee, skillLevel, includeSkillBonus: true);
+                        int hMax = ItemTemplate_UsableSkill.CalcHealMax(ee, skillLevel, includeSkillBonus: true);
+                        if (hMin > 0 || hMax > 0)
+                        {
+                            result.Add(hMin == hMax
+                                ? $"Heals {hMax} points of CON"
+                                : $"Heals {hMin} to {hMax} points of CON");
+                        }
+                        break;
+                    }
+                    case ItemTemplate_UsableSkill.UseEffects.HealPercent:
+                    {
+                        float pct = ItemTemplate_UsableSkill.CalcHealPCT(ee, skillLevel, includeSkillBonus: true);
+                        if (pct > 0)
+                            result.Add($"Heals {Mathf.RoundToInt(pct)} percent of CON");
+                        break;
+                    }
+                    case ItemTemplate_UsableSkill.UseEffects.Resurrect:
+                    {
+                        float during = ItemTemplate_UsableSkill.CalcRezRecoveringPCT(ee, skillLevel, includeSkillBonus: true);
+                        float after = ItemTemplate_UsableSkill.CalcRezRecoveredPCT(ee, skillLevel, includeSkillBonus: true);
+                        result.Add($"Resurrects: heals {Mathf.RoundToInt(during)} percent of CON during recovery, {Mathf.RoundToInt(after)} percent on recovering");
+                        break;
+                    }
+                    case ItemTemplate_UsableSkill.UseEffects.StatusEffect:
+                    {
+                        var se = ee.statusEffect;
+                        if (se != null)
+                        {
+                            string name = UITextExtractor.CleanText(
+                                Language.Localize(se.displayName, false, false, string.Empty));
+                            if (!string.IsNullOrEmpty(name))
+                                result.Add($"Applies {name}");
+                        }
+                        break;
+                    }
+                    case ItemTemplate_UsableSkill.UseEffects.KillEffect:
+                    {
+                        var se = ee.statusEffect;
+                        if (se != null)
+                        {
+                            string name = UITextExtractor.CleanText(
+                                Language.Localize(se.displayName, false, false, string.Empty));
+                            if (!string.IsNullOrEmpty(name))
+                                result.Add($"Removes {name}");
+                        }
+                        break;
+                    }
+                    case ItemTemplate_UsableSkill.UseEffects.KillEffectClass:
+                    {
+                        string effectName = null;
+                        try
+                        {
+                            if (ee.statusEffect != null && pc != null && pc.template != null)
+                                effectName = StatusEffect.GetEffectTypeDisplayName(ee.statusEffect, pc.template.mobType);
+                            else
+                                effectName = StatusEffect.GetEffectTypeDisplayName(ee.effectClass);
+                        }
+                        catch { /* fall through */ }
+                        if (!string.IsNullOrEmpty(effectName))
+                            result.Add($"Removes all {UITextExtractor.CleanText(effectName)} effects");
+                        break;
+                    }
+                }
+            }
+
+            // Required skill level
+            int required = skillTemplate.GetSkillRequired();
+            if (required > 0 && required < 99)
+            {
+                string skillKey = skillTemplate.associatedSkill;
+                string skillDisplay = skillKey;
+                if (PrintableNameHelper.PrintNames != null
+                    && PrintableNameHelper.PrintNames.ContainsKey(skillKey))
+                {
+                    skillDisplay = UITextExtractor.CleanText(
+                        Language.Localize(PrintableNameHelper.PrintNames[skillKey], false, false, string.Empty));
+                }
+                result.Add($"Requires {skillDisplay} skill of {required}");
+            }
+
+            // Requirements-not-met flag
+            if (pc != null && !skillTemplate.CanUse(pc))
+                result.Add("Requirements not met");
+
+            return result;
+        }
+
+        /// <summary>
+        /// Lines describing the weapon-mod slots of an equipment item: one line per
+        /// slot the template accepts, showing either the installed mod name or "empty".
+        /// Mirrors the visual mod-slot row in ItemInfoBox.SetModDisplay.
+        /// </summary>
+        internal static List<string> BuildModSlotLines(ItemInstance item)
+        {
+            var result = new List<string>();
+            var equipInst = item as ItemInstance_Equipment;
+            if (equipInst == null) return result;
+
+            foreach (ModSlot slot in Enum.GetValues(typeof(ModSlot)))
+            {
+                if (!equipInst.CanUseMod(slot)) continue;
+
+                string slotName = UITextExtractor.CleanText(
+                    Language.Localize(ItemTemplate_Mod.GetSlotString(slot), false, false, string.Empty));
+                if (string.IsNullOrEmpty(slotName)) slotName = slot.ToString();
+
+                ItemInstance_Mod mod = equipInst.GetMod(slot);
+                if (mod != null && mod.template != null)
+                {
+                    string modName = UITextExtractor.CleanText(
+                        Language.Localize(mod.template.displayName, false, false, string.Empty));
+                    result.Add($"{slotName} slot: {modName}");
+                }
+                else
+                {
+                    result.Add($"{slotName} slot: empty");
+                }
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Info lines for a weapon mod item: stat bonuses (mirrors ItemInfoBox.BuildModBonusString),
+        /// slot type, weaponSmith and other attribute requirements, and the allowed-weapon list.
+        /// </summary>
+        internal static List<string> BuildWeaponModLines(ItemInstance_Mod item, PC pc)
+        {
+            var result = new List<string>();
+            if (item == null) return result;
+            var template = item.template as ItemTemplate_Mod;
+            if (template == null) return result;
+
+            string slotName = UITextExtractor.CleanText(
+                Language.Localize(template.GetSlotString(), false, false, string.Empty));
+            if (!string.IsNullOrEmpty(slotName))
+                result.Add($"Weapon mod, {slotName} slot");
+
+            // Stat bonuses (SerializableDictionary_StringFloat)
+            if (template.stats != null)
+            {
+                foreach (var kvp in template.stats)
+                {
+                    string line = FormatModStatBonus(kvp.Key, kvp.Value);
+                    if (!string.IsNullOrEmpty(line))
+                        result.Add(line);
+                }
+            }
+
+            // Required stat values (e.g. weaponSmith, intelligence)
+            if (template.requiredStatValues != null)
+            {
+                foreach (var kvp in template.requiredStatValues)
+                {
+                    string attrName = GetStatDisplayName(kvp.Key);
+                    string suffix = "";
+                    if (pc != null)
+                    {
+                        int pcVal = kvp.Key == "weaponSmith"
+                            ? pc.pcStats.GetSkillLevel(kvp.Key)
+                            : pc.pcStats.GetCharacteristic(kvp.Key);
+                        suffix = pcVal >= kvp.Value ? " (met)" : " (not met)";
+                    }
+                    result.Add($"Requires {kvp.Value} {attrName}{suffix}");
+                }
+            }
+
+            // Allowed weapons
+            string[] allowed = template.GetAllowedWeapons();
+            if (allowed != null && allowed.Length > 0)
+            {
+                var cleaned = new List<string>();
+                for (int i = 0; i < allowed.Length; i++)
+                {
+                    string a = UITextExtractor.CleanText(allowed[i]);
+                    if (!string.IsNullOrEmpty(a)) cleaned.Add(a);
+                }
+                if (cleaned.Count > 0)
+                    result.Add($"Usable on: {string.Join(", ", cleaned.ToArray())}");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Line describing an XP-giver consumable (e.g. skill book) — "+1 Surgeon skill"
+        /// or "+10 Surgeon skill" for maxSkillOut items.
+        /// </summary>
+        internal static string BuildXPGiverLine(ItemTemplate_UsableXPGiver xpGiver)
+        {
+            if (xpGiver == null || string.IsNullOrEmpty(xpGiver.skillName)) return null;
+            int levels = xpGiver.maxSkillOut ? 10 : 1;
+            string skillDisplay = xpGiver.skillName;
+            if (MonoBehaviourSingleton<PCStatsManager>.HasInstance())
+            {
+                skillDisplay = UITextExtractor.CleanText(
+                    MonoBehaviourSingleton<PCStatsManager>.GetInstance()
+                        .GetCharacteristicDisplayName(xpGiver.skillName));
+            }
+            return $"+{levels} {skillDisplay} skill";
+        }
+
+        /// <summary>
+        /// Lines for each acquired trait on the PC that has a custom tooltip for the item
+        /// (mirrors ItemInfoBox using pcTemplate.GetTraitItemModifierString). Colour codes
+        /// and NGUI markers are stripped.
+        /// </summary>
+        internal static List<string> BuildTraitItemModifierLines(ItemInstance item, PC pc)
+        {
+            var result = new List<string>();
+            if (item == null || pc == null || pc.pcTemplate == null) return result;
+
+            string raw;
+            try { raw = pc.pcTemplate.GetTraitItemModifierString(item); }
+            catch { return result; }
+            if (string.IsNullOrEmpty(raw)) return result;
+
+            string clean = UITextExtractor.CleanText(raw);
+            if (string.IsNullOrEmpty(clean)) return result;
+
+            // Each trait contributes one "TraitName: modifier" segment separated by newlines.
+            string[] lines = clean.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string l = lines[i].Trim();
+                if (!string.IsNullOrEmpty(l))
+                    result.Add($"Trait: {l}");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Lines for energy weapons: descriptive note and above/below armor threshold
+        /// damage multipliers. Mirrors ItemInfoBox.OnWeaponSelected lines 503-547.
+        /// </summary>
+        internal static List<string> BuildEnergyWeaponLines(ItemTemplate_Weapon wt)
+        {
+            var result = new List<string>();
+            if (wt == null) return result;
+            bool isRangedEnergy = wt is ItemTemplate_WeaponEnergy;
+            bool isMeleeEnergy = wt is ItemTemplate_WeaponMeleeEnergy;
+            if (!isRangedEnergy && !isMeleeEnergy) return result;
+
+            if (isRangedEnergy)
+                result.Add("Energy weapons cannot jam or inflict critical hits");
+            else
+                result.Add("Melee energy weapons cannot inflict critical hits");
+
+            float above, below;
+            if (isRangedEnergy)
+            {
+                var ew = wt as ItemTemplate_WeaponEnergy;
+                above = ew.energyNoPenetrationMultiplier;
+                below = ew.energyPenetratedMultiplier;
+            }
+            else
+            {
+                // ItemInfoBox reads the same field twice for melee — not a bug we need to "fix"
+                var mw = wt as ItemTemplate_WeaponMeleeEnergy;
+                above = mw.energyPenetratedMultiplier;
+                below = mw.energyPenetratedMultiplier;
+            }
+            result.Add($"Threshold damage: above {above:0.0}x, below {below:0.0}x");
+            return result;
+        }
+
+        private static string FormatModStatBonus(string key, float value)
+        {
+            string displayName = GetStatDisplayName(key);
+            // Negative-is-good stats (jam chance, reload AP, etc.) — flag positive as penalty.
+            bool isNegativeStat = false;
+            if (MonoBehaviourSingleton<PCStatsManager>.HasInstance())
+            {
+                BaseStat stat = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetCharacteristic(key);
+                if (stat is DerivedStat ds && ds.isNegative) isNegativeStat = true;
+            }
+            switch (key)
+            {
+                case "actionPointAttack":
+                case "chanceToJam":
+                case "actionPointReload":
+                    isNegativeStat = true;
+                    break;
+            }
+
+            string valueStr = value.ToString("0.##");
+            if (key == "chanceToJam") valueStr += "%";
+            string sign = value > 0 ? "+" : "";
+            string goodBad = (isNegativeStat && value > 0) ? " (penalty)" : "";
+            return $"{sign}{valueStr} {displayName}{goodBad}";
         }
 
         /// <summary>
