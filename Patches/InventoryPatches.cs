@@ -100,33 +100,62 @@ namespace Wasteland2AccessibilityMod.Patches
             // Item type
             if (item is ItemInstance_Weapon weapon)
             {
-                details.Add("Weapon");
+                ItemTemplate_Weapon weaponTemplate = weapon.template as ItemTemplate_Weapon;
+                string skillType = GetWeaponSkillDisplayName(weaponTemplate);
+                details.Add(string.IsNullOrEmpty(skillType) ? "Weapon" : skillType);
 
-                if (weapon.template is ItemTemplate_Weapon weaponTemplate)
+                if (weaponTemplate != null)
                 {
-                    // Damage
-                    if (weaponTemplate.minDamage > 0 || weaponTemplate.maxDamage > 0)
+                    // Damage — instance getter includes weapon-mod bonuses
+                    int minDmg = weapon.GetMinDamage();
+                    int maxDmg = weapon.GetMaxDamage();
+                    if (minDmg > 0 || maxDmg > 0)
                     {
-                        details.Add($"Damage {weaponTemplate.minDamage} to {weaponTemplate.maxDamage}");
+                        details.Add(minDmg == maxDmg
+                            ? $"Damage {maxDmg}"
+                            : $"Damage {minDmg} to {maxDmg}");
                     }
 
-                    // Range
-                    if (weaponTemplate.attackRange > 0)
+                    // Range — instance getter includes mod bonuses
+                    int range = weapon.GetAttackRange();
+                    if (range > 0)
                     {
-                        details.Add($"Range {weaponTemplate.attackRange}");
+                        details.Add($"Range {range}");
                     }
 
-                    // Crit chance
-                    if (weaponTemplate.criticalHitBonusChance > 0)
+                    // Ranged-specific: loaded ammo and caliber
+                    if (weapon is ItemInstance_WeaponRanged rangedInst
+                        && weaponTemplate is ItemTemplate_WeaponRanged)
                     {
-                        details.Add($"Critical chance {weaponTemplate.criticalHitBonusChance} percent");
+                        int clip = rangedInst.GetClipSize();
+                        if (clip > 0)
+                        {
+                            details.Add($"Ammo {rangedInst.GetAmmoCount()} of {clip}");
+                        }
+                        string caliber = GetWeaponCaliberDisplay(weaponTemplate);
+                        if (!string.IsNullOrEmpty(caliber))
+                        {
+                            details.Add($"Uses {caliber}");
+                        }
                     }
 
-                    // Penetration
+                    // Crit bonus from template + mods (not the full PC-calculated crit %)
+                    int critBonus = weapon.GetCriticalHitChanceBonus();
+                    if (critBonus > 0)
+                    {
+                        details.Add($"Critical chance bonus {critBonus} percent");
+                    }
+
+                    // Penetration (template only — mods adjust via armorPenetration elsewhere)
                     if (weaponTemplate.armorPenetration > 0)
                     {
                         details.Add($"Penetration {weaponTemplate.armorPenetration}");
                     }
+
+                    // Status-effect afflictor
+                    string afflictor = BuildAfflictorLine(weapon);
+                    if (!string.IsNullOrEmpty(afflictor))
+                        details.Add(afflictor);
                 }
             }
             else if (item is ItemInstance_Armor armor)
@@ -135,7 +164,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 if (armor.template is ItemTemplate_Equipment equipTemplate)
                 {
-                    int armorValue = equipTemplate.GetStat("AC");
+                    int armorValue = equipTemplate.GetStat("armor");
                     if (armorValue > 0)
                     {
                         details.Add($"Armor value {armorValue}");
@@ -163,6 +192,16 @@ namespace Wasteland2AccessibilityMod.Patches
                         if (damagePercent != 0)
                         {
                             details.Add($"Damage {damagePercent:+0;-#} percent");
+                        }
+                    }
+
+                    // Expansion multiplier (shown in the accuracy slot on the info box)
+                    if (ammoTemplate.expansionMultiplier != 1f && ammoTemplate.expansionMultiplier > 0)
+                    {
+                        int expansionPercent = Mathf.RoundToInt((ammoTemplate.expansionMultiplier - 1f) * 100f);
+                        if (expansionPercent != 0)
+                        {
+                            details.Add($"Expansion {expansionPercent:+0;-#} percent");
                         }
                     }
 
@@ -248,6 +287,12 @@ namespace Wasteland2AccessibilityMod.Patches
                 details.Add("Junk item");
             }
 
+            // Equipment stat modifiers (e.g. +3 Strength, +5 Coordination)
+            details.AddRange(BuildModifierLines(item));
+
+            // Attribute requirements (e.g. "Requires 5 Coordination (met)")
+            details.AddRange(BuildRequirementLines(item, pc));
+
             // Description
             if (!string.IsNullOrEmpty(item.template.description))
             {
@@ -255,12 +300,8 @@ namespace Wasteland2AccessibilityMod.Patches
                 details.Add(desc);
             }
 
-            // Value
-            int value = 0;
-            if (item.template != null && item.template.price > 0)
-            {
-                value = Mathf.FloorToInt(item.template.price * 0.3f * item.quantity);
-            }
+            // Value (vendor-aware when a vendor screen is open)
+            int value = ComputeItemValue(item);
             if (value > 0)
             {
                 details.Add($"Value {value} dollars");
@@ -290,6 +331,176 @@ namespace Wasteland2AccessibilityMod.Patches
 
             string itemInfo = FormatItemAnnouncement(item, detailed: false);
             return $"{slotName} slot, {itemInfo}";
+        }
+
+        /// <summary>
+        /// Lines for each entry in ItemTemplate_Equipment.stats (mirrors ItemInfoBox.BuildBonusString).
+        /// Empty list if the item isn't equipment or has no stat bonuses.
+        /// </summary>
+        internal static List<string> BuildModifierLines(ItemInstance item)
+        {
+            var result = new List<string>();
+            if (item == null) return result;
+            var eqt = item.template as ItemTemplate_Equipment;
+            if (eqt == null || eqt.stats == null) return result;
+
+            // Skip the raw "armor" value for armor pieces — already announced separately.
+            bool isArmor = item is ItemInstance_Armor;
+
+            foreach (var kvp in eqt.stats)
+            {
+                if (isArmor && kvp.Key == "armor") continue;
+                string line = FormatStatModifier(kvp.Key, kvp.Value);
+                if (!string.IsNullOrEmpty(line))
+                    result.Add(line);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Lines for each entry in ItemTemplate_Equipment.requiredAttributeValues, annotated with
+        /// whether the current PC meets the requirement (mirrors ItemInfoBox.BuildRequirementString).
+        /// </summary>
+        internal static List<string> BuildRequirementLines(ItemInstance item, PC currentPC)
+        {
+            var result = new List<string>();
+            if (item == null) return result;
+            var eqt = item.template as ItemTemplate_Equipment;
+            if (eqt == null || eqt.requiredAttributeValues == null) return result;
+
+            if (currentPC == null && MonoBehaviourSingleton<Game>.HasInstance())
+                currentPC = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+
+            foreach (var kvp in eqt.requiredAttributeValues)
+            {
+                string attrName = GetStatDisplayName(kvp.Key);
+                string suffix = "";
+                if (currentPC != null)
+                {
+                    int pcVal = currentPC.pcStats.GetCharacteristic(kvp.Key);
+                    suffix = pcVal >= kvp.Value ? " (met)" : " (not met)";
+                }
+                result.Add($"Requires {kvp.Value} {attrName}{suffix}");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Returns "X% chance to apply Y [or Z]" for weapons with status effects, or null.
+        /// </summary>
+        internal static string BuildAfflictorLine(ItemInstance item)
+        {
+            var wt = item?.template as ItemTemplate_Weapon;
+            if (wt == null || wt.statusEffect == null || wt.statusEffect.Length == 0) return null;
+            if (wt.percentToApplyStatusEffect <= 0) return null;
+
+            var effectNames = new List<string>();
+            for (int i = 0; i < wt.statusEffect.Length; i++)
+            {
+                var se = wt.statusEffect[i];
+                if (se == null) continue;
+                string name = UITextExtractor.CleanText(
+                    Language.Localize(se.displayName, false, false, string.Empty));
+                if (!string.IsNullOrEmpty(name)) effectNames.Add(name);
+            }
+            if (effectNames.Count == 0) return null;
+
+            return $"{wt.percentToApplyStatusEffect} percent chance to apply {string.Join(" or ", effectNames.ToArray())}";
+        }
+
+        /// <summary>
+        /// Localized display name of a weapon's skill (e.g. "Assault Rifle"). Null if unavailable.
+        /// </summary>
+        internal static string GetWeaponSkillDisplayName(ItemTemplate_Weapon wt)
+        {
+            if (wt == null || string.IsNullOrEmpty(wt.skill)) return null;
+            if (!MonoBehaviourSingleton<PCStatsManager>.HasInstance()) return null;
+            var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(wt.skill);
+            if (skill == null || string.IsNullOrEmpty(skill.displayName)) return null;
+            return UITextExtractor.CleanText(
+                Language.Localize(skill.displayName, false, false, string.Empty));
+        }
+
+        /// <summary>
+        /// Caliber display string for a ranged weapon, or null.
+        /// </summary>
+        internal static string GetWeaponCaliberDisplay(ItemTemplate_Weapon wt)
+        {
+            var rt = wt as ItemTemplate_WeaponRanged;
+            if (rt == null) return null;
+            string s = ItemTemplate_Ammo.GetCaliberDisplayString(rt.caliber);
+            return string.IsNullOrEmpty(s) ? null : UITextExtractor.CleanText(s);
+        }
+
+        /// <summary>
+        /// Vendor-aware item value. Matches ItemInfoBox.GetItemValue behavior for the
+        /// non-vendor and player-selling paths (we don't have ownerInventory context here).
+        /// </summary>
+        internal static int ComputeItemValue(ItemInstance item)
+        {
+            if (item == null || item.template == null) return 0;
+            if (item is ItemInstance_Currency) return item.quantity;
+
+            float price = item.template.price;
+            if (price <= 0f) return 0;
+
+            price *= 0.3f;
+            price = Mathf.Max(1f, Mathf.Floor(price + 0.5f));
+            price *= item.quantity;
+
+            if (MonoBehaviourSingleton<GUIManager>.HasInstance()
+                && MonoBehaviourSingleton<GUIManager>.GetInstance().IsVendorScreenOpen()
+                && MonoBehaviourSingleton<Game>.HasInstance())
+            {
+                price *= 1f + MonoBehaviourSingleton<Game>.GetInstance().GetHighestBarterSkillAdjustment();
+            }
+            return Mathf.Max(1, Mathf.FloorToInt(price + 0.5f));
+        }
+
+        private static string FormatStatModifier(string key, int value)
+        {
+            string displayName = GetStatDisplayName(key);
+            string unit = "";
+            bool isNegativeStat = false;
+
+            if (MonoBehaviourSingleton<PCStatsManager>.HasInstance())
+            {
+                BaseStat stat = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetCharacteristic(key);
+                if (stat != null)
+                {
+                    unit = stat.GetUnitString() ?? "";
+                    if (stat is DerivedStat ds && ds.isNegative) isNegativeStat = true;
+                }
+            }
+
+            // combatSpeed displays as a decimal fraction of 100 (e.g. 150 → "1.5")
+            string valueStr;
+            if (key == PCStatsManager.combatSpeed)
+                valueStr = ((float)value / 100f).ToString("0.0");
+            else
+                valueStr = value.ToString();
+
+            string sign = value > 0 ? "+" : "";
+            // For negative stats (e.g. noiseRadius), a positive value is a penalty — note that.
+            string modifier = $"{sign}{valueStr}{unit}";
+            string goodBad = "";
+            if (isNegativeStat && value > 0) goodBad = " (penalty)";
+            return $"{modifier} {displayName}{goodBad}";
+        }
+
+        private static string GetStatDisplayName(string key)
+        {
+            if (MonoBehaviourSingleton<PCStatsManager>.HasInstance())
+            {
+                BaseStat stat = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetCharacteristic(key);
+                if (stat != null && !string.IsNullOrEmpty(stat.displayName))
+                    return UITextExtractor.CleanText(
+                        Language.Localize(stat.displayName, false, false, string.Empty));
+            }
+            if (PrintableNameHelper.PrintNames != null && PrintableNameHelper.PrintNames.ContainsKey(key))
+                return UITextExtractor.CleanText(
+                    Language.Localize(PrintableNameHelper.PrintNames[key], false, false, string.Empty));
+            return key;
         }
     }
 

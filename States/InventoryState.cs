@@ -1093,7 +1093,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             infoLines.Clear();
-            BuildInfoLines(item);
+            BuildInfoLines(item, GetCurrentPC());
 
             if (infoLines.Count == 0)
             {
@@ -1106,14 +1106,18 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt($"Item info: {infoLines[0]}, {infoLines.Count} lines, use up and down to browse, escape to close");
         }
 
-        private void BuildInfoLines(ItemInstance item)
+        private void BuildInfoLines(ItemInstance item, PC pc)
         {
             // Name
             string name = UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty));
             infoLines.Add($"Name: {name}");
 
-            // Type
-            string typeStr = item.template.GetTypeString();
+            // Type — for weapons use the skill name ("Assault Rifle"), otherwise fall back to GetTypeString
+            string typeStr = null;
+            if (item is ItemInstance_Weapon)
+                typeStr = InventoryPatches.GetWeaponSkillDisplayName(item.template as ItemTemplate_Weapon);
+            if (string.IsNullOrEmpty(typeStr))
+                typeStr = item.template.GetTypeString();
             if (!string.IsNullOrEmpty(typeStr))
             {
                 infoLines.Add($"Type: {typeStr}");
@@ -1135,32 +1139,53 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            // Weapon stats
+            // Weapon stats — use instance getters so weapon-mod bonuses are reflected
             if (item is ItemInstance_Weapon weapon && weapon.template is ItemTemplate_Weapon wt)
             {
-                if (wt.minDamage > 0 || wt.maxDamage > 0)
-                    infoLines.Add($"Damage: {wt.minDamage} to {wt.maxDamage}");
-                if (wt.attackRange > 0)
-                    infoLines.Add($"Range: {wt.attackRange}");
-                if (wt.criticalHitBonusChance > 0)
-                    infoLines.Add($"Critical chance: {wt.criticalHitBonusChance} percent");
+                int minDmg = weapon.GetMinDamage();
+                int maxDmg = weapon.GetMaxDamage();
+                if (minDmg > 0 || maxDmg > 0)
+                {
+                    infoLines.Add(minDmg == maxDmg
+                        ? $"Damage: {maxDmg}"
+                        : $"Damage: {minDmg} to {maxDmg}");
+                }
+
+                int range = weapon.GetAttackRange();
+                if (range > 0)
+                    infoLines.Add($"Range: {range}");
+
+                int critBonus = weapon.GetCriticalHitChanceBonus();
+                if (critBonus > 0)
+                    infoLines.Add($"Critical chance bonus: {critBonus} percent");
+
                 if (wt.armorPenetration > 0)
                     infoLines.Add($"Armor penetration: {wt.armorPenetration}");
 
-                // Ammo info for ranged weapons
-                if (item is ItemInstance_WeaponRanged && wt is ItemTemplate_WeaponRanged rwt)
+                // Ranged weapons: caliber + current loaded/clip
+                if (weapon is ItemInstance_WeaponRanged rangedInst && wt is ItemTemplate_WeaponRanged)
                 {
-                    if (rwt.clipSize > 0)
-                        infoLines.Add($"Clip size: {rwt.clipSize}");
+                    string caliber = InventoryPatches.GetWeaponCaliberDisplay(wt);
+                    if (!string.IsNullOrEmpty(caliber))
+                        infoLines.Add($"Uses: {caliber}");
+
+                    int clip = rangedInst.GetClipSize();
+                    if (clip > 0)
+                        infoLines.Add($"Ammo loaded: {rangedInst.GetAmmoCount()} of {clip}");
                 }
+
+                // Status-effect afflictor
+                string afflictor = InventoryPatches.BuildAfflictorLine(weapon);
+                if (!string.IsNullOrEmpty(afflictor))
+                    infoLines.Add(afflictor);
             }
 
             // Armor stats
             if (item is ItemInstance_Armor armor && armor.template is ItemTemplate_Equipment eqt)
             {
-                int ac = eqt.GetStat("AC");
-                if (ac > 0)
-                    infoLines.Add($"Armor class: {ac}");
+                int armorValue = eqt.GetStat("armor");
+                if (armorValue > 0)
+                    infoLines.Add($"Armor value: {armorValue}");
             }
 
             // Ammo stats
@@ -1174,6 +1199,12 @@ namespace Wasteland2AccessibilityMod.States
                     int dmgPct = UnityEngine.Mathf.RoundToInt((at.damageMultiplier - 1f) * 100f);
                     if (dmgPct != 0)
                         infoLines.Add($"Damage modifier: {dmgPct:+0;-#} percent");
+                }
+                if (at.expansionMultiplier != 1f && at.expansionMultiplier > 0)
+                {
+                    int expPct = UnityEngine.Mathf.RoundToInt((at.expansionMultiplier - 1f) * 100f);
+                    if (expPct != 0)
+                        infoLines.Add($"Expansion: {expPct:+0;-#} percent");
                 }
                 if (at.penetration > 0)
                     infoLines.Add($"Penetration: {at.penetration}");
@@ -1235,6 +1266,14 @@ namespace Wasteland2AccessibilityMod.States
                 infoLines.Add("New item");
             }
 
+            // Equipment stat modifiers (e.g. +3 Strength)
+            foreach (string mod in InventoryPatches.BuildModifierLines(item))
+                infoLines.Add($"Modifier: {mod}");
+
+            // Attribute requirements (annotated with met/not met for the current PC)
+            foreach (string req in InventoryPatches.BuildRequirementLines(item, pc))
+                infoLines.Add(req);
+
             // Weight
             float weight = item.GetWeight();
             if (weight > 0)
@@ -1245,14 +1284,19 @@ namespace Wasteland2AccessibilityMod.States
                     infoLines.Add($"Weight: {weight:0.0} lbs");
             }
 
-            // Value
-            if (item.template.price > 0)
+            // Value — vendor-aware (applies barter adjustment when a vendor screen is open)
+            int itemValue = InventoryPatches.ComputeItemValue(item);
+            if (itemValue > 0)
             {
-                int value = UnityEngine.Mathf.FloorToInt(item.template.price * 0.3f);
                 if (item.quantity > 1)
-                    infoLines.Add($"Value: ${value} each, ${value * item.quantity} total");
+                {
+                    int perUnit = Mathf.Max(1, itemValue / Mathf.Max(1, item.quantity));
+                    infoLines.Add($"Value: ${perUnit} each, ${itemValue} total");
+                }
                 else
-                    infoLines.Add($"Value: ${value}");
+                {
+                    infoLines.Add($"Value: ${itemValue}");
+                }
             }
 
             // Tier
