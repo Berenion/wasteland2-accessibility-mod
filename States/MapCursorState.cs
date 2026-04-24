@@ -900,6 +900,15 @@ namespace Wasteland2AccessibilityMod.States
             return blocked;
         }
 
+        private static bool IsDoor(Component c)
+        {
+            if (c == null) return false;
+            return c.GetComponentInChildren<Door>() != null
+                || c.GetComponentInChildren<Door_Swing>() != null
+                || c.GetComponentInChildren<Door_Slide>() != null
+                || c.GetComponentInChildren<DoorClass>() != null;
+        }
+
         private List<InteractableNexus> FindInteractablesOnTile()
         {
             List<InteractableNexus> onTile = new List<InteractableNexus>();
@@ -915,7 +924,11 @@ namespace Wasteland2AccessibilityMod.States
 
                 if (IsOnCurrentTile(interactable.transform.position))
                 {
-                    if (IsBlockedByWall(interactable.transform.position)) continue;
+                    // Doors occupy wall positions — the absent walkable neighbor
+                    // that IsBlockedByWall keys on is usually the door itself
+                    // sealing the passage. Skip the wall check for doors so
+                    // they remain discoverable after a jump-to-interactable.
+                    if (!IsDoor(interactable) && IsBlockedByWall(interactable.transform.position)) continue;
                     onTile.Add(interactable);
                 }
             }
@@ -1739,7 +1752,8 @@ namespace Wasteland2AccessibilityMod.States
             bool percGated = FOWHelper.IsPerceptionGated(target);
             bool onTile = dx <= TILE_MATCH_RADIUS && dz <= TILE_MATCH_RADIUS;
             bool wallBlocked = IsBlockedByWall(tp);
-            MelonLogger.Msg($"[TileTrace] {target.name}: tp={tp}, dx={dx:F2}, dz={dz:F2}, TILE_MATCH_RADIUS={TILE_MATCH_RADIUS}, isVisible={isVis}, fowOk={fowOk}, percGated={percGated}, onTile={onTile}, wallBlocked={wallBlocked}, isPC={target.isPC}");
+            bool isDoor = IsDoor(target);
+            MelonLogger.Msg($"[TileTrace] {target.name}: tp={tp}, dx={dx:F2}, dz={dz:F2}, TILE_MATCH_RADIUS={TILE_MATCH_RADIUS}, isVisible={isVis}, fowOk={fowOk}, percGated={percGated}, onTile={onTile}, wallBlocked={wallBlocked}, isDoor={isDoor}, isPC={target.isPC}");
         }
 
         private void AnnounceDistanceToSelected()
