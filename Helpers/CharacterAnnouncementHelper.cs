@@ -15,13 +15,24 @@ namespace Wasteland2AccessibilityMod.Helpers
         // Reflection caches
         private static bool reflectionCached = false;
         internal static FieldInfo skillEditorCurrentValueField;
+        internal static FieldInfo skillEditorPcStatsField;
+        internal static FieldInfo skillEditorIsLearnedField;
         internal static FieldInfo attrEditorCurrentValueField;
+        internal static FieldInfo attrEditorPcTemplateField;
+        internal static FieldInfo attrEditorBaseValueField;
+        internal static FieldInfo attrEditorMaxValueField;
         internal static FieldInfo traitEditorTraitField;
         internal static FieldInfo pressedCallbackField;
         internal static MethodInfo skillOnPlusClickedMethod;
         internal static MethodInfo skillOnMinusClickedMethod;
         internal static MethodInfo attrOnPlusClickedMethod;
         internal static MethodInfo attrOnMinusClickedMethod;
+
+        // CHA_DescriptionPanel private build methods (for description previews)
+        internal static MethodInfo descPanelBuildAttrUnlockMethod;
+        internal static MethodInfo descPanelBuildSkillUnlockMethod;
+        internal static MethodInfo descPanelBuildTraitUnlockByNameMethod;
+        internal static MethodInfo descPanelBuildTraitReqMethod;
 
         /// <summary>
         /// The 10 derived stat names in the same order the game displays them.
@@ -34,6 +45,7 @@ namespace Wasteland2AccessibilityMod.Helpers
             PCStatsManager.actionRechargeRate,
             PCStatsManager.chanceToEvade,
             PCStatsManager.hitPoints,
+            PCStatsManager.armor,
             PCStatsManager.combatSpeed,
             PCStatsManager.skillPointsPerLevel,
             PCStatsManager.maxWeight,
@@ -47,15 +59,36 @@ namespace Wasteland2AccessibilityMod.Helpers
             var flags = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public;
 
             skillEditorCurrentValueField = typeof(CHA_SkillEditor).GetField("currentValue", flags);
+            skillEditorPcStatsField = typeof(CHA_SkillEditor).GetField("pcStats", flags);
+            skillEditorIsLearnedField = typeof(CHA_SkillEditor).GetField("isLearnedSkillEditor", flags);
             skillOnPlusClickedMethod = typeof(CHA_SkillEditor).GetMethod("OnPlusClicked", flags);
             skillOnMinusClickedMethod = typeof(CHA_SkillEditor).GetMethod("OnMinusClicked", flags);
 
             attrEditorCurrentValueField = typeof(CHA_AttributeEditor).GetField("currentValue", flags);
+            attrEditorPcTemplateField = typeof(CHA_AttributeEditor).GetField("pcTemplate", flags);
+            attrEditorBaseValueField = typeof(CHA_AttributeEditor).GetField("baseValue", flags);
+            attrEditorMaxValueField = typeof(CHA_AttributeEditor).GetField("maxValue", flags);
             attrOnPlusClickedMethod = typeof(CHA_AttributeEditor).GetMethod("OnPlusClicked", flags);
             attrOnMinusClickedMethod = typeof(CHA_AttributeEditor).GetMethod("OnMinusClicked", flags);
 
             traitEditorTraitField = typeof(CHA_TraitEditor).GetField("trait", flags);
             pressedCallbackField = typeof(CHA_TraitEditor).GetField("pressedCallback", flags);
+
+            // CHA_DescriptionPanel private string-builders (used to surface +1 deltas, perks-unlocked etc.)
+            descPanelBuildAttrUnlockMethod = typeof(CHA_DescriptionPanel).GetMethod("BuildAttributeUnlockString", flags);
+            descPanelBuildSkillUnlockMethod = typeof(CHA_DescriptionPanel).GetMethod("BuildSkillUnlockString", flags);
+            descPanelBuildTraitReqMethod = typeof(CHA_DescriptionPanel).GetMethod("BuildTraitRequirementsString", flags);
+            // BuildTraitUnlockString has multiple overloads — we want the (string) one
+            foreach (var m in typeof(CHA_DescriptionPanel).GetMethods(flags))
+            {
+                if (m.Name != "BuildTraitUnlockString") continue;
+                var p = m.GetParameters();
+                if (p.Length == 1 && p[0].ParameterType == typeof(string))
+                {
+                    descPanelBuildTraitUnlockByNameMethod = m;
+                    break;
+                }
+            }
 
             reflectionCached = true;
             MelonLogger.Msg("[CharacterAnnouncementHelper] Reflection cached");
@@ -75,7 +108,30 @@ namespace Wasteland2AccessibilityMod.Helpers
                 else if (editor.valueLabel != null)
                     int.TryParse(UITextExtractor.CleanText(editor.valueLabel.text), out value);
 
-                return $"{name}, {value}, attribute";
+                var parts = new List<string>();
+
+                // Value, optionally with cap if reduced
+                int maxValue = GetAttributeMaxValue(editor);
+                if (maxValue > 0 && maxValue < 10)
+                    parts.Add($"{name}, {value} of {maxValue}");
+                else
+                    parts.Add($"{name}, {value}");
+
+                // Buffed/debuffed (compare current pcStats value vs template base)
+                string buffState = GetAttributeBuffState(editor);
+                if (!string.IsNullOrEmpty(buffState))
+                    parts.Add(buffState);
+
+                // Textual rating from descriptionLabel ("Excellent" / "Good" / "Average" / "Poor")
+                if (editor.descriptionLabel != null && !string.IsNullOrEmpty(editor.descriptionLabel.text))
+                {
+                    string rating = UITextExtractor.CleanText(editor.descriptionLabel.text);
+                    if (!string.IsNullOrEmpty(rating))
+                        parts.Add(rating);
+                }
+
+                parts.Add("attribute");
+                return string.Join(", ", parts.ToArray());
             }
             catch (Exception ex)
             {
@@ -96,7 +152,22 @@ namespace Wasteland2AccessibilityMod.Helpers
                 else if (skillEditorCurrentValueField != null)
                     value = (int)skillEditorCurrentValueField.GetValue(editor);
 
-                return $"{name}, level {value}, skill";
+                var parts = new List<string>();
+
+                // Level, optionally with cap if reduced below 10
+                int skillCap = GetSkillCap(editor);
+                if (skillCap > 0 && skillCap < 10)
+                    parts.Add($"{name}, level {value} of {skillCap}");
+                else
+                    parts.Add($"{name}, level {value}");
+
+                // Buffed / debuffed / unlearned
+                string state = GetSkillState(editor);
+                if (!string.IsNullOrEmpty(state))
+                    parts.Add(state);
+
+                parts.Add("skill");
+                return string.Join(", ", parts.ToArray());
             }
             catch (Exception ex)
             {
@@ -105,35 +176,205 @@ namespace Wasteland2AccessibilityMod.Helpers
             }
         }
 
+        // ========== Buff/Debuff/Cap Helpers ==========
+
+        private static PCStats GetSkillEditorPcStats(CHA_SkillEditor editor)
+        {
+            if (skillEditorPcStatsField == null) return null;
+            return skillEditorPcStatsField.GetValue(editor) as PCStats;
+        }
+
+        private static PCTemplate GetAttributeEditorPcTemplate(CHA_AttributeEditor editor)
+        {
+            if (attrEditorPcTemplateField == null) return null;
+            return attrEditorPcTemplateField.GetValue(editor) as PCTemplate;
+        }
+
+        /// <summary>
+        /// Returns the attribute's max cap (10 minus trait penalties), or 0 if unknown.
+        /// </summary>
+        private static int GetAttributeMaxValue(CHA_AttributeEditor editor)
+        {
+            try
+            {
+                if (attrEditorMaxValueField != null)
+                {
+                    var v = attrEditorMaxValueField.GetValue(editor);
+                    if (v is int max && max > 0) return max;
+                }
+                var tmpl = GetAttributeEditorPcTemplate(editor);
+                if (tmpl != null && !string.IsNullOrEmpty(editor.attribute))
+                    return 10 - tmpl.GetTraitStatEffect(editor.attribute);
+            }
+            catch { }
+            return 0;
+        }
+
+        /// <summary>
+        /// Returns "buffed" / "debuffed" / "" depending on whether the attribute's current
+        /// value (pcStats with bonuses) differs from the template base value.
+        /// </summary>
+        private static string GetAttributeBuffState(CHA_AttributeEditor editor)
+        {
+            try
+            {
+                var tmpl = GetAttributeEditorPcTemplate(editor);
+                if (tmpl == null || string.IsNullOrEmpty(editor.attribute)) return "";
+                var pc = MonoBehaviourSingleton<Game>.HasInstance()
+                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                    : null;
+                if (pc == null || pc.pcStats == null) return "";
+                int current = pc.pcStats.GetAttribute(editor.attribute);
+                int baseVal = tmpl.GetAttribute(editor.attribute);
+                if (current > baseVal) return "buffed";
+                if (current < baseVal) return "debuffed";
+            }
+            catch { }
+            return "";
+        }
+
+        /// <summary>
+        /// Returns the skill's max level (capped by associated attribute and trait penalties), or 0 if unknown.
+        /// </summary>
+        private static int GetSkillCap(CHA_SkillEditor editor)
+        {
+            try
+            {
+                var pcStats = GetSkillEditorPcStats(editor);
+                if (pcStats == null || string.IsNullOrEmpty(editor.skillName)) return 0;
+                var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(editor.skillName);
+                if (skill == null) return 0;
+                int cap = skill.GetSkillLimit(pcStats.GetAttribute(skill.associatedAttribute))
+                          - pcStats.GetPCTemplate().GetTraitStatEffect(editor.skillName);
+                return Mathf.Clamp(cap, 0, 10);
+            }
+            catch { }
+            return 0;
+        }
+
+        /// <summary>
+        /// Returns "buffed" / "debuffed" / "unlearned" / "" matching the game's CheckLevelColor logic.
+        /// </summary>
+        private static string GetSkillState(CHA_SkillEditor editor)
+        {
+            try
+            {
+                var pcStats = GetSkillEditorPcStats(editor);
+                if (pcStats == null || string.IsNullOrEmpty(editor.skillName)) return "";
+
+                int xp = pcStats.GetSkillXP(editor.skillName);
+                int xpLevel = Table_SkillLeveling.GetSkillLevelFromXp(editor.skillName, xp);
+                int displayedLevel = pcStats.GetSkillLevel(editor.skillName);
+
+                bool inCC = MonoBehaviourSingleton<HUD_Controller>.HasInstance() == false
+                            && MonoBehaviourSingleton<HUD_WorldMapController>.HasInstance() == false;
+
+                if (xpLevel == 0 && !inCC && !MonoBehaviourSingleton<Game>.GetInstance().DoesPartyHaveSkill(editor.skillName))
+                    return "unlearned";
+
+                if (displayedLevel > xpLevel) return "buffed";
+                if (displayedLevel < xpLevel) return "debuffed";
+            }
+            catch { }
+            return "";
+        }
+
         public static string GetTraitEditorAnnouncement(CHA_TraitEditor editor)
         {
             EnsureReflectionCached();
             try
             {
-                string name = editor.traitName;
-                if (string.IsNullOrEmpty(name))
-                {
-                    var nameBtn = editor.nameButton;
-                    if (nameBtn != null)
-                    {
-                        var label = nameBtn.GetComponentInChildren<UILabel>();
-                        if (label != null)
-                            name = UITextExtractor.CleanText(label.text);
-                    }
-                }
+                Trait trait = traitEditorTraitField != null
+                    ? traitEditorTraitField.GetValue(editor) as Trait
+                    : null;
 
-                if (string.IsNullOrEmpty(name))
-                    name = "Unknown trait";
+                string name = ResolveTraitName(editor, trait);
+                bool isChecked = editor.checkbox != null && editor.checkbox.value;
+                bool isLocked = editor.checkboxButton != null && !editor.checkboxButton.isEnabled && !isChecked;
 
-                string checkedState = editor.checkbox != null ? (editor.checkbox.value ? "selected" : "not selected") : "";
+                var parts = new List<string> { name };
 
-                return $"{name}, {checkedState}, quirk";
+                // Lifecycle state — match what a sighted user sees from the description panel
+                string availability = GetTraitAvailabilityState(editor, trait, isChecked, isLocked);
+                if (!string.IsNullOrEmpty(availability))
+                    parts.Add(availability);
+                else
+                    parts.Add(isChecked ? "selected" : "not selected");
+
+                parts.Add("quirk");
+                return string.Join(", ", parts.ToArray());
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning($"[CharacterAnnouncementHelper] Error announcing trait: {ex.Message}");
                 return "Trait";
             }
+        }
+
+        private static string ResolveTraitName(CHA_TraitEditor editor, Trait trait)
+        {
+            if (trait != null && !string.IsNullOrEmpty(trait.displayName))
+                return UITextExtractor.CleanText(Language.Localize(trait.displayName, false, false, string.Empty));
+
+            string name = editor.traitName;
+            if (string.IsNullOrEmpty(name))
+            {
+                var nameBtn = editor.nameButton;
+                if (nameBtn != null)
+                {
+                    var label = nameBtn.GetComponentInChildren<UILabel>();
+                    if (label != null)
+                        name = UITextExtractor.CleanText(label.text);
+                }
+            }
+            // The "no quirk" placeholder
+            if (editor.nameLabel != null && !string.IsNullOrEmpty(editor.nameLabel.text) && string.IsNullOrEmpty(name))
+                name = UITextExtractor.CleanText(editor.nameLabel.text);
+            return string.IsNullOrEmpty(name) ? "Unknown trait" : name;
+        }
+
+        /// <summary>
+        /// Mirrors CHA_TraitsPanel.OnTraitEditorPressed availability logic so the user
+        /// learns whether the perk is purchasable before trying to toggle it.
+        /// </summary>
+        private static string GetTraitAvailabilityState(CHA_TraitEditor editor, Trait trait, bool isChecked, bool isLocked)
+        {
+            try
+            {
+                if (trait == null)
+                    return ""; // "no quirk" placeholder — no availability text
+
+                if (isChecked)
+                    return "purchased";
+
+                bool inCC = MonoBehaviourSingleton<HUD_Controller>.HasInstance() == false
+                            && MonoBehaviourSingleton<HUD_WorldMapController>.HasInstance() == false;
+                if (inCC)
+                    return isLocked ? "locked" : "available";
+
+                var pc = MonoBehaviourSingleton<Game>.HasInstance()
+                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                    : null;
+                if (pc == null || pc.pcTemplate == null)
+                    return isLocked ? "locked" : "";
+
+                if (pc.pcTemplate.HasTrait(trait.name))
+                    return "purchased";
+
+                // Check perk points remaining via the panel that owns this editor
+                int pointsRemaining = -1;
+                var panel = NGUITools.FindInParents<CHA_TraitsPanel>(editor.gameObject);
+                if (panel != null) pointsRemaining = panel.GetPointsRemaining();
+
+                if (pointsRemaining == 0)
+                    return "insufficient perk points";
+
+                if (!pc.pcTemplate.CanAcquireTrait(trait))
+                    return "requirements not met";
+
+                return isLocked ? "locked" : "available";
+            }
+            catch { return isLocked ? "locked" : ""; }
         }
 
         /// <summary>
@@ -183,6 +424,8 @@ namespace Wasteland2AccessibilityMod.Helpers
 
         /// <summary>
         /// Announces the full description for an attribute or skill editor GameObject.
+        /// Includes the game's +1 preview (BuildAttributeUnlockString / BuildSkillUnlockString),
+        /// trait modifiers, perks unlocked at thresholds, and (for skills) the cost of next level.
         /// </summary>
         public static void AnnounceStatDescription(GameObject obj)
         {
@@ -192,23 +435,39 @@ namespace Wasteland2AccessibilityMod.Helpers
                 return;
             }
 
+            EnsureReflectionCached();
+
             string characteristicName = null;
             string levelText = null;
             string shortDesc = null;
+            int currentLevel = 0;
+            bool isAttribute = false;
+            bool isSkill = false;
 
             var attrEditor = obj.GetComponent<CHA_AttributeEditor>();
             if (attrEditor != null)
             {
+                isAttribute = true;
                 characteristicName = attrEditor.attribute;
                 levelText = attrEditor.valueLabel != null ? UITextExtractor.CleanText(attrEditor.valueLabel.text) : null;
                 shortDesc = attrEditor.descriptionLabel != null ? UITextExtractor.CleanText(attrEditor.descriptionLabel.text) : null;
+                if (attrEditorCurrentValueField != null)
+                    currentLevel = (int)attrEditorCurrentValueField.GetValue(attrEditor);
+                else if (!string.IsNullOrEmpty(levelText))
+                    int.TryParse(levelText, out currentLevel);
             }
 
             var skillEditor = obj.GetComponent<CHA_SkillEditor>();
             if (skillEditor != null)
             {
+                isSkill = true;
                 characteristicName = skillEditor.skillName;
-                levelText = skillEditor.levelLabel != null ? "Level " + UITextExtractor.CleanText(skillEditor.levelLabel.text) : null;
+                if (skillEditor.levelLabel != null)
+                {
+                    string raw = UITextExtractor.CleanText(skillEditor.levelLabel.text);
+                    int.TryParse(raw, out currentLevel);
+                    levelText = "Level " + raw;
+                }
             }
 
             if (string.IsNullOrEmpty(characteristicName))
@@ -238,6 +497,34 @@ namespace Wasteland2AccessibilityMod.Helpers
                 if (!string.IsNullOrEmpty(fullDesc))
                     parts.Add(fullDesc);
 
+                // +1 preview from game's own description-panel builder
+                string preview = BuildNextLevelPreview(characteristicName, currentLevel, isAttribute, isSkill);
+                if (!string.IsNullOrEmpty(preview))
+                    parts.Add(preview);
+
+                // Trait modifier on this stat (e.g. "+1 from Bookworm")
+                string traitMod = BuildTraitStatModifier(characteristicName, isAttribute, isSkill);
+                if (!string.IsNullOrEmpty(traitMod))
+                    parts.Add(traitMod);
+
+                // Perks unlocked at higher levels of this stat
+                string perksUnlocked = BuildStatPerksUnlocked(characteristicName);
+                if (!string.IsNullOrEmpty(perksUnlocked))
+                    parts.Add(perksUnlocked);
+
+                // For skills: "Level N+1 cost: K skill points" with affordability hint
+                if (isSkill)
+                {
+                    string cost = BuildSkillNextLevelCost(characteristicName);
+                    if (!string.IsNullOrEmpty(cost))
+                        parts.Add(cost);
+
+                    // Cross-character comparison: which other rangers have this skill?
+                    string comparison = BuildSkillCrossCharacterComparison(skillEditor);
+                    if (!string.IsNullOrEmpty(comparison))
+                        parts.Add(comparison);
+                }
+
                 ScreenReaderManager.SpeakInterrupt(string.Join(". ", parts.ToArray()));
             }
             catch (Exception ex)
@@ -245,6 +532,188 @@ namespace Wasteland2AccessibilityMod.Helpers
                 MelonLogger.Warning($"[CharacterAnnouncementHelper] Error getting stat description: {ex.Message}");
                 ScreenReaderManager.SpeakInterrupt("No description available");
             }
+        }
+
+        // ========== Description Panel Previews ==========
+
+        private static CHA_DescriptionPanel FindAnyDescriptionPanel()
+        {
+            // The Build* methods we invoke don't depend on instance state,
+            // so any CHA_DescriptionPanel in the scene works — active or not.
+            // We try the in-game / character-creation menus' sub-panels first,
+            // then fall back to a scene-wide scan including inactive objects.
+            try
+            {
+                var infoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+                if (infoMenu != null)
+                {
+                    if (infoMenu.attributePanel != null && infoMenu.attributePanel.descriptionPanel != null)
+                        return infoMenu.attributePanel.descriptionPanel;
+                    if (infoMenu.skillPanel != null && infoMenu.skillPanel.descriptionPanel != null)
+                        return infoMenu.skillPanel.descriptionPanel;
+                    if (infoMenu.traitPanel != null && infoMenu.traitPanel.descriptionPanel != null)
+                        return infoMenu.traitPanel.descriptionPanel;
+                    if (infoMenu.dossierPanel != null && infoMenu.dossierPanel.descriptionPanel != null)
+                        return infoMenu.dossierPanel.descriptionPanel;
+                }
+
+                var charScreen = CharacterScreen.instance;
+                if (charScreen != null)
+                {
+                    if (charScreen.attributePanel != null && charScreen.attributePanel.descriptionPanel != null)
+                        return charScreen.attributePanel.descriptionPanel;
+                    if (charScreen.skillPanel != null && charScreen.skillPanel.descriptionPanel != null)
+                        return charScreen.skillPanel.descriptionPanel;
+                    if (charScreen.traitsPanel != null && charScreen.traitsPanel.descriptionPanel != null)
+                        return charScreen.traitsPanel.descriptionPanel;
+                }
+            }
+            catch { }
+
+            // Active first, then any
+            var active = UnityEngine.Object.FindObjectOfType<CHA_DescriptionPanel>();
+            if (active != null) return active;
+
+            var all = Resources.FindObjectsOfTypeAll<CHA_DescriptionPanel>();
+            return (all != null && all.Length > 0) ? all[0] : null;
+        }
+
+        /// <summary>
+        /// Returns the localized "+1 preview" text the game's description panel shows
+        /// when an attribute or skill is selected (delta from current level to current+1).
+        /// </summary>
+        private static string BuildNextLevelPreview(string statName, int currentLevel, bool isAttribute, bool isSkill)
+        {
+            try
+            {
+                var panel = FindAnyDescriptionPanel();
+                if (panel == null) return "";
+
+                int nextLevel = Mathf.Clamp(currentLevel + 1, 1, 10);
+                string raw = "";
+
+                if (isAttribute)
+                {
+                    if (descPanelBuildAttrUnlockMethod == null) return "";
+                    var attr = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetAttribute(statName);
+                    if (attr == null) return "";
+                    raw = descPanelBuildAttrUnlockMethod.Invoke(panel, new object[] { attr, nextLevel }) as string;
+                }
+                else if (isSkill)
+                {
+                    if (descPanelBuildSkillUnlockMethod == null) return "";
+                    var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(statName);
+                    if (skill == null) return "";
+                    raw = descPanelBuildSkillUnlockMethod.Invoke(panel, new object[] { skill, nextLevel }) as string;
+                }
+
+                if (string.IsNullOrEmpty(raw)) return "";
+                string clean = UITextExtractor.CleanText(raw).Trim();
+                clean = clean.Replace("\r\n", "\n").Replace("\n", ", ");
+                while (clean.Contains(", , ")) clean = clean.Replace(", , ", ", ");
+                clean = clean.Trim(',', ' ');
+                return string.IsNullOrEmpty(clean) ? "" : "Next level: " + clean;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterAnnouncementHelper] Error building level preview: {ex.Message}");
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// Returns trait-driven modifiers on the given stat (e.g. "+1 from Bookworm trait").
+        /// Uses pcTemplate.GetTraitAttributeTooltipString / GetTraitSkillTooltipString.
+        /// </summary>
+        private static string BuildTraitStatModifier(string statName, bool isAttribute, bool isSkill)
+        {
+            try
+            {
+                var pc = MonoBehaviourSingleton<Game>.HasInstance()
+                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                    : null;
+                if (pc == null || pc.pcTemplate == null) return "";
+
+                string raw = "";
+                if (isAttribute)
+                {
+                    var attr = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetAttribute(statName);
+                    if (attr == null) return "";
+                    raw = pc.pcTemplate.GetTraitAttributeTooltipString(attr);
+                }
+                else if (isSkill)
+                {
+                    var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(statName);
+                    if (skill == null) return "";
+                    raw = pc.pcTemplate.GetTraitSkillTooltipString(skill);
+                }
+
+                if (string.IsNullOrEmpty(raw)) return "";
+                return UITextExtractor.CleanText(raw).Trim();
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
+        /// Returns the "Perks unlocked at higher levels of this stat" text that the
+        /// description panel shows, by reflection-calling BuildTraitUnlockString(string).
+        /// </summary>
+        private static string BuildStatPerksUnlocked(string statName)
+        {
+            try
+            {
+                if (descPanelBuildTraitUnlockByNameMethod == null) return "";
+                var panel = FindAnyDescriptionPanel();
+                if (panel == null) return "";
+                string raw = descPanelBuildTraitUnlockByNameMethod.Invoke(panel, new object[] { statName }) as string;
+                if (string.IsNullOrEmpty(raw)) return "";
+                return UITextExtractor.CleanText(raw).Trim();
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
+        /// Reads the cross-character comparison the game prepares on the skill editor's
+        /// comparisonTooltipCreator (e.g. "Vargas: Level 4\nAngela: Level 3").
+        /// </summary>
+        private static string BuildSkillCrossCharacterComparison(CHA_SkillEditor editor)
+        {
+            try
+            {
+                if (editor == null || editor.comparisonTooltipCreator == null) return "";
+                string raw = editor.comparisonTooltipCreator.text;
+                if (string.IsNullOrEmpty(raw)) return "";
+                string clean = UITextExtractor.CleanText(raw).Trim();
+                if (string.IsNullOrEmpty(clean)) return "";
+                // Game uses newlines between rangers — convert to comma list
+                clean = clean.Replace("\n", ", ").Replace("\r", "");
+                return "Other rangers: " + clean;
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
+        /// Returns "Level N cost: K skill points" with an affordability hint for the next skill level.
+        /// </summary>
+        private static string BuildSkillNextLevelCost(string skillName)
+        {
+            try
+            {
+                var pc = MonoBehaviourSingleton<Game>.HasInstance()
+                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                    : null;
+                if (pc == null || pc.pcTemplate == null) return "";
+
+                int nextLevel = pc.pcTemplate.GetSkillLevel(skillName) + 1;
+                if (nextLevel > Table_SkillLeveling.maxLevel) return "";
+
+                int cost = Table_SkillLeveling.GetXPForLevel(nextLevel);
+                int available = pc.pcTemplate.availableSkillPoints;
+
+                string suffix = cost <= available ? "" : ", insufficient skill points";
+                return $"Level {nextLevel} cost: {cost} skill point{(cost == 1 ? "" : "s")}{suffix}";
+            }
+            catch { return ""; }
         }
 
         // ========== Trait Descriptions ==========
@@ -277,6 +746,10 @@ namespace Wasteland2AccessibilityMod.Helpers
                                 parts.Add(effects);
                         }
 
+                        var pc = MonoBehaviourSingleton<Game>.HasInstance()
+                            ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                            : null;
+
                         if (trait.requiredStatValues != null && trait.requiredStatValues.Count > 0)
                         {
                             var reqParts = new List<string>();
@@ -287,7 +760,13 @@ namespace Wasteland2AccessibilityMod.Helpers
                                     .GetCharacteristicDisplayName(kvp.Key);
                                 string localized = UITextExtractor.CleanText(
                                     Language.Localize(statDisplayName, false, false, string.Empty));
-                                reqParts.Add($"{kvp.Value} {localized}");
+                                string mark = "";
+                                if (pc != null && pc.pcStats != null)
+                                {
+                                    int actual = pc.pcStats.GetCharacteristic(kvp.Key);
+                                    mark = actual >= kvp.Value ? " (met)" : " (not met)";
+                                }
+                                reqParts.Add($"{kvp.Value} {localized}{mark}");
                             }
                             parts.Add(string.Join(", ", reqParts.ToArray()));
                         }
@@ -301,7 +780,10 @@ namespace Wasteland2AccessibilityMod.Helpers
                                 {
                                     string name = UITextExtractor.CleanText(
                                         Language.Localize(reqTrait.displayName, false, false, string.Empty));
-                                    traitNames.Add(name);
+                                    string mark = "";
+                                    if (pc != null && pc.pcTemplate != null)
+                                        mark = pc.pcTemplate.HasTrait(reqTrait.name) ? " (met)" : " (not met)";
+                                    traitNames.Add($"{name}{mark}");
                                 }
                             }
                             if (traitNames.Count > 0)
@@ -448,6 +930,201 @@ namespace Wasteland2AccessibilityMod.Helpers
                 MelonLogger.Warning($"[CharacterAnnouncementHelper] Error getting derived stat description: {ex.Message}");
                 ScreenReaderManager.SpeakInterrupt("No description available");
             }
+        }
+
+        // ========== Header Snapshot (Character Info Menu) ==========
+
+        /// <summary>
+        /// Builds the header snapshot as a list of individually-browsable lines.
+        /// Each line = one piece of info the always-visible CharacterInfoMenu header shows.
+        /// Order: name+level+rank, HP, capacity, money, water, points-available, status effects.
+        /// </summary>
+        public static List<string> BuildHeaderSnapshotLines(PC pc)
+        {
+            var lines = new List<string>();
+            if (pc == null) return lines;
+
+            try
+            {
+                var tmpl = pc.pcTemplate;
+                if (tmpl != null)
+                {
+                    string name = UITextExtractor.CleanText(Language.Localize(tmpl.displayName, false, false, string.Empty));
+                    int level = pc.stats != null ? pc.stats.GetLevel() : tmpl.level;
+                    string rank = UITextExtractor.CleanText(
+                        Language.Localize(Table_Leveling.GetRank(level), false, false, string.Empty));
+                    lines.Add($"{name}, level {level}, {rank}");
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (pc.stats != null)
+                {
+                    float maxHP = pc.stats.GetMaxHP();
+                    string hp = $"Health {Mathf.RoundToInt(pc.curHP)} of {Mathf.RoundToInt(maxHP)}";
+                    if (pc.healthState != PC.HealthState.Healthy)
+                        hp += $", {pc.healthState}";
+                    lines.Add(hp);
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (pc.pcStats != null)
+                {
+                    int cur = pc.pcStats.RecalculateCurrentWeight();
+                    int max = Mathf.FloorToInt(pc.pcStats.GetMaxWeight());
+                    string note = "";
+                    if (max > 0)
+                    {
+                        float ratio = (float)cur / max;
+                        if (ratio >= 1f) note = ", over encumbered";
+                        else if (ratio >= 0.8f) note = ", near capacity";
+                    }
+                    lines.Add($"Capacity {cur} of {max} pounds{note}");
+                }
+            }
+            catch { }
+
+            try
+            {
+                if (MonoBehaviourSingleton<Game>.HasInstance())
+                {
+                    var game = MonoBehaviourSingleton<Game>.GetInstance();
+                    lines.Add($"Money: {game.partyCurrency} dollars");
+                    lines.Add($"Water: {game.water} of {game.GetMaxWater()}");
+                }
+            }
+            catch { }
+
+            try
+            {
+                var tmpl = pc.pcTemplate;
+                if (tmpl != null)
+                {
+                    if (tmpl.availableAttributePoints > 0)
+                        lines.Add($"{tmpl.availableAttributePoints} attribute point{(tmpl.availableAttributePoints == 1 ? "" : "s")} available");
+                    if (tmpl.availableSkillPoints > 0)
+                        lines.Add($"{tmpl.availableSkillPoints} skill point{(tmpl.availableSkillPoints == 1 ? "" : "s")} available");
+                    if (tmpl.availableTraitPoints > 0)
+                        lines.Add($"{tmpl.availableTraitPoints} perk point{(tmpl.availableTraitPoints == 1 ? "" : "s")} available");
+                }
+            }
+            catch { }
+
+            // Status effects — one line per effect, with full StatusEffectHelper detail
+            try
+            {
+                if (pc.template != null && pc.template.statusEffects != null && pc.template.statusEffects.Count > 0)
+                {
+                    foreach (var eff in pc.template.statusEffects)
+                    {
+                        string line = StatusEffectHelper.BuildEffectLine(eff);
+                        if (!string.IsNullOrEmpty(line))
+                            lines.Add("Status: " + line);
+                    }
+                }
+            }
+            catch { }
+
+            return lines;
+        }
+
+        /// <summary>
+        /// Builds a short "points available" announcement, suitable for the auto-announcement
+        /// when entering the Attributes / Skills / Perks tab.
+        /// </summary>
+        public static string BuildPointsAvailableHint(PC pc, CharacterInfoMenu.InfoPanel panel)
+        {
+            if (pc == null || pc.pcTemplate == null) return "";
+            var tmpl = pc.pcTemplate;
+            switch (panel)
+            {
+                case CharacterInfoMenu.InfoPanel.Attributes:
+                    if (tmpl.availableAttributePoints > 0)
+                        return $"{tmpl.availableAttributePoints} attribute point{(tmpl.availableAttributePoints == 1 ? "" : "s")} available";
+                    break;
+                case CharacterInfoMenu.InfoPanel.Skills:
+                    if (tmpl.availableSkillPoints > 0)
+                        return $"{tmpl.availableSkillPoints} skill point{(tmpl.availableSkillPoints == 1 ? "" : "s")} available";
+                    break;
+                case CharacterInfoMenu.InfoPanel.Traits:
+                    if (tmpl.availableTraitPoints > 0)
+                        return $"{tmpl.availableTraitPoints} perk point{(tmpl.availableTraitPoints == 1 ? "" : "s")} available";
+                    break;
+            }
+            return "";
+        }
+
+        // ========== Combat Snapshot ==========
+
+        /// <summary>
+        /// Builds the combat snapshot as a list of individually-browsable lines.
+        /// Mirrors the StatDisplayList "Combat" view plus armor.
+        /// </summary>
+        public static List<string> BuildCombatSnapshotLines(PC pc)
+        {
+            var lines = new List<string>();
+            if (pc == null || pc.pcStats == null) return lines;
+            var statsManager = MonoBehaviourSingleton<PCStatsManager>.GetInstance();
+
+            // Damage (current weapon range)
+            try
+            {
+                var weaponInst = pc.pcStats.GetWeaponInstance();
+                var weaponTmpl = pc.pcStats.GetWeaponTemplate();
+                if (weaponInst != null && weaponTmpl != null)
+                {
+                    Targetable.DamageMitigation mit = Targetable.DamageMitigation.None;
+                    int min = pc.CalculateDamage(null, pc.transform.position, weaponInst.GetMinDamage(), out mit, weaponTmpl);
+                    int max = pc.CalculateDamage(null, pc.transform.position, weaponInst.GetMaxDamage(), out mit, weaponTmpl);
+                    string dmgText = (min == max) ? min.ToString() : $"{min} to {max}";
+                    lines.Add($"Damage: {dmgText}");
+                }
+                else if (weaponTmpl != null)
+                {
+                    string dmgText = (weaponTmpl.minDamage == weaponTmpl.maxDamage)
+                        ? weaponTmpl.minDamage.ToString()
+                        : $"{weaponTmpl.minDamage} to {weaponTmpl.maxDamage}";
+                    lines.Add($"Damage: {dmgText}");
+                }
+            }
+            catch { }
+
+            string[] combatStats = new string[]
+            {
+                PCStatsManager.chanceToHit,
+                PCStatsManager.criticalHitChance,
+                PCStatsManager.chanceToEvade,
+                PCStatsManager.armor,
+                PCStatsManager.attackRange,
+                PCStatsManager.actionPoints,
+                PCStatsManager.actionRechargeRate,
+                PCStatsManager.combatSpeed,
+            };
+            foreach (var statName in combatStats)
+            {
+                try
+                {
+                    var characteristic = statsManager.GetCharacteristic(statName);
+                    if (characteristic == null) continue;
+                    string display = UITextExtractor.CleanText(
+                        Language.Localize(characteristic.displayName, false, false, string.Empty));
+                    int raw = pc.pcStats.GetCharacteristic(statName);
+                    string value;
+                    if (characteristic is DerivedStat ds)
+                        value = FormatDerivedStatValue(raw, ds.displayType);
+                    else
+                        value = raw.ToString();
+                    lines.Add($"{display}: {value}");
+                }
+                catch { }
+            }
+
+            return lines;
         }
 
         // ========== Character Summary ==========

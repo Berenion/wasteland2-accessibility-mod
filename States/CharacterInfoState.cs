@@ -43,6 +43,12 @@ namespace Wasteland2AccessibilityMod.States
         private int derivedStatsIndex = -1;
         private bool derivedStatsBrowsing = false;
 
+        // Header / Combat snapshot browsing — generic line-list mode
+        private enum SnapshotMode { None, Header, Combat }
+        private SnapshotMode snapshotMode = SnapshotMode.None;
+        private List<string> snapshotLines = new List<string>();
+        private int snapshotIndex = -1;
+
         // Level-up editing mode
         private bool isEditingValue = false;
 
@@ -130,6 +136,10 @@ namespace Wasteland2AccessibilityMod.States
             if (derivedStatsBrowsing)
                 return HandleDerivedStatsInput(charInfoMenu);
 
+            // Snapshot browser (Header / Combat) intercepts all input
+            if (snapshotMode != SnapshotMode.None)
+                return HandleSnapshotInput(charInfoMenu);
+
             // Logbook detail mode intercepts all input
             if (logbookDetailMode)
                 return HandleLogbookDetailInput(charInfoMenu);
@@ -163,6 +173,9 @@ namespace Wasteland2AccessibilityMod.States
             isEditingValue = false;
             derivedStatsBrowsing = false;
             derivedStatsIndex = -1;
+            snapshotMode = SnapshotMode.None;
+            snapshotIndex = -1;
+            snapshotLines.Clear();
             activationTime = Time.time;
             initialAnnouncementDone = false;
             logbookDetailMode = false;
@@ -212,6 +225,8 @@ namespace Wasteland2AccessibilityMod.States
             controlList.Clear();
             isEditingValue = false;
             derivedStatsBrowsing = false;
+            snapshotMode = SnapshotMode.None;
+            snapshotLines.Clear();
             logbookDetailMode = false;
             logbookDetailLines.Clear();
             MelonLogger.Msg($"[CharacterInfoState] Deactivated (suspended panel={suspendedPanel}, index={suspendedIndex})");
@@ -309,6 +324,11 @@ namespace Wasteland2AccessibilityMod.States
                     hint = ". Up and Down to navigate entries, Enter for details, Left and Right to switch category";
                     break;
             }
+
+            // Points-available auto-mention (mirrors the blinker sprite the sighted user sees)
+            string pointsHint = CharacterAnnouncementHelper.BuildPointsAvailableHint(GetCurrentPC(menu), newPanel);
+            if (!string.IsNullOrEmpty(pointsHint))
+                hint = ". " + pointsHint + hint;
 
             ScreenReaderManager.SpeakInterrupt($"{panelName}{hint}");
             MelonLogger.Msg($"[CharacterInfoState] Panel changed to {newPanel}, controls={controlList.Count}");
@@ -468,8 +488,10 @@ namespace Wasteland2AccessibilityMod.States
             AddDossierLabel("Kills", dossier.killLabel);
             AddDossierLabel("Damage Dealt", dossier.damageLabel);
             AddDossierLabel("Cigarettes Smoked", dossier.smokesLabel);
+            AddDossierLabel("Radiation Protection", dossier.radSuitLabel);
+            AddDossierLabel("Water", dossier.canteenLabel);
             AddDossierLabel("Constitution Per Level", dossier.conPerLevelLabel);
-            AddDossierLabel("Skill Points Per Level", dossier.skillPointsPerLevelLabel);
+            AddDossierSkillPointsPerLevel(dossier);
 
             // Quirk/trait info
             if (dossier.traitNameLabel != null && !string.IsNullOrEmpty(dossier.traitNameLabel.text))
@@ -518,6 +540,28 @@ namespace Wasteland2AccessibilityMod.States
             string text = UITextExtractor.CleanText(label.text);
             if (string.IsNullOrEmpty(text)) return;
             dossierLines.Add($"{prefix}: {text}");
+        }
+
+        /// <summary>
+        /// Skill points per level can be buffed/debuffed by traits — the game color-codes
+        /// the label. We approximate by comparing label color to GUIManager's buffed/debuffed colors.
+        /// </summary>
+        private void AddDossierSkillPointsPerLevel(CHA_FlavorDisplayPanel dossier)
+        {
+            if (dossier == null || dossier.skillPointsPerLevelLabel == null) return;
+            var label = dossier.skillPointsPerLevelLabel;
+            string text = UITextExtractor.CleanText(label.text);
+            if (string.IsNullOrEmpty(text)) return;
+
+            string state = "";
+            try
+            {
+                if (label.color == GUIManager.buffedTextColor) state = ", buffed";
+                else if (label.color == GUIManager.debuffedTextColor) state = ", debuffed";
+            }
+            catch { }
+
+            dossierLines.Add($"Skill Points Per Level: {text}{state}");
         }
 
         private void AddDossierXP(PC pc)
@@ -715,6 +759,20 @@ namespace Wasteland2AccessibilityMod.States
                 if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
                     pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
                 CharacterAnnouncementHelper.AnnounceXP(pc);
+                return true;
+            }
+
+            // H: open header snapshot browser (name, level, rank, HP, capacity, money, water, status, points)
+            if (Input.GetKeyDown(KeyCode.H))
+            {
+                OpenSnapshotBrowser(menu, SnapshotMode.Header);
+                return true;
+            }
+
+            // C: open combat snapshot browser (damage, hit, crit, evade, armor, range, AP, recharge, speed)
+            if (Input.GetKeyDown(KeyCode.C))
+            {
+                OpenSnapshotBrowser(menu, SnapshotMode.Combat);
                 return true;
             }
 
@@ -1629,6 +1687,119 @@ namespace Wasteland2AccessibilityMod.States
                 derivedStatsIndex = CharacterAnnouncementHelper.DerivedStatNames.Length - 1;
                 CharacterAnnouncementHelper.AnnounceDerivedStat(pc, derivedStatsIndex);
                 return true;
+            }
+
+            return true; // Block all other keys
+        }
+
+        #endregion
+
+        #region Snapshot Browser (Header / Combat)
+
+        private void OpenSnapshotBrowser(CharacterInfoMenu menu, SnapshotMode mode)
+        {
+            PC pc = GetCurrentPC(menu);
+            if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+
+            snapshotLines = mode == SnapshotMode.Header
+                ? CharacterAnnouncementHelper.BuildHeaderSnapshotLines(pc)
+                : CharacterAnnouncementHelper.BuildCombatSnapshotLines(pc);
+
+            if (snapshotLines == null || snapshotLines.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No information available");
+                return;
+            }
+
+            snapshotMode = mode;
+            snapshotIndex = 0;
+
+            string title = mode == SnapshotMode.Header ? "Character info" : "Combat stats";
+            ScreenReaderManager.SpeakInterrupt(
+                $"{title}, {snapshotLines.Count} items. Up and Down to navigate, Escape to close");
+            AnnounceSnapshotLine(interrupt: false);
+            MelonLogger.Msg($"[CharacterInfoState] Snapshot browser opened: {mode}, {snapshotLines.Count} lines");
+        }
+
+        private void CloseSnapshotBrowser()
+        {
+            var prev = snapshotMode;
+            snapshotMode = SnapshotMode.None;
+            snapshotIndex = -1;
+            snapshotLines.Clear();
+            EventManager.ignoreNextBack = true;
+            ScreenReaderManager.SpeakInterrupt(prev == SnapshotMode.Header ? "Character info closed" : "Combat stats closed");
+            lastAnnouncedText = null;
+            AnnounceCurrentControl(interrupt: false);
+            MelonLogger.Msg($"[CharacterInfoState] Snapshot browser closed: {prev}");
+        }
+
+        private void AnnounceSnapshotLine(bool interrupt = true)
+        {
+            if (snapshotIndex < 0 || snapshotIndex >= snapshotLines.Count) return;
+            string line = snapshotLines[snapshotIndex];
+            string msg = $"{line}, {snapshotIndex + 1} of {snapshotLines.Count}";
+            if (interrupt) ScreenReaderManager.SpeakInterrupt(msg);
+            else ScreenReaderManager.Speak(msg);
+        }
+
+        private bool HandleSnapshotInput(CharacterInfoMenu menu)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CloseSnapshotBrowser();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                snapshotIndex--;
+                if (snapshotIndex < 0) snapshotIndex = snapshotLines.Count - 1;
+                AnnounceSnapshotLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                snapshotIndex++;
+                if (snapshotIndex >= snapshotLines.Count) snapshotIndex = 0;
+                AnnounceSnapshotLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                snapshotIndex = 0;
+                AnnounceSnapshotLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                snapshotIndex = snapshotLines.Count - 1;
+                AnnounceSnapshotLine();
+                return true;
+            }
+
+            // Allow F1-F7 to switch character without closing the snapshot — rebuild with new PC
+            for (int i = 0; i < 7; i++)
+            {
+                if (Input.GetKeyDown(KeyCode.F1 + i))
+                {
+                    SwitchToPartyMember(menu, i);
+                    // Refresh snapshot for new PC, keep position if possible
+                    PC pc = GetCurrentPC(menu);
+                    if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                        pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+                    snapshotLines = snapshotMode == SnapshotMode.Header
+                        ? CharacterAnnouncementHelper.BuildHeaderSnapshotLines(pc)
+                        : CharacterAnnouncementHelper.BuildCombatSnapshotLines(pc);
+                    if (snapshotIndex >= snapshotLines.Count) snapshotIndex = snapshotLines.Count - 1;
+                    if (snapshotIndex < 0 && snapshotLines.Count > 0) snapshotIndex = 0;
+                    AnnounceSnapshotLine();
+                    return true;
+                }
             }
 
             return true; // Block all other keys
