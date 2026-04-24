@@ -857,6 +857,12 @@ namespace Wasteland2AccessibilityMod.States
             CombatAStarNode cursorNode = GetNodeAtGridId(cursorGridId);
             if (cursorNode == null) return false;
 
+            // Floor-embedded objects (hatches, grates, trapdoors) sit below the
+            // walkable node's Y. A wall only separates things at floor height —
+            // something below the floor can't be "behind a wall", so skip the
+            // neighbor heuristic for those.
+            if (targetPos.y < cursorNode.position.y - 0.5f) return false;
+
             float dx = targetPos.x - cursorPosition.x;
             float dz = targetPos.z - cursorPosition.z;
 
@@ -1710,8 +1716,30 @@ namespace Wasteland2AccessibilityMod.States
                 cursorPosition = new Vector3(naturalX * GRID_SQUARE_SIZE, worldPos.y, naturalZ * GRID_SQUARE_SIZE);
             }
 
+            MelonLogger.Msg($"[JumpToSelected] target={selected.name} worldPos={worldPos} naturalTile=({naturalX},{naturalZ}) nodeFound={(naturalTileNode != null)} cursorGridId={cursorGridId} cursorPos={cursorPosition}");
+            LogTileFinderForTarget(selected);
+
             SnapCameraToCursor();
             AnnounceCurrentTile(detailed: false);
+        }
+
+        /// <summary>
+        /// Diagnostic: trace why the currently-selected interactable may or
+        /// may not match the current tile, step by step through the filters
+        /// in FindInteractablesOnTile.
+        /// </summary>
+        private void LogTileFinderForTarget(InteractableNexus target)
+        {
+            if (target == null) return;
+            Vector3 tp = target.transform.position;
+            float dx = Mathf.Abs(tp.x - cursorPosition.x);
+            float dz = Mathf.Abs(tp.z - cursorPosition.z);
+            bool isVis = target.isVisible;
+            bool fowOk = FOWHelper.IsVisibleThroughFOW(tp);
+            bool percGated = FOWHelper.IsPerceptionGated(target);
+            bool onTile = dx <= TILE_MATCH_RADIUS && dz <= TILE_MATCH_RADIUS;
+            bool wallBlocked = IsBlockedByWall(tp);
+            MelonLogger.Msg($"[TileTrace] {target.name}: tp={tp}, dx={dx:F2}, dz={dz:F2}, TILE_MATCH_RADIUS={TILE_MATCH_RADIUS}, isVisible={isVis}, fowOk={fowOk}, percGated={percGated}, onTile={onTile}, wallBlocked={wallBlocked}, isPC={target.isPC}");
         }
 
         private void AnnounceDistanceToSelected()

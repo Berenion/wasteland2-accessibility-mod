@@ -182,16 +182,27 @@ namespace Wasteland2AccessibilityMod
         }
 
         /// <summary>
-        /// Checks if an interactable is gated behind a Perception check that hasn't
-        /// been passed yet. Objects with SkillObject_Examine that have a difficulty
-        /// above None and haven't been perceived should not be shown to the player.
-        /// Returns true if the object should be FILTERED OUT (hidden from the player).
+        /// Returns true if the interactable should be FILTERED OUT. Covers two
+        /// independent cases:
+        ///
+        /// 1. Perception-REWARD items: skob has a difficulty > None and hasn't
+        ///    been perceived yet. Design choice (not strict sighted-fidelity):
+        ///    a sighted player can visually see and click these before the
+        ///    perception challenge passes (game's mouse path gates on
+        ///    skob.hidden, not perceived). But for the accessibility UX we want
+        ///    these to remain "a surprise" until the party actually passes the
+        ///    perception roll, matching the discovery beat a sighted player
+        ///    experiences when the sparkle pops. Items with skob.hidden=true
+        ///    are already handled upstream by nexus.isVisible.
+        ///
+        /// 2. Teleporters whose destination is far away and in unexplored fog —
+        ///    avoids revealing paths the party hasn't discovered. Runtime-
+        ///    activated teleporters (perception-revealed ShortcutDoors) bypass.
         /// </summary>
         public static bool IsPerceptionGated(InteractableNexus nexus)
         {
             if (nexus == null) return false;
 
-            // Check SkillObject_Examine on the nexus itself
             SkillObject_Examine skob = nexus.skobExamine;
             if (skob == null && nexus.gameObject != null)
                 skob = nexus.gameObject.GetComponent<SkillObject_Examine>();
@@ -199,15 +210,11 @@ namespace Wasteland2AccessibilityMod
             if (skob != null && skob.difficulty != SkillLevelCategory.None && !skob.perceived)
                 return true;
 
-            // Filter teleporters whose destination is far away and in unexplored fog of war.
-            // Skip this filter for teleporters that were runtime-activated (transitioned
-            // from inactive to active), as these are doors revealed by perception checks.
             if (nexus.drama != null && FOWSystem.instance != null)
             {
                 var teleporter = nexus.drama as InteractableTeleporter;
                 if (teleporter != null && teleporter.targetTransform != null)
                 {
-                    // Runtime-activated teleporters bypass this filter
                     if (recentlyActivated.Contains(nexus))
                         return false;
 
