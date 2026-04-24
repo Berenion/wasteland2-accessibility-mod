@@ -34,6 +34,12 @@ namespace Wasteland2AccessibilityMod.States
         /// </summary>
         internal static bool derivedStatsBrowsing = false;
 
+        // Info browser — for I-key stat / trait descriptions (browsable line list)
+        private enum InfoMode { None, StatDescription, TraitDescription }
+        private InfoMode infoMode = InfoMode.None;
+        private List<string> infoLines = new List<string>();
+        private int infoIndex = -1;
+
         /// <summary>
         /// When true, UIInput.ProcessEvent is blocked by Harmony patch.
         /// Set true when CharacterState is active and not editing a text field.
@@ -137,6 +143,10 @@ namespace Wasteland2AccessibilityMod.States
             if (derivedStatsBrowsing)
                 return HandleDerivedStatsInput(charScreen);
 
+            // Info browser (I-key descriptions) intercepts all input
+            if (infoMode != InfoMode.None)
+                return HandleInfoInput(charScreen);
+
             // Route input based on panel type
             switch (lastPanelType)
             {
@@ -173,6 +183,9 @@ namespace Wasteland2AccessibilityMod.States
             isEditingValue = false;
             derivedStatsBrowsing = false;
             derivedStatsIndex = -1;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
             activationTime = Time.time;
             initialAnnouncementDone = false;
 
@@ -195,6 +208,9 @@ namespace Wasteland2AccessibilityMod.States
             isEditingValue = false;
             derivedStatsBrowsing = false;
             derivedStatsIndex = -1;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
             lastAnnouncedText = null;
             lastAnnouncedIndex = -1;
             controlList.Clear();
@@ -277,6 +293,9 @@ namespace Wasteland2AccessibilityMod.States
             isEditingValue = false;
             derivedStatsBrowsing = false;
             derivedStatsIndex = -1;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
             blockUIInput = true;
             controlList.Clear();
             controlIndex = -1;
@@ -987,7 +1006,7 @@ namespace Wasteland2AccessibilityMod.States
         private void AnnounceCurrentStatDescription()
         {
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
-            CharacterAnnouncementHelper.AnnounceStatDescription(controlList[controlIndex]);
+            OpenInfoBrowser(InfoMode.StatDescription, statObj: controlList[controlIndex]);
         }
 
         // ========== Value Adjustment Helpers ==========
@@ -1476,7 +1495,7 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // I for trait description (consistent with attributes/skills)
+            // I: open browsable perk description
             if (Input.GetKeyDown(KeyCode.I))
             {
                 if (controlIndex >= 0 && controlIndex < controlList.Count)
@@ -1484,10 +1503,9 @@ namespace Wasteland2AccessibilityMod.States
                     var editor = controlList[controlIndex].GetComponent<CHA_TraitEditor>();
                     if (editor != null)
                     {
-                        // Get description from the trait via reflection
-                        string desc = GetTraitDescription(editor);
-                        if (!string.IsNullOrEmpty(desc))
-                            ScreenReaderManager.SpeakInterrupt(desc);
+                        Trait trait = CharacterAnnouncementHelper.GetTraitFromEditor(editor);
+                        if (trait != null)
+                            OpenInfoBrowser(InfoMode.TraitDescription, trait: trait);
                         else
                             ScreenReaderManager.SpeakInterrupt("No description available");
                     }
@@ -1780,6 +1798,102 @@ namespace Wasteland2AccessibilityMod.States
             if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
                 pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
             CharacterAnnouncementHelper.AnnounceCharacterSummary(pc);
+        }
+
+        // ========== Info Browser (I-key descriptions) ==========
+
+        private void OpenInfoBrowser(InfoMode mode, GameObject statObj = null, Trait trait = null)
+        {
+            switch (mode)
+            {
+                case InfoMode.StatDescription:
+                    infoLines = CharacterAnnouncementHelper.BuildStatDescriptionLines(statObj);
+                    break;
+                case InfoMode.TraitDescription:
+                    infoLines = CharacterAnnouncementHelper.BuildTraitDescriptionLines(trait);
+                    break;
+                default:
+                    infoLines = new List<string>();
+                    break;
+            }
+
+            if (infoLines == null || infoLines.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No description available");
+                return;
+            }
+
+            infoMode = mode;
+            infoIndex = 0;
+            string title = mode == InfoMode.TraitDescription ? "Perk details" : "Details";
+            ScreenReaderManager.SpeakInterrupt(
+                $"{title}, {infoLines.Count} items. Up and Down to navigate, Escape to close");
+            AnnounceInfoLine(interrupt: false);
+            MelonLogger.Msg($"[CharacterState] Info browser opened: {mode}, {infoLines.Count} lines");
+        }
+
+        private void CloseInfoBrowser()
+        {
+            var prev = infoMode;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
+            EventManager.ignoreNextBack = true;
+            string title = prev == InfoMode.TraitDescription ? "Perk details" : "Details";
+            ScreenReaderManager.SpeakInterrupt(title + " closed");
+            lastAnnouncedText = null;
+            AnnounceCurrentControl(interrupt: false);
+            MelonLogger.Msg($"[CharacterState] Info browser closed: {prev}");
+        }
+
+        private void AnnounceInfoLine(bool interrupt = true)
+        {
+            if (infoIndex < 0 || infoIndex >= infoLines.Count) return;
+            string line = infoLines[infoIndex];
+            string msg = $"{line}, {infoIndex + 1} of {infoLines.Count}";
+            if (interrupt) ScreenReaderManager.SpeakInterrupt(msg);
+            else ScreenReaderManager.Speak(msg);
+        }
+
+        private bool HandleInfoInput(CharacterScreen screen)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CloseInfoBrowser();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                infoIndex--;
+                if (infoIndex < 0) infoIndex = infoLines.Count - 1;
+                AnnounceInfoLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                infoIndex++;
+                if (infoIndex >= infoLines.Count) infoIndex = 0;
+                AnnounceInfoLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                infoIndex = 0;
+                AnnounceInfoLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                infoIndex = infoLines.Count - 1;
+                AnnounceInfoLine();
+                return true;
+            }
+
+            return true; // Block all other keys
         }
     }
 }

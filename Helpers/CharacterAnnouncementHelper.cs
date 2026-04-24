@@ -423,17 +423,14 @@ namespace Wasteland2AccessibilityMod.Helpers
         // ========== Stat Descriptions ==========
 
         /// <summary>
-        /// Announces the full description for an attribute or skill editor GameObject.
-        /// Includes the game's +1 preview (BuildAttributeUnlockString / BuildSkillUnlockString),
-        /// trait modifiers, perks unlocked at thresholds, and (for skills) the cost of next level.
+        /// Builds an attribute/skill description as a list of individually-browsable lines.
+        /// Each line = one fact (name, current value, full description, +1 preview, trait
+        /// modifier, perks unlocked, skill cost, combat base stats, cross-character comparison).
         /// </summary>
-        public static void AnnounceStatDescription(GameObject obj)
+        public static List<string> BuildStatDescriptionLines(GameObject obj)
         {
-            if (obj == null)
-            {
-                ScreenReaderManager.SpeakInterrupt("No description available");
-                return;
-            }
+            var lines = new List<string>();
+            if (obj == null) return lines;
 
             EnsureReflectionCached();
 
@@ -443,6 +440,7 @@ namespace Wasteland2AccessibilityMod.Helpers
             int currentLevel = 0;
             bool isAttribute = false;
             bool isSkill = false;
+            CHA_SkillEditor skillEditor = null;
 
             var attrEditor = obj.GetComponent<CHA_AttributeEditor>();
             if (attrEditor != null)
@@ -457,7 +455,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     int.TryParse(levelText, out currentLevel);
             }
 
-            var skillEditor = obj.GetComponent<CHA_SkillEditor>();
+            skillEditor = obj.GetComponent<CHA_SkillEditor>();
             if (skillEditor != null)
             {
                 isSkill = true;
@@ -470,68 +468,87 @@ namespace Wasteland2AccessibilityMod.Helpers
                 }
             }
 
-            if (string.IsNullOrEmpty(characteristicName))
-            {
-                ScreenReaderManager.SpeakInterrupt("No description available");
-                return;
-            }
+            if (string.IsNullOrEmpty(characteristicName)) return lines;
 
             try
             {
                 var baseStat = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetCharacteristic(characteristicName);
-                if (baseStat == null)
-                {
-                    ScreenReaderManager.SpeakInterrupt("No description available");
-                    return;
-                }
+                if (baseStat == null) return lines;
 
                 string name = UITextExtractor.CleanText(Language.Localize(baseStat.displayName, false, false, string.Empty));
                 string fullDesc = UITextExtractor.CleanText(Language.Localize(baseStat.description, false, false, string.Empty));
 
-                var parts = new List<string>();
-                parts.Add(name);
+                lines.Add(name);
                 if (!string.IsNullOrEmpty(levelText))
-                    parts.Add(levelText);
-                if (!string.IsNullOrEmpty(shortDesc))
-                    parts.Add(shortDesc);
+                    lines.Add(levelText);
+                if (!string.IsNullOrEmpty(shortDesc) && shortDesc != name)
+                    lines.Add(shortDesc);
                 if (!string.IsNullOrEmpty(fullDesc))
-                    parts.Add(fullDesc);
+                    lines.Add(fullDesc);
 
-                // +1 preview from game's own description-panel builder
+                // Each ", "-separated section from the game's preview becomes its own line
                 string preview = BuildNextLevelPreview(characteristicName, currentLevel, isAttribute, isSkill);
-                if (!string.IsNullOrEmpty(preview))
-                    parts.Add(preview);
+                AppendSplit(lines, preview);
 
-                // Trait modifier on this stat (e.g. "+1 from Bookworm")
                 string traitMod = BuildTraitStatModifier(characteristicName, isAttribute, isSkill);
                 if (!string.IsNullOrEmpty(traitMod))
-                    parts.Add(traitMod);
+                    lines.Add(traitMod);
 
-                // Perks unlocked at higher levels of this stat
                 string perksUnlocked = BuildStatPerksUnlocked(characteristicName);
-                if (!string.IsNullOrEmpty(perksUnlocked))
-                    parts.Add(perksUnlocked);
+                AppendSplit(lines, perksUnlocked);
 
-                // For skills: "Level N+1 cost: K skill points" with affordability hint
                 if (isSkill)
                 {
                     string cost = BuildSkillNextLevelCost(characteristicName);
                     if (!string.IsNullOrEmpty(cost))
-                        parts.Add(cost);
+                        lines.Add(cost);
 
-                    // Cross-character comparison: which other rangers have this skill?
+                    string baseStats = BuildCombatSkillBaseStats(characteristicName);
+                    if (!string.IsNullOrEmpty(baseStats))
+                        lines.Add(baseStats);
+
                     string comparison = BuildSkillCrossCharacterComparison(skillEditor);
-                    if (!string.IsNullOrEmpty(comparison))
-                        parts.Add(comparison);
+                    AppendSplit(lines, comparison);
                 }
-
-                ScreenReaderManager.SpeakInterrupt(string.Join(". ", parts.ToArray()));
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning($"[CharacterAnnouncementHelper] Error getting stat description: {ex.Message}");
-                ScreenReaderManager.SpeakInterrupt("No description available");
+                MelonLogger.Warning($"[CharacterAnnouncementHelper] Error building stat description lines: {ex.Message}");
             }
+
+            return lines;
+        }
+
+        /// <summary>
+        /// Splits a comma-joined section into individual lines. Used so the +1 preview
+        /// (which produces "Level N, +1 AP, +5% Hit, ...") browses as one line per delta.
+        /// </summary>
+        private static void AppendSplit(List<string> lines, string section)
+        {
+            if (string.IsNullOrEmpty(section)) return;
+            // Preserve the leading label ("Next level: ", "Other rangers: ", "Perks: ") on the first piece
+            string[] parts = section.Split(',');
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string p = parts[i].Trim();
+                if (string.IsNullOrEmpty(p)) continue;
+                lines.Add(p);
+            }
+        }
+
+        /// <summary>
+        /// Back-compat: dump the description as one spoken string. New code should
+        /// prefer BuildStatDescriptionLines + the info browser.
+        /// </summary>
+        public static void AnnounceStatDescription(GameObject obj)
+        {
+            var lines = BuildStatDescriptionLines(obj);
+            if (lines == null || lines.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No description available");
+                return;
+            }
+            ScreenReaderManager.SpeakInterrupt(string.Join(". ", lines.ToArray()));
         }
 
         // ========== Description Panel Previews ==========
@@ -673,6 +690,35 @@ namespace Wasteland2AccessibilityMod.Helpers
         }
 
         /// <summary>
+        /// Returns "Base Hit X%, Base Crit Y%" for combat skills — mirrors the
+        /// CHA_WeaponStatsPanel side panel a sighted user sees when focusing a combat skill.
+        /// Empty for non-combat skills.
+        /// </summary>
+        private static string BuildCombatSkillBaseStats(string skillName)
+        {
+            try
+            {
+                var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(skillName);
+                if (skill == null || skill.category != Skill.Category.Combat) return "";
+
+                var pc = MonoBehaviourSingleton<Game>.HasInstance()
+                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                    : null;
+                if (pc == null || pc.pcStats == null) return "";
+
+                int hit = pc.pcStats.GetBaseChanceToHit(skillName, skillName == "atWeapons");
+                int crit = pc.pcStats.GetBaseChanceToCriticalHitWithSkill(skillName);
+
+                // Energy weapons use no critical hit calculation in the game's display
+                if (skillName == "energyWeapons")
+                    return $"Base Hit {hit}%";
+
+                return $"Base Hit {hit}%, Base Crit {crit}%";
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
         /// Reads the cross-character comparison the game prepares on the skill editor's
         /// comparisonTooltipCreator (e.g. "Vargas: Level 4\nAngela: Level 3").
         /// </summary>
@@ -718,6 +764,17 @@ namespace Wasteland2AccessibilityMod.Helpers
 
         // ========== Trait Descriptions ==========
 
+        /// <summary>
+        /// Reads the private Trait reference off a CHA_TraitEditor via the cached reflection.
+        /// Returns null if unavailable.
+        /// </summary>
+        public static Trait GetTraitFromEditor(CHA_TraitEditor editor)
+        {
+            EnsureReflectionCached();
+            if (editor == null || traitEditorTraitField == null) return null;
+            return traitEditorTraitField.GetValue(editor) as Trait;
+        }
+
         public static string GetTraitDescription(CHA_TraitEditor editor)
         {
             EnsureReflectionCached();
@@ -728,86 +785,9 @@ namespace Wasteland2AccessibilityMod.Helpers
                     var trait = traitEditorTraitField.GetValue(editor) as Trait;
                     if (trait != null)
                     {
-                        var parts = new List<string>();
-
-                        if (!string.IsNullOrEmpty(trait.description))
-                        {
-                            string desc = UITextExtractor.CleanText(
-                                Language.Localize(trait.description, false, false, string.Empty));
-                            if (!string.IsNullOrEmpty(desc))
-                                parts.Add(desc);
-                        }
-
-                        if (!string.IsNullOrEmpty(trait.effectsDescription))
-                        {
-                            string effects = UITextExtractor.CleanText(
-                                Language.Localize(trait.effectsDescription, false, false, string.Empty));
-                            if (!string.IsNullOrEmpty(effects))
-                                parts.Add(effects);
-                        }
-
-                        var pc = MonoBehaviourSingleton<Game>.HasInstance()
-                            ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
-                            : null;
-
-                        if (trait.requiredStatValues != null && trait.requiredStatValues.Count > 0)
-                        {
-                            var reqParts = new List<string>();
-                            reqParts.Add("Requirements:");
-                            foreach (var kvp in trait.requiredStatValues)
-                            {
-                                string statDisplayName = MonoBehaviourSingleton<PCStatsManager>.GetInstance()
-                                    .GetCharacteristicDisplayName(kvp.Key);
-                                string localized = UITextExtractor.CleanText(
-                                    Language.Localize(statDisplayName, false, false, string.Empty));
-                                string mark = "";
-                                if (pc != null && pc.pcStats != null)
-                                {
-                                    int actual = pc.pcStats.GetCharacteristic(kvp.Key);
-                                    mark = actual >= kvp.Value ? " (met)" : " (not met)";
-                                }
-                                reqParts.Add($"{kvp.Value} {localized}{mark}");
-                            }
-                            parts.Add(string.Join(", ", reqParts.ToArray()));
-                        }
-
-                        if (trait.requiredTraits != null && trait.requiredTraits.Length > 0)
-                        {
-                            var traitNames = new List<string>();
-                            foreach (var reqTrait in trait.requiredTraits)
-                            {
-                                if (reqTrait != null)
-                                {
-                                    string name = UITextExtractor.CleanText(
-                                        Language.Localize(reqTrait.displayName, false, false, string.Empty));
-                                    string mark = "";
-                                    if (pc != null && pc.pcTemplate != null)
-                                        mark = pc.pcTemplate.HasTrait(reqTrait.name) ? " (met)" : " (not met)";
-                                    traitNames.Add($"{name}{mark}");
-                                }
-                            }
-                            if (traitNames.Count > 0)
-                                parts.Add("Requires: " + string.Join(", ", traitNames.ToArray()));
-                        }
-
-                        if (trait.subTraits != null && trait.subTraits.Length > 0)
-                        {
-                            var unlockNames = new List<string>();
-                            foreach (var subTrait in trait.subTraits)
-                            {
-                                if (subTrait != null)
-                                {
-                                    string name = UITextExtractor.CleanText(
-                                        Language.Localize(subTrait.displayName, false, false, string.Empty));
-                                    unlockNames.Add(name);
-                                }
-                            }
-                            if (unlockNames.Count > 0)
-                                parts.Add("Unlocks: " + string.Join(", ", unlockNames.ToArray()));
-                        }
-
-                        if (parts.Count > 0)
-                            return string.Join(". ", parts.ToArray());
+                        string built = BuildTraitDescription(trait);
+                        if (!string.IsNullOrEmpty(built))
+                            return built;
                     }
                 }
 
@@ -826,6 +806,104 @@ namespace Wasteland2AccessibilityMod.Helpers
                 MelonLogger.Warning($"[CharacterAnnouncementHelper] Error getting trait description: {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Builds a full description for any Trait as one flat string — name, description,
+        /// effects, requirements with met/unmet markers, and unlock list.
+        /// Kept for callers that want the dump form; new code should prefer the line-list version.
+        /// </summary>
+        public static string BuildTraitDescription(Trait trait)
+        {
+            var lines = BuildTraitDescriptionLines(trait);
+            return (lines == null || lines.Count == 0) ? null : string.Join(". ", lines.ToArray());
+        }
+
+        /// <summary>
+        /// Builds a Trait description as a list of individually-browsable lines.
+        /// Each line = one fact, suitable for Up/Down navigation in an info browser.
+        /// </summary>
+        public static List<string> BuildTraitDescriptionLines(Trait trait)
+        {
+            var lines = new List<string>();
+            if (trait == null) return lines;
+
+            try
+            {
+                string name = UITextExtractor.CleanText(
+                    Language.Localize(trait.displayName, false, false, string.Empty));
+                if (!string.IsNullOrEmpty(name))
+                    lines.Add(name);
+
+                if (!string.IsNullOrEmpty(trait.description))
+                {
+                    string desc = UITextExtractor.CleanText(
+                        Language.Localize(trait.description, false, false, string.Empty));
+                    if (!string.IsNullOrEmpty(desc))
+                        lines.Add(desc);
+                }
+
+                if (!string.IsNullOrEmpty(trait.effectsDescription))
+                {
+                    string effects = UITextExtractor.CleanText(
+                        Language.Localize(trait.effectsDescription, false, false, string.Empty));
+                    if (!string.IsNullOrEmpty(effects))
+                        lines.Add("Effects: " + effects);
+                }
+
+                var pc = MonoBehaviourSingleton<Game>.HasInstance()
+                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                    : null;
+
+                if (trait.requiredStatValues != null && trait.requiredStatValues.Count > 0)
+                {
+                    foreach (var kvp in trait.requiredStatValues)
+                    {
+                        string statDisplayName = MonoBehaviourSingleton<PCStatsManager>.GetInstance()
+                            .GetCharacteristicDisplayName(kvp.Key);
+                        string localized = UITextExtractor.CleanText(
+                            Language.Localize(statDisplayName, false, false, string.Empty));
+                        string mark = "";
+                        if (pc != null && pc.pcStats != null)
+                        {
+                            int actual = pc.pcStats.GetCharacteristic(kvp.Key);
+                            mark = actual >= kvp.Value ? " (met)" : " (not met)";
+                        }
+                        lines.Add($"Requires {kvp.Value} {localized}{mark}");
+                    }
+                }
+
+                if (trait.requiredTraits != null && trait.requiredTraits.Length > 0)
+                {
+                    foreach (var reqTrait in trait.requiredTraits)
+                    {
+                        if (reqTrait == null) continue;
+                        string reqName = UITextExtractor.CleanText(
+                            Language.Localize(reqTrait.displayName, false, false, string.Empty));
+                        string mark = "";
+                        if (pc != null && pc.pcTemplate != null)
+                            mark = pc.pcTemplate.HasTrait(reqTrait.name) ? " (met)" : " (not met)";
+                        lines.Add($"Requires perk: {reqName}{mark}");
+                    }
+                }
+
+                if (trait.subTraits != null && trait.subTraits.Length > 0)
+                {
+                    foreach (var subTrait in trait.subTraits)
+                    {
+                        if (subTrait == null) continue;
+                        string subName = UITextExtractor.CleanText(
+                            Language.Localize(subTrait.displayName, false, false, string.Empty));
+                        lines.Add("Unlocks: " + subName);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterAnnouncementHelper] Error building trait description: {ex.Message}");
+            }
+
+            return lines;
         }
 
         // ========== Derived Stats ==========

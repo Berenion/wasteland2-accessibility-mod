@@ -43,11 +43,12 @@ namespace Wasteland2AccessibilityMod.States
         private int derivedStatsIndex = -1;
         private bool derivedStatsBrowsing = false;
 
-        // Header / Combat snapshot browsing — generic line-list mode
-        private enum SnapshotMode { None, Header, Combat }
-        private SnapshotMode snapshotMode = SnapshotMode.None;
-        private List<string> snapshotLines = new List<string>();
-        private int snapshotIndex = -1;
+        // Info browser — generic line-list mode used by H (header), C (combat),
+        // and I (stat / trait descriptions). Up/Down to step, Esc to close.
+        private enum InfoMode { None, Header, Combat, StatDescription, TraitDescription }
+        private InfoMode infoMode = InfoMode.None;
+        private List<string> infoLines = new List<string>();
+        private int infoIndex = -1;
 
         // Level-up editing mode
         private bool isEditingValue = false;
@@ -136,9 +137,9 @@ namespace Wasteland2AccessibilityMod.States
             if (derivedStatsBrowsing)
                 return HandleDerivedStatsInput(charInfoMenu);
 
-            // Snapshot browser (Header / Combat) intercepts all input
-            if (snapshotMode != SnapshotMode.None)
-                return HandleSnapshotInput(charInfoMenu);
+            // Info browser (Header / Combat / descriptions) intercepts all input
+            if (infoMode != InfoMode.None)
+                return HandleInfoInput(charInfoMenu);
 
             // Logbook detail mode intercepts all input
             if (logbookDetailMode)
@@ -173,9 +174,9 @@ namespace Wasteland2AccessibilityMod.States
             isEditingValue = false;
             derivedStatsBrowsing = false;
             derivedStatsIndex = -1;
-            snapshotMode = SnapshotMode.None;
-            snapshotIndex = -1;
-            snapshotLines.Clear();
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
             activationTime = Time.time;
             initialAnnouncementDone = false;
             logbookDetailMode = false;
@@ -225,8 +226,8 @@ namespace Wasteland2AccessibilityMod.States
             controlList.Clear();
             isEditingValue = false;
             derivedStatsBrowsing = false;
-            snapshotMode = SnapshotMode.None;
-            snapshotLines.Clear();
+            infoMode = InfoMode.None;
+            infoLines.Clear();
             logbookDetailMode = false;
             logbookDetailLines.Clear();
             MelonLogger.Msg($"[CharacterInfoState] Deactivated (suspended panel={suspendedPanel}, index={suspendedIndex})");
@@ -762,17 +763,17 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // H: open header snapshot browser (name, level, rank, HP, capacity, money, water, status, points)
+            // H: open header info browser (name, level, rank, HP, capacity, money, water, status, points)
             if (Input.GetKeyDown(KeyCode.H))
             {
-                OpenSnapshotBrowser(menu, SnapshotMode.Header);
+                OpenInfoBrowser(menu, InfoMode.Header);
                 return true;
             }
 
-            // C: open combat snapshot browser (damage, hit, crit, evade, armor, range, AP, recharge, speed)
+            // C: open combat info browser (damage, hit, crit, evade, armor, range, AP, recharge, speed)
             if (Input.GetKeyDown(KeyCode.C))
             {
-                OpenSnapshotBrowser(menu, SnapshotMode.Combat);
+                OpenInfoBrowser(menu, InfoMode.Combat);
                 return true;
             }
 
@@ -1207,7 +1208,7 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // I for trait description
+            // I: open browsable perk description
             if (Input.GetKeyDown(KeyCode.I))
             {
                 if (controlIndex >= 0 && controlIndex < controlList.Count)
@@ -1215,11 +1216,15 @@ namespace Wasteland2AccessibilityMod.States
                     var editor = controlList[controlIndex].GetComponent<CHA_TraitEditor>();
                     if (editor != null)
                     {
-                        string desc = CharacterAnnouncementHelper.GetTraitDescription(editor);
-                        if (!string.IsNullOrEmpty(desc))
-                            ScreenReaderManager.SpeakInterrupt(desc);
+                        Trait trait = CharacterAnnouncementHelper.GetTraitFromEditor(editor);
+                        if (trait != null)
+                        {
+                            OpenInfoBrowser(menu, InfoMode.TraitDescription, trait: trait);
+                        }
                         else
+                        {
                             ScreenReaderManager.SpeakInterrupt("No description available");
+                        }
                     }
                 }
                 return true;
@@ -1264,10 +1269,23 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // I to read full biography
+            // I: open browsable quirk description when on the quirk line, otherwise read biography
             if (Input.GetKeyDown(KeyCode.I))
             {
-                // Find and read the biography line
+                if (controlIndex >= 0 && controlIndex < dossierLines.Count
+                    && dossierLines[controlIndex].StartsWith("Quirk:"))
+                {
+                    PC pc = GetCurrentPC(menu);
+                    if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                        pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+                    Trait quirk = pc != null && pc.pcTemplate != null ? pc.pcTemplate.GetQuirk() : null;
+                    if (quirk != null)
+                        OpenInfoBrowser(menu, InfoMode.TraitDescription, trait: quirk);
+                    else
+                        ScreenReaderManager.SpeakInterrupt("No quirk description available");
+                    return true;
+                }
+
                 for (int i = 0; i < dossierLines.Count; i++)
                 {
                     if (dossierLines[i].StartsWith("Biography:"))
@@ -1694,110 +1712,144 @@ namespace Wasteland2AccessibilityMod.States
 
         #endregion
 
-        #region Snapshot Browser (Header / Combat)
+        #region Info Browser (Header / Combat / Stat / Trait)
 
-        private void OpenSnapshotBrowser(CharacterInfoMenu menu, SnapshotMode mode)
+        private void OpenInfoBrowser(CharacterInfoMenu menu, InfoMode mode, GameObject statObj = null, Trait trait = null)
         {
             PC pc = GetCurrentPC(menu);
             if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
                 pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
 
-            snapshotLines = mode == SnapshotMode.Header
-                ? CharacterAnnouncementHelper.BuildHeaderSnapshotLines(pc)
-                : CharacterAnnouncementHelper.BuildCombatSnapshotLines(pc);
+            infoLines = BuildInfoLinesFor(mode, pc, statObj, trait);
 
-            if (snapshotLines == null || snapshotLines.Count == 0)
+            if (infoLines == null || infoLines.Count == 0)
             {
                 ScreenReaderManager.SpeakInterrupt("No information available");
                 return;
             }
 
-            snapshotMode = mode;
-            snapshotIndex = 0;
+            infoMode = mode;
+            infoIndex = 0;
 
-            string title = mode == SnapshotMode.Header ? "Character info" : "Combat stats";
+            string title = GetInfoBrowserTitle(mode);
             ScreenReaderManager.SpeakInterrupt(
-                $"{title}, {snapshotLines.Count} items. Up and Down to navigate, Escape to close");
-            AnnounceSnapshotLine(interrupt: false);
-            MelonLogger.Msg($"[CharacterInfoState] Snapshot browser opened: {mode}, {snapshotLines.Count} lines");
+                $"{title}, {infoLines.Count} items. Up and Down to navigate, Escape to close");
+            AnnounceInfoLine(interrupt: false);
+            MelonLogger.Msg($"[CharacterInfoState] Info browser opened: {mode}, {infoLines.Count} lines");
         }
 
-        private void CloseSnapshotBrowser()
+        private static List<string> BuildInfoLinesFor(InfoMode mode, PC pc, GameObject statObj, Trait trait)
         {
-            var prev = snapshotMode;
-            snapshotMode = SnapshotMode.None;
-            snapshotIndex = -1;
-            snapshotLines.Clear();
+            switch (mode)
+            {
+                case InfoMode.Header:
+                    return CharacterAnnouncementHelper.BuildHeaderSnapshotLines(pc);
+                case InfoMode.Combat:
+                    return CharacterAnnouncementHelper.BuildCombatSnapshotLines(pc);
+                case InfoMode.StatDescription:
+                    return CharacterAnnouncementHelper.BuildStatDescriptionLines(statObj);
+                case InfoMode.TraitDescription:
+                    return CharacterAnnouncementHelper.BuildTraitDescriptionLines(trait);
+                default:
+                    return new List<string>();
+            }
+        }
+
+        private static string GetInfoBrowserTitle(InfoMode mode)
+        {
+            switch (mode)
+            {
+                case InfoMode.Header: return "Character info";
+                case InfoMode.Combat: return "Combat stats";
+                case InfoMode.StatDescription: return "Details";
+                case InfoMode.TraitDescription: return "Perk details";
+                default: return "Info";
+            }
+        }
+
+        private void CloseInfoBrowser()
+        {
+            var prev = infoMode;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
             EventManager.ignoreNextBack = true;
-            ScreenReaderManager.SpeakInterrupt(prev == SnapshotMode.Header ? "Character info closed" : "Combat stats closed");
+            ScreenReaderManager.SpeakInterrupt(GetInfoBrowserTitle(prev) + " closed");
             lastAnnouncedText = null;
             AnnounceCurrentControl(interrupt: false);
-            MelonLogger.Msg($"[CharacterInfoState] Snapshot browser closed: {prev}");
+            MelonLogger.Msg($"[CharacterInfoState] Info browser closed: {prev}");
         }
 
-        private void AnnounceSnapshotLine(bool interrupt = true)
+        private void AnnounceInfoLine(bool interrupt = true)
         {
-            if (snapshotIndex < 0 || snapshotIndex >= snapshotLines.Count) return;
-            string line = snapshotLines[snapshotIndex];
-            string msg = $"{line}, {snapshotIndex + 1} of {snapshotLines.Count}";
+            if (infoIndex < 0 || infoIndex >= infoLines.Count) return;
+            string line = infoLines[infoIndex];
+            string msg = $"{line}, {infoIndex + 1} of {infoLines.Count}";
             if (interrupt) ScreenReaderManager.SpeakInterrupt(msg);
             else ScreenReaderManager.Speak(msg);
         }
 
-        private bool HandleSnapshotInput(CharacterInfoMenu menu)
+        private bool HandleInfoInput(CharacterInfoMenu menu)
         {
             if (Input.GetKeyDown(KeyCode.Escape))
             {
-                CloseSnapshotBrowser();
+                CloseInfoBrowser();
                 return true;
             }
 
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
-                snapshotIndex--;
-                if (snapshotIndex < 0) snapshotIndex = snapshotLines.Count - 1;
-                AnnounceSnapshotLine();
+                infoIndex--;
+                if (infoIndex < 0) infoIndex = infoLines.Count - 1;
+                AnnounceInfoLine();
                 return true;
             }
 
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
-                snapshotIndex++;
-                if (snapshotIndex >= snapshotLines.Count) snapshotIndex = 0;
-                AnnounceSnapshotLine();
+                infoIndex++;
+                if (infoIndex >= infoLines.Count) infoIndex = 0;
+                AnnounceInfoLine();
                 return true;
             }
 
             if (Input.GetKeyDown(KeyCode.Home))
             {
-                snapshotIndex = 0;
-                AnnounceSnapshotLine();
+                infoIndex = 0;
+                AnnounceInfoLine();
                 return true;
             }
 
             if (Input.GetKeyDown(KeyCode.End))
             {
-                snapshotIndex = snapshotLines.Count - 1;
-                AnnounceSnapshotLine();
+                infoIndex = infoLines.Count - 1;
+                AnnounceInfoLine();
                 return true;
             }
 
-            // Allow F1-F7 to switch character without closing the snapshot — rebuild with new PC
+            // F1-F7 switches character. For Header/Combat (character-snapshot modes) we
+            // refresh the lines in-place; for Stat/Trait descriptions the content is tied
+            // to a specific control that no longer applies to the new PC, so close first.
             for (int i = 0; i < 7; i++)
             {
                 if (Input.GetKeyDown(KeyCode.F1 + i))
                 {
-                    SwitchToPartyMember(menu, i);
-                    // Refresh snapshot for new PC, keep position if possible
-                    PC pc = GetCurrentPC(menu);
-                    if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
-                        pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
-                    snapshotLines = snapshotMode == SnapshotMode.Header
-                        ? CharacterAnnouncementHelper.BuildHeaderSnapshotLines(pc)
-                        : CharacterAnnouncementHelper.BuildCombatSnapshotLines(pc);
-                    if (snapshotIndex >= snapshotLines.Count) snapshotIndex = snapshotLines.Count - 1;
-                    if (snapshotIndex < 0 && snapshotLines.Count > 0) snapshotIndex = 0;
-                    AnnounceSnapshotLine();
+                    if (infoMode == InfoMode.Header || infoMode == InfoMode.Combat)
+                    {
+                        SwitchToPartyMember(menu, i);
+                        PC pc = GetCurrentPC(menu);
+                        if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                            pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+                        infoLines = BuildInfoLinesFor(infoMode, pc, null, null);
+                        if (infoIndex >= infoLines.Count) infoIndex = infoLines.Count - 1;
+                        if (infoIndex < 0 && infoLines.Count > 0) infoIndex = 0;
+                        AnnounceInfoLine();
+                    }
+                    else
+                    {
+                        CloseInfoBrowser();
+                        SwitchToPartyMember(menu, i);
+                    }
                     return true;
                 }
             }
@@ -1812,7 +1864,9 @@ namespace Wasteland2AccessibilityMod.States
         private void AnnounceCurrentStatDescription()
         {
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
-            CharacterAnnouncementHelper.AnnounceStatDescription(controlList[controlIndex]);
+            var menu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+            if (menu == null) return;
+            OpenInfoBrowser(menu, InfoMode.StatDescription, statObj: controlList[controlIndex]);
         }
 
         #endregion
