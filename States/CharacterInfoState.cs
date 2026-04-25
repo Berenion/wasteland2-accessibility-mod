@@ -39,14 +39,13 @@ namespace Wasteland2AccessibilityMod.States
         private enum SkillSection { Learned, Combat, Knowledge, General }
         private SkillSection currentSkillSection = SkillSection.Combat;
 
-        // Derived stats browsing mode
-        private int derivedStatsIndex = -1;
-        private bool derivedStatsBrowsing = false;
-
-        // Info browser — generic line-list mode used by H (header), C (combat),
-        // and I (stat / trait descriptions). Up/Down to step, Esc to close.
-        private enum InfoMode { None, Header, Combat, StatDescription, TraitDescription }
+        // Info browser — generic line-list mode used by S (stats browser with
+        // Header/Combat/Derived sections) and I (stat / trait descriptions).
+        // Up/Down to step, Esc to close.
+        private enum InfoMode { None, Stats, StatDescription, TraitDescription }
+        private enum StatsSection { Header, Combat, Derived }
         private InfoMode infoMode = InfoMode.None;
+        private StatsSection currentStatsSection = StatsSection.Header;
         private List<string> infoLines = new List<string>();
         private int infoIndex = -1;
 
@@ -133,11 +132,7 @@ namespace Wasteland2AccessibilityMod.States
                 AnnounceCurrentControl(interrupt: false);
             }
 
-            // Derived stats browser intercepts all input
-            if (derivedStatsBrowsing)
-                return HandleDerivedStatsInput(charInfoMenu);
-
-            // Info browser (Header / Combat / descriptions) intercepts all input
+            // Info browser (Stats / descriptions) intercepts all input
             if (infoMode != InfoMode.None)
                 return HandleInfoInput(charInfoMenu);
 
@@ -172,11 +167,10 @@ namespace Wasteland2AccessibilityMod.States
             controlList.Clear();
             controlIndex = -1;
             isEditingValue = false;
-            derivedStatsBrowsing = false;
-            derivedStatsIndex = -1;
             infoMode = InfoMode.None;
             infoIndex = -1;
             infoLines.Clear();
+            currentStatsSection = StatsSection.Header;
             activationTime = Time.time;
             initialAnnouncementDone = false;
             logbookDetailMode = false;
@@ -225,7 +219,6 @@ namespace Wasteland2AccessibilityMod.States
             lastAnnouncedIndex = -1;
             controlList.Clear();
             isEditingValue = false;
-            derivedStatsBrowsing = false;
             infoMode = InfoMode.None;
             infoLines.Clear();
             logbookDetailMode = false;
@@ -287,8 +280,6 @@ namespace Wasteland2AccessibilityMod.States
         {
             lastPanel = newPanel;
             isEditingValue = false;
-            derivedStatsBrowsing = false;
-            derivedStatsIndex = -1;
             logbookDetailMode = false;
             logbookDetailIndex = -1;
             logbookDetailLines.Clear();
@@ -310,7 +301,7 @@ namespace Wasteland2AccessibilityMod.States
             switch (newPanel)
             {
                 case CharacterInfoMenu.InfoPanel.Attributes:
-                    hint = ". Up and Down to navigate, I for description, D for derived stats";
+                    hint = ". Up and Down to navigate, I for description, S for stats browser";
                     break;
                 case CharacterInfoMenu.InfoPanel.Skills:
                     hint = ". Up and Down to navigate, F to switch section, Left and Right for category";
@@ -719,21 +710,13 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // D for derived stats (Attributes/Skills) or character summary (others)
+            // D for character summary
             if (Input.GetKeyDown(KeyCode.D))
             {
-                if (lastPanel == CharacterInfoMenu.InfoPanel.Attributes ||
-                    lastPanel == CharacterInfoMenu.InfoPanel.Skills)
-                {
-                    OpenDerivedStatsBrowser(menu);
-                }
-                else
-                {
-                    PC pc = GetCurrentPC(menu);
-                    if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
-                        pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
-                    CharacterAnnouncementHelper.AnnounceCharacterSummary(pc);
-                }
+                PC pc = GetCurrentPC(menu);
+                if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                    pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+                CharacterAnnouncementHelper.AnnounceCharacterSummary(pc);
                 return true;
             }
 
@@ -763,17 +746,10 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // H: open header info browser (name, level, rank, HP, capacity, money, water, status, points)
-            if (Input.GetKeyDown(KeyCode.H))
+            // S: open unified stats browser (Header / Combat / Derived sections)
+            if (Input.GetKeyDown(KeyCode.S))
             {
-                OpenInfoBrowser(menu, InfoMode.Header);
-                return true;
-            }
-
-            // C: open combat info browser (damage, hit, crit, evade, armor, range, AP, recharge, speed)
-            if (Input.GetKeyDown(KeyCode.C))
-            {
-                OpenInfoBrowser(menu, InfoMode.Combat);
+                OpenStatsBrowser(menu, StatsSection.Header);
                 return true;
             }
 
@@ -1638,81 +1614,80 @@ namespace Wasteland2AccessibilityMod.States
 
         #endregion
 
-        #region Derived Stats Browser
+        #region Info Browser (Stats / Stat / Trait)
 
-        private void OpenDerivedStatsBrowser(CharacterInfoMenu menu)
-        {
-            derivedStatsBrowsing = true;
-            derivedStatsIndex = 0;
-            ScreenReaderManager.SpeakInterrupt("Derived stats. Up and Down to navigate, I for description, Escape to close");
-            PC pc = GetCurrentPC(menu);
-            CharacterAnnouncementHelper.AnnounceDerivedStat(pc, derivedStatsIndex, interrupt: false);
-            MelonLogger.Msg("[CharacterInfoState] Derived stats browser opened");
-        }
-
-        private void CloseDerivedStatsBrowser()
-        {
-            derivedStatsBrowsing = false;
-            derivedStatsIndex = -1;
-            EventManager.ignoreNextBack = true;
-            ScreenReaderManager.SpeakInterrupt("Derived stats closed");
-            lastAnnouncedText = null;
-            AnnounceCurrentControl(interrupt: false);
-            MelonLogger.Msg("[CharacterInfoState] Derived stats browser closed");
-        }
-
-        private bool HandleDerivedStatsInput(CharacterInfoMenu menu)
+        private void OpenStatsBrowser(CharacterInfoMenu menu, StatsSection section)
         {
             PC pc = GetCurrentPC(menu);
+            if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            currentStatsSection = section;
+            infoLines = BuildStatsLinesFor(section, pc);
+
+            if (infoLines == null || infoLines.Count == 0)
             {
-                CloseDerivedStatsBrowser();
-                return true;
+                ScreenReaderManager.SpeakInterrupt("No information available");
+                return;
             }
 
-            if (Input.GetKeyDown(KeyCode.UpArrow))
-            {
-                derivedStatsIndex--;
-                if (derivedStatsIndex < 0) derivedStatsIndex = CharacterAnnouncementHelper.DerivedStatNames.Length - 1;
-                CharacterAnnouncementHelper.AnnounceDerivedStat(pc, derivedStatsIndex);
-                return true;
-            }
+            infoMode = InfoMode.Stats;
+            infoIndex = 0;
 
-            if (Input.GetKeyDown(KeyCode.DownArrow))
-            {
-                derivedStatsIndex++;
-                if (derivedStatsIndex >= CharacterAnnouncementHelper.DerivedStatNames.Length) derivedStatsIndex = 0;
-                CharacterAnnouncementHelper.AnnounceDerivedStat(pc, derivedStatsIndex);
-                return true;
-            }
-
-            if (Input.GetKeyDown(KeyCode.I))
-            {
-                CharacterAnnouncementHelper.AnnounceDerivedStatDescription(pc, derivedStatsIndex);
-                return true;
-            }
-
-            if (Input.GetKeyDown(KeyCode.Home))
-            {
-                derivedStatsIndex = 0;
-                CharacterAnnouncementHelper.AnnounceDerivedStat(pc, derivedStatsIndex);
-                return true;
-            }
-
-            if (Input.GetKeyDown(KeyCode.End))
-            {
-                derivedStatsIndex = CharacterAnnouncementHelper.DerivedStatNames.Length - 1;
-                CharacterAnnouncementHelper.AnnounceDerivedStat(pc, derivedStatsIndex);
-                return true;
-            }
-
-            return true; // Block all other keys
+            string title = GetStatsSectionTitle(section);
+            ScreenReaderManager.SpeakInterrupt(
+                $"{title}, {infoLines.Count} items. Up and Down to navigate, Left and Right for sections, I for description, Escape to close");
+            AnnounceInfoLine(interrupt: false);
+            MelonLogger.Msg($"[CharacterInfoState] Stats browser opened: {section}, {infoLines.Count} lines");
         }
 
-        #endregion
+        private void SwitchStatsSection(CharacterInfoMenu menu, int direction)
+        {
+            int count = 3;
+            int next = (((int)currentStatsSection + direction) % count + count) % count;
+            currentStatsSection = (StatsSection)next;
 
-        #region Info Browser (Header / Combat / Stat / Trait)
+            PC pc = GetCurrentPC(menu);
+            if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+
+            infoLines = BuildStatsLinesFor(currentStatsSection, pc);
+            infoIndex = infoLines.Count > 0 ? 0 : -1;
+
+            string title = GetStatsSectionTitle(currentStatsSection);
+            if (infoLines.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt($"{title}, no information");
+            }
+            else
+            {
+                ScreenReaderManager.SpeakInterrupt($"{title}, {infoLines.Count} items");
+                AnnounceInfoLine(interrupt: false);
+            }
+            MelonLogger.Msg($"[CharacterInfoState] Stats section switched: {currentStatsSection}, {infoLines.Count} lines");
+        }
+
+        private static List<string> BuildStatsLinesFor(StatsSection section, PC pc)
+        {
+            switch (section)
+            {
+                case StatsSection.Header:  return CharacterAnnouncementHelper.BuildHeaderSnapshotLines(pc);
+                case StatsSection.Combat:  return CharacterAnnouncementHelper.BuildCombatSnapshotLines(pc);
+                case StatsSection.Derived: return CharacterAnnouncementHelper.BuildDerivedStatLines(pc);
+                default: return new List<string>();
+            }
+        }
+
+        private static string GetStatsSectionTitle(StatsSection section)
+        {
+            switch (section)
+            {
+                case StatsSection.Header:  return "Character info";
+                case StatsSection.Combat:  return "Combat stats";
+                case StatsSection.Derived: return "Derived stats";
+                default: return "Stats";
+            }
+        }
 
         private void OpenInfoBrowser(CharacterInfoMenu menu, InfoMode mode, GameObject statObj = null, Trait trait = null)
         {
@@ -1742,10 +1717,6 @@ namespace Wasteland2AccessibilityMod.States
         {
             switch (mode)
             {
-                case InfoMode.Header:
-                    return CharacterAnnouncementHelper.BuildHeaderSnapshotLines(pc);
-                case InfoMode.Combat:
-                    return CharacterAnnouncementHelper.BuildCombatSnapshotLines(pc);
                 case InfoMode.StatDescription:
                     return CharacterAnnouncementHelper.BuildStatDescriptionLines(statObj);
                 case InfoMode.TraitDescription:
@@ -1759,8 +1730,6 @@ namespace Wasteland2AccessibilityMod.States
         {
             switch (mode)
             {
-                case InfoMode.Header: return "Character info";
-                case InfoMode.Combat: return "Combat stats";
                 case InfoMode.StatDescription: return "Details";
                 case InfoMode.TraitDescription: return "Perk details";
                 default: return "Info";
@@ -1770,11 +1739,12 @@ namespace Wasteland2AccessibilityMod.States
         private void CloseInfoBrowser()
         {
             var prev = infoMode;
+            string title = prev == InfoMode.Stats ? "Stats" : GetInfoBrowserTitle(prev);
             infoMode = InfoMode.None;
             infoIndex = -1;
             infoLines.Clear();
             EventManager.ignoreNextBack = true;
-            ScreenReaderManager.SpeakInterrupt(GetInfoBrowserTitle(prev) + " closed");
+            ScreenReaderManager.SpeakInterrupt(title + " closed");
             lastAnnouncedText = null;
             AnnounceCurrentControl(interrupt: false);
             MelonLogger.Msg($"[CharacterInfoState] Info browser closed: {prev}");
@@ -1827,20 +1797,50 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // F1-F7 switches character. For Header/Combat (character-snapshot modes) we
+            // Stats-mode-only: Left/Right switches sections, I announces description (Derived only).
+            if (infoMode == InfoMode.Stats)
+            {
+                if (Input.GetKeyDown(KeyCode.LeftArrow))
+                {
+                    SwitchStatsSection(menu, -1);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.RightArrow))
+                {
+                    SwitchStatsSection(menu, 1);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.I))
+                {
+                    if (currentStatsSection == StatsSection.Derived)
+                    {
+                        PC pc = GetCurrentPC(menu);
+                        if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                            pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+                        CharacterAnnouncementHelper.AnnounceDerivedStatDescription(pc, infoIndex);
+                    }
+                    else
+                    {
+                        ScreenReaderManager.SpeakInterrupt("No description available");
+                    }
+                    return true;
+                }
+            }
+
+            // F1-F7 switches character. For Stats (character-snapshot mode) we
             // refresh the lines in-place; for Stat/Trait descriptions the content is tied
             // to a specific control that no longer applies to the new PC, so close first.
             for (int i = 0; i < 7; i++)
             {
                 if (Input.GetKeyDown(KeyCode.F1 + i))
                 {
-                    if (infoMode == InfoMode.Header || infoMode == InfoMode.Combat)
+                    if (infoMode == InfoMode.Stats)
                     {
                         SwitchToPartyMember(menu, i);
                         PC pc = GetCurrentPC(menu);
                         if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
                             pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
-                        infoLines = BuildInfoLinesFor(infoMode, pc, null, null);
+                        infoLines = BuildStatsLinesFor(currentStatsSection, pc);
                         if (infoIndex >= infoLines.Count) infoIndex = infoLines.Count - 1;
                         if (infoIndex < 0 && infoLines.Count > 0) infoIndex = 0;
                         AnnounceInfoLine();

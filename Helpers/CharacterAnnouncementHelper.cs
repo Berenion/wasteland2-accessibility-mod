@@ -1010,6 +1010,38 @@ namespace Wasteland2AccessibilityMod.Helpers
             }
         }
 
+        /// <summary>
+        /// Builds the derived-stats list as individually-browsable lines, in DerivedStatNames order.
+        /// One line per stat, formatted "{name}: {value}".
+        /// </summary>
+        public static List<string> BuildDerivedStatLines(PC pc)
+        {
+            var lines = new List<string>();
+            if (!MonoBehaviourSingleton<PCStatsManager>.HasInstance()) return lines;
+            var statsManager = MonoBehaviourSingleton<PCStatsManager>.GetInstance();
+
+            for (int i = 0; i < DerivedStatNames.Length; i++)
+            {
+                string statName = DerivedStatNames[i];
+                try
+                {
+                    DerivedStat stat = statsManager.GetStat(statName);
+                    if (stat == null) continue;
+                    string displayName = UITextExtractor.CleanText(
+                        Language.Localize(stat.displayName, false, false, string.Empty));
+                    string valueText = "unknown";
+                    if (pc != null)
+                    {
+                        int rawValue = pc.pcStats.GetDerivedStat(statName);
+                        valueText = FormatDerivedStatValue(rawValue, stat.displayType);
+                    }
+                    lines.Add($"{displayName}: {valueText}");
+                }
+                catch { }
+            }
+            return lines;
+        }
+
         // ========== Header Snapshot (Character Info Menu) ==========
 
         /// <summary>
