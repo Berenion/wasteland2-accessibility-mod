@@ -903,10 +903,30 @@ namespace Wasteland2AccessibilityMod.States
         private static bool IsDoor(Component c)
         {
             if (c == null) return false;
-            return c.GetComponentInChildren<Door>() != null
-                || c.GetComponentInChildren<Door_Swing>() != null
-                || c.GetComponentInChildren<Door_Slide>() != null
-                || c.GetComponentInChildren<DoorClass>() != null;
+
+            if (c.GetComponentInChildren<Door>() != null
+             || c.GetComponentInChildren<Door_Swing>() != null
+             || c.GetComponentInChildren<Door_Slide>() != null
+             || c.GetComponentInChildren<DoorClass>() != null)
+                return true;
+
+            // Many "Simple_*_Door" objects are generic InteractableObjects whose
+            // door-ness is encoded only in their GameObject name and SoundPackage
+            // class (e.g. SP_Simple_Double_Door). Fall back to those signals.
+            if (NameLooksLikeDoor(c.name)) return true;
+
+            var io = c.GetComponent<InteractableObject>();
+            if (io != null && io.soundPackage != null && NameLooksLikeDoor(io.soundPackage.GetType().Name))
+                return true;
+
+            return false;
+        }
+
+        private static bool NameLooksLikeDoor(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            return name.IndexOf("Door", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Gate", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private List<InteractableNexus> FindInteractablesOnTile()
