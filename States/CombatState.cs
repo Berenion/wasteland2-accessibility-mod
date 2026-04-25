@@ -3069,6 +3069,24 @@ namespace Wasteland2AccessibilityMod.States
             catch { return true; }
         }
 
+        // Mirrors CombatManager.UpdateDisplayQueue's filter so our list matches the on-screen tracker.
+        // PCs always count; NPCs must have engaged hostiles, not be waiting to join, and not be in doNothing AI.
+        private bool IsActivelyInCombat(Mob mob)
+        {
+            if (mob == null) return false;
+            if (mob is PC) return true;
+
+            var npc = mob as NPC;
+            if (npc == null) return true;
+            if (npc.waitToJoinCombat) return false;
+            if (!npc.HasEnemiesInCombat()) return false;
+
+            var ai = mob.GetActiveAI() as AIBehaviour_NPCCombat;
+            if (ai != null && ai.doNothing) return false;
+
+            return true;
+        }
+
         private void BuildInitiativeList()
         {
             initiativeList.Clear();
@@ -3095,6 +3113,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     if (mob == null) continue;
                     if (mob.mobState == Mob.MobState.DEAD || mob.mobState == Mob.MobState.UNCONSCIOUS) continue;
+                    if (!IsActivelyInCombat(mob)) continue;
 
                     bool hostile = false;
                     if (mob is NPC) hostile = mob.HatesParty();
@@ -3123,7 +3142,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (mob == null) continue;
                     if (addedMobs.Contains(mob)) continue;
                     if (mob.mobState == Mob.MobState.DEAD || mob.mobState == Mob.MobState.UNCONSCIOUS) continue;
-                    if (mob is NPC && (mob as NPC).waitToJoinCombat) continue;
+                    if (!IsActivelyInCombat(mob)) continue;
 
                     bool hostile = false;
                     if (mob is NPC) hostile = mob.HatesParty();
