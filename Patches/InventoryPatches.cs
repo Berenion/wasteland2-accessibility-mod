@@ -1213,6 +1213,13 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             if (InventoryState.IsManagedNavigation) return;
 
+            // Skip when the grid belongs to a PopupInventoryMenu (loot) or CharacterInfoMenu —
+            // InventoryState handles those, but its IsManagedNavigation flag flips on a frame
+            // *after* the popup's first PopulateData. Without this guard the user hears
+            // "0 items visible" / "N items visible" before the managed loot announcement.
+            if (__instance.GetComponentInParent<PopupInventoryMenu>() != null) return;
+            if (__instance.GetComponentInParent<CharacterInfoMenu>() != null) return;
+
             // Count items in the grid
             Transform transform = __instance.transform;
             int currentItemCount = 0;
