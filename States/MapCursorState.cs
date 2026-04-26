@@ -2561,37 +2561,84 @@ namespace Wasteland2AccessibilityMod.States
                     return;
                 }
 
-                // Line of sight check first (matches game order in Highlight.cs:572-589)
-                try
+                // Mirror vanilla's gating in AIBehaviour_PC.OnAttack so we publish iff
+                // vanilla would have executed the attack — including the melee
+                // walk-and-attack fallback (FindAttackDestination, AIBehaviour_PC.cs:389).
+                // For ranged, vanilla rejects silently if CanAttack fails at the current
+                // position, so the previous LoS+range pre-check matches.
+                bool isMelee = weaponTemplate is ItemTemplate_WeaponMelee;
+                bool willMoveAndAttack = false;
+
+                if (isMelee)
                 {
-                    if (!pc.TargetVisible(target))
+                    bool canAttackHere = false;
+                    try { canAttackHere = pc.CanAttack(target, true, false); }
+                    catch (Exception) { }
+
+                    if (!canAttackHere)
                     {
-                        ScreenReaderManager.SpeakInterrupt("No line of sight to " + targetName);
-                        return;
+                        bool isAttackable = false;
+                        try { isAttackable = pc.IsAttackableTarget(target, false); }
+                        catch (Exception) { }
+
+                        if (isAttackable && TryFindAttackDestination(pc, target))
+                        {
+                            willMoveAndAttack = true;
+                        }
+                        else
+                        {
+                            // Vanilla would silently reject. Diagnose for parity with the
+                            // cursor messages in Highlight.cs:572-588.
+                            bool sightBlocked = false;
+                            try { sightBlocked = !pc.TargetVisible(target); }
+                            catch (Exception) { }
+
+                            if (sightBlocked)
+                            {
+                                ScreenReaderManager.SpeakInterrupt("No line of sight to " + targetName);
+                            }
+                            else
+                            {
+                                string distStr = TileCoordinateSystem.GetDistanceText(pc.transform.position, target.transform.position);
+                                string rangeStr = TileCoordinateSystem.GetRangeText(pc.stats.GetAttackRange());
+                                ScreenReaderManager.SpeakInterrupt(
+                                    targetName + " is out of range. Distance " + distStr +
+                                    ", weapon range " + rangeStr);
+                            }
+                            return;
+                        }
                     }
                 }
-                catch (Exception) { }
-
-                // Range check — match game formula: distance - additionalHitRange > attackRange
-                // (Highlight.cs:581, PC.cs:1328). Large mobs have a hit sphere that extends
-                // their effective target point outward.
-                float distance = Vector3.Distance(pc.transform.position, target.transform.position);
-                float additionalHitRange = 0f;
-                var targetMob = target as Mob;
-                if (targetMob != null)
+                else
                 {
-                    try { additionalHitRange = targetMob.GetAdditionalHitRange(); }
+                    try
+                    {
+                        if (!pc.TargetVisible(target))
+                        {
+                            ScreenReaderManager.SpeakInterrupt("No line of sight to " + targetName);
+                            return;
+                        }
+                    }
                     catch (Exception) { }
-                }
-                float attackRange = pc.stats.GetAttackRange();
-                if (distance - additionalHitRange > attackRange)
-                {
-                    string distStr = TileCoordinateSystem.GetDistanceText(pc.transform.position, target.transform.position);
-                    string rangeStr = TileCoordinateSystem.GetRangeText(attackRange);
-                    ScreenReaderManager.SpeakInterrupt(
-                        targetName + " is out of range. Distance " + distStr +
-                        ", weapon range " + rangeStr);
-                    return;
+
+                    float distance = Vector3.Distance(pc.transform.position, target.transform.position);
+                    float additionalHitRange = 0f;
+                    var targetMob = target as Mob;
+                    if (targetMob != null)
+                    {
+                        try { additionalHitRange = targetMob.GetAdditionalHitRange(); }
+                        catch (Exception) { }
+                    }
+                    float attackRange = pc.stats.GetAttackRange();
+                    if (distance - additionalHitRange > attackRange)
+                    {
+                        string distStr = TileCoordinateSystem.GetDistanceText(pc.transform.position, target.transform.position);
+                        string rangeStr = TileCoordinateSystem.GetRangeText(attackRange);
+                        ScreenReaderManager.SpeakInterrupt(
+                            targetName + " is out of range. Distance " + distStr +
+                            ", weapon range " + rangeStr);
+                        return;
+                    }
                 }
 
                 // Set the InputManager's selected targetable
@@ -2631,8 +2678,9 @@ namespace Wasteland2AccessibilityMod.States
                 }
                 catch (Exception) { }
 
-                ScreenReaderManager.SpeakInterrupt("Attacking " + targetName + " with " + weapon + modeInfo + chanceInfo);
-                MelonLogger.Msg("[MapCursorState] Attack command: " + targetName + " with " + weapon + modeInfo + chanceInfo);
+                string verb = willMoveAndAttack ? "Moving to attack " : "Attacking ";
+                ScreenReaderManager.SpeakInterrupt(verb + targetName + " with " + weapon + modeInfo + chanceInfo);
+                MelonLogger.Msg("[MapCursorState] Attack command: " + verb + targetName + " with " + weapon + modeInfo + chanceInfo);
 
                 // Clear attack ASI
                 UseASIManager.SetActiveASIName(null);
@@ -2641,6 +2689,47 @@ namespace Wasteland2AccessibilityMod.States
             {
                 MelonLogger.Error("[MapCursorState] Error in AttackMobOnTile: " + ex.Message);
                 ScreenReaderManager.SpeakInterrupt("Attack failed");
+            }
+        }
+
+        // Mirrors AIBehaviour_PC.FindAttackDestination (AIBehaviour_PC.cs:389): walks
+        // the navmesh path from the PC toward the target's nearest edge and reports
+        // whether any corner yields a position from which CanAttack succeeds. Used to
+        // decide whether vanilla's melee walk-and-attack fallback would fire.
+        private static bool TryFindAttackDestination(PC pc, Targetable target)
+        {
+            try
+            {
+                if (pc == null || target == null || pc.navMeshAgent == null) return false;
+
+                Vector3 sourcePosition = target.transform.position;
+                if (target is TargetableObject)
+                {
+                    sourcePosition = (target as TargetableObject).GetNearestEdge(pc.transform.position);
+                }
+
+                NavMeshHit hit;
+                if (!NavMesh.SamplePosition(sourcePosition, out hit, 5f, 1 << InputManager.navMeshLayerIndex_Default))
+                    return false;
+
+                NavMeshPath path = new NavMeshPath();
+                pc.navMeshAgent.CalculatePath(hit.position, path);
+                if (path.corners == null || path.corners.Length <= 0) return false;
+
+                float backoff = pc.stats.GetAttackRange() * 0.75f;
+                for (int i = 1; i < path.corners.Length; i++)
+                {
+                    Vector3 corner = path.corners[i];
+                    Vector3 dir = (path.corners[i] - path.corners[i - 1]).normalized;
+                    Vector3 position = corner - dir * backoff;
+                    if (pc.CanAttack(target, position, false, false))
+                        return true;
+                }
+                return false;
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 
