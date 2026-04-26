@@ -35,6 +35,7 @@ namespace Wasteland2AccessibilityMod.States
         private static readonly string[] CATEGORY_NAMES = {
             "Enemies",
             "NPCs",
+            "Party",
             "Loot",
             "Exits",
             "Interactables"
@@ -162,6 +163,7 @@ namespace Wasteland2AccessibilityMod.States
             // Scan for all object types
             ScanForEnemies(scanOrigin);
             ScanForNPCs(scanOrigin);
+            ScanForParty(scanOrigin, pc);
             ScanForLoot(scanOrigin);
             ScanForExits(scanOrigin);
             ScanForInteractables(scanOrigin);
@@ -254,6 +256,77 @@ namespace Wasteland2AccessibilityMod.States
                             Source = npc
                         });
                     }
+                }
+            }
+        }
+
+        private void ScanForParty(Vector3 origin, PC scanner)
+        {
+            if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
+            var game = MonoBehaviourSingleton<Game>.GetInstance();
+
+            if (game.party != null)
+            {
+                foreach (var pc in game.party)
+                {
+                    if (pc == null || pc.gameObject == null) continue;
+                    if (!pc.gameObject.activeInHierarchy) continue;
+                    if (pc == scanner) continue; // Don't list the scanner themselves
+                    if (pc.mobState == Mob.MobState.DEAD) continue;
+
+                    float distance = Vector3.Distance(origin, pc.transform.position);
+                    if (distance > currentScanRange) continue;
+
+                    string name = "Party member";
+                    if (pc.template != null && !string.IsNullOrEmpty(pc.template.displayName))
+                    {
+                        name = UITextExtractor.CleanText(
+                            Language.Localize(pc.template.displayName, false, false, string.Empty));
+                    }
+                    if (pc.mobState == Mob.MobState.UNCONSCIOUS)
+                        name += ", unconscious";
+
+                    lastScanResults.Add(new ScanResult
+                    {
+                        Name = name,
+                        Category = "Party",
+                        Distance = distance,
+                        Direction = DirectionHelper.GetDirectionDescription(origin, pc.transform.position),
+                        Position = pc.transform.position,
+                        Source = pc
+                    });
+                }
+            }
+
+            if (game.partyFollowers != null)
+            {
+                foreach (var follower in game.partyFollowers)
+                {
+                    if (follower == null || follower.gameObject == null) continue;
+                    if (!follower.gameObject.activeInHierarchy) continue;
+                    if (follower.mobState == Mob.MobState.DEAD) continue;
+
+                    float distance = Vector3.Distance(origin, follower.transform.position);
+                    if (distance > currentScanRange) continue;
+
+                    string name = "Follower";
+                    if (follower.template != null && !string.IsNullOrEmpty(follower.template.displayName))
+                    {
+                        name = UITextExtractor.CleanText(
+                            Language.Localize(follower.template.displayName, false, false, string.Empty));
+                    }
+                    if (follower.mobState == Mob.MobState.UNCONSCIOUS)
+                        name += ", unconscious";
+
+                    lastScanResults.Add(new ScanResult
+                    {
+                        Name = name,
+                        Category = "Party",
+                        Distance = distance,
+                        Direction = DirectionHelper.GetDirectionDescription(origin, follower.transform.position),
+                        Position = follower.transform.position,
+                        Source = follower
+                    });
                 }
             }
         }
