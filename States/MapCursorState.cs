@@ -50,6 +50,9 @@ namespace Wasteland2AccessibilityMod.States
         // Callback fired when the user picks a PC from a multi-PC selection menu
         // (e.g. choosing which stacked party member to heal with fieldMedic)
         private System.Action<PC> pendingPCSelectionCallback = null;
+        // Targets stored when a tile has multiple valid free-aim targets (stacked enemies, etc.)
+        private List<Targetable> contextMenuTargetables = new List<Targetable>();
+        private System.Action<Targetable> pendingTargetableSelectionCallback = null;
 
         // Layer masks for floor detection raycasting
         private static int floorLayerMask = -1;
@@ -1456,6 +1459,22 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
 
+                // Targetable picker for free-aim attacks against stacked targets
+                if (option.ASIName != null && option.ASIName.StartsWith("targetselect_"))
+                {
+                    int targetIndex;
+                    if (int.TryParse(option.ASIName.Substring(13), out targetIndex)
+                        && targetIndex >= 0 && targetIndex < contextMenuTargetables.Count)
+                    {
+                        Targetable t = contextMenuTargetables[targetIndex];
+                        var callback = pendingTargetableSelectionCallback;
+                        CloseContextMenu();
+                        if (callback != null) callback(t);
+                        SuppressInput();
+                        return true;
+                    }
+                }
+
                 // If this was a multi-object selection menu, drill into that object
                 if (option.ASIName != null && option.ASIName.StartsWith("select_"))
                 {
@@ -1502,6 +1521,8 @@ namespace Wasteland2AccessibilityMod.States
             contextMenuTarget = null;
             contextMenuPCs.Clear();
             pendingPCSelectionCallback = null;
+            contextMenuTargetables.Clear();
+            pendingTargetableSelectionCallback = null;
         }
 
         private void OpenPCSelectionMenu(List<PC> pcs, string header, System.Action<PC> callback)
@@ -1527,6 +1548,32 @@ namespace Wasteland2AccessibilityMod.States
             string announcement = header + ". " + contextMenuOptions[0].DisplayName + ". " + pcs.Count + " party members";
             ScreenReaderManager.SpeakInterrupt(announcement);
             MelonLogger.Msg($"[MapCursorState] PC selection menu: {header} ({pcs.Count} PCs)");
+        }
+
+        private void OpenTargetableSelectionMenu(List<Targetable> targets, List<string> names,
+            string header, System.Action<Targetable> callback)
+        {
+            contextMenuOptions.Clear();
+            contextMenuTargetables.Clear();
+            contextMenuTargetables.AddRange(targets);
+
+            for (int i = 0; i < targets.Count; i++)
+            {
+                contextMenuOptions.Add(new ContextMenuOption
+                {
+                    DisplayName = names[i],
+                    ASIName = "targetselect_" + i
+                });
+            }
+
+            pendingTargetableSelectionCallback = callback;
+            contextMenuTarget = null;
+            contextMenuActive = true;
+            contextMenuIndex = 0;
+
+            string announcement = header + ". " + contextMenuOptions[0].DisplayName + ". " + targets.Count + " targets";
+            ScreenReaderManager.SpeakInterrupt(announcement);
+            MelonLogger.Msg($"[MapCursorState] Target selection menu: {header} ({targets.Count} targets)");
         }
 
         private void ExecuteInteraction(InteractableNexus target, string asiName)
@@ -2499,39 +2546,81 @@ namespace Wasteland2AccessibilityMod.States
         {
             try
             {
-                // First look for a mob target (NPCs, enemies)
-                Targetable target = null;
-                string targetName = null;
-
-                var mobs = FindMobsOnTile();
-                foreach (var mob in mobs)
+                // Collect every valid mob target on the tile (NPCs, enemies, animals)
+                var mobTargets = new List<Targetable>();
+                var mobNames = new List<string>();
+                foreach (var mob in FindMobsOnTile())
                 {
                     if (mob is PC) continue;
                     if (mob.mobState == Mob.MobState.DEAD) continue;
-                    target = mob;
-                    targetName = GetMobName(mob);
-                    break;
+                    mobTargets.Add(mob);
+                    mobNames.Add(GetMobName(mob) ?? "Unknown");
                 }
 
-                // If no mob, look for targetable objects (plants, destructibles, etc.)
-                if (target == null)
+                // If there are mobs, prefer them over destructibles (matches prior behavior)
+                if (mobTargets.Count >= 2)
                 {
-                    var interactables = FindInteractablesOnTile();
-                    foreach (var nexus in interactables)
-                    {
-                        if (nexus == null || nexus.gameObject == null) continue;
-                        var targetObj = nexus.gameObject.GetComponent<TargetableObject>();
-                        if (targetObj == null) continue;
-                        if (targetObj.curHP <= 0) continue;
-                        target = targetObj;
-                        targetName = nexus.gameObject.name;
-                        break;
-                    }
+                    OpenTargetableSelectionMenu(mobTargets, mobNames, "Choose target",
+                        (chosen) => PerformFreeAimAttack(chosen, ResolveTargetableName(chosen)));
+                    return;
+                }
+                if (mobTargets.Count == 1)
+                {
+                    PerformFreeAimAttack(mobTargets[0], mobNames[0]);
+                    return;
                 }
 
+                // No mobs — fall back to destructible objects (barrels, plants, etc.)
+                var objTargets = new List<Targetable>();
+                var objNames = new List<string>();
+                foreach (var nexus in FindInteractablesOnTile())
+                {
+                    if (nexus == null || nexus.gameObject == null) continue;
+                    var targetObj = nexus.gameObject.GetComponent<TargetableObject>();
+                    if (targetObj == null) continue;
+                    if (targetObj.curHP <= 0) continue;
+                    objTargets.Add(targetObj);
+                    string n = GetInteractableName(nexus);
+                    if (string.IsNullOrEmpty(n)) n = nexus.gameObject.name;
+                    objNames.Add(n);
+                }
+
+                if (objTargets.Count >= 2)
+                {
+                    OpenTargetableSelectionMenu(objTargets, objNames, "Choose target",
+                        (chosen) => PerformFreeAimAttack(chosen, ResolveTargetableName(chosen)));
+                    return;
+                }
+                if (objTargets.Count == 1)
+                {
+                    PerformFreeAimAttack(objTargets[0], objNames[0]);
+                    return;
+                }
+
+                ScreenReaderManager.SpeakInterrupt("No target on this tile");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error("[MapCursorState] Error in AttackMobOnTile: " + ex.Message);
+                ScreenReaderManager.SpeakInterrupt("Attack failed");
+            }
+        }
+
+        private string ResolveTargetableName(Targetable target)
+        {
+            var mob = target as Mob;
+            if (mob != null) return GetMobName(mob) ?? "Unknown";
+            if (target != null && target.gameObject != null) return target.gameObject.name;
+            return "target";
+        }
+
+        private void PerformFreeAimAttack(Targetable target, string targetName)
+        {
+            try
+            {
                 if (target == null)
                 {
-                    ScreenReaderManager.SpeakInterrupt("No target on this tile");
+                    ScreenReaderManager.SpeakInterrupt("No target");
                     return;
                 }
 
@@ -2687,7 +2776,7 @@ namespace Wasteland2AccessibilityMod.States
             }
             catch (Exception ex)
             {
-                MelonLogger.Error("[MapCursorState] Error in AttackMobOnTile: " + ex.Message);
+                MelonLogger.Error("[MapCursorState] Error in PerformFreeAimAttack: " + ex.Message);
                 ScreenReaderManager.SpeakInterrupt("Attack failed");
             }
         }
