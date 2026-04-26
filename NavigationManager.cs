@@ -632,7 +632,9 @@ namespace Wasteland2AccessibilityMod
                 Mob mob = nexus.drama.GetMob();
                 if (mob != null && mob.template != null && !string.IsNullOrEmpty(mob.template.displayName))
                 {
-                    return mob.template.displayName;
+                    string mobName = mob.template.displayName;
+                    if (mob.isDead) mobName += ", dead";
+                    return mobName;
                 }
             }
 

@@ -1048,8 +1048,17 @@ namespace Wasteland2AccessibilityMod.States
                 var mob = interactable.drama.GetMob();
                 if (mob != null)
                 {
-                    // Skip mobs — already covered by FindMobsOnTile
-                    if (mob is PC || mob is NPC) return null;
+                    // Dead bodies are lootable via the nexus path. Live mobs come
+                    // through FindMobsOnTile, so skip them here to avoid duplication.
+                    if (mob is PC || mob is NPC)
+                    {
+                        if (mob.isDead)
+                        {
+                            string deadName = GetMobName(mob) ?? "corpse";
+                            return deadName + ", dead";
+                        }
+                        return null;
+                    }
                 }
 
                 string dramaName = interactable.drama.name;
