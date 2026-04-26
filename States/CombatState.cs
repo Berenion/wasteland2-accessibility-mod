@@ -1282,6 +1282,30 @@ namespace Wasteland2AccessibilityMod.States
                 catch { }
             }
 
+            // Unconscious party members are removed from cm.mobs by PC.KnockOut, so
+            // we have to pull them from Game.party to keep them tile-discoverable.
+            if (MonoBehaviourSingleton<Game>.HasInstance())
+            {
+                var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+                if (party != null)
+                {
+                    foreach (var pc in party)
+                    {
+                        if (pc == null || pc.gameObject == null) continue;
+                        if (pc.mobState != Mob.MobState.UNCONSCIOUS) continue;
+                        if (onTile.Contains(pc)) continue;
+                        if (!pc.gameObject.activeInHierarchy) continue;
+
+                        try
+                        {
+                            if (IsOnCurrentTile(pc.transform.position))
+                                onTile.Add(pc);
+                        }
+                        catch { }
+                    }
+                }
+            }
+
             return onTile;
         }
 
@@ -1327,6 +1351,25 @@ namespace Wasteland2AccessibilityMod.States
                 if (combatantCategory == 2 && !isAlly) continue;  // Allies only
 
                 combatantList.Add(mob);
+            }
+
+            // Unconscious party members are removed from cm.mobs by PC.KnockOut.
+            // Re-add them so they're cycle-reachable for revival.
+            if (MonoBehaviourSingleton<Game>.HasInstance() && combatantCategory != 1)
+            {
+                var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+                if (party != null)
+                {
+                    foreach (var pc in party)
+                    {
+                        if (pc == null || pc.gameObject == null) continue;
+                        if (pc.mobState != Mob.MobState.UNCONSCIOUS) continue;
+                        if (!pc.gameObject.activeInHierarchy) continue;
+                        if (combatantList.Contains(pc)) continue;
+
+                        combatantList.Add(pc);
+                    }
+                }
             }
 
             // Sort by distance from origin
