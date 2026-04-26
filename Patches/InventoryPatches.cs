@@ -1280,6 +1280,10 @@ namespace Wasteland2AccessibilityMod.Patches
         public static void Postfix(GameObject go)
         {
             if (InventoryState.IsManagedNavigation) return;
+            // Suppress when an InputRouter state is active (e.g. GenericMenuState handling
+            // ModItemMenu's weapon-selection grid) — that state announces focused items itself
+            // with richer owner/equipment context, and we don't want a double-announce.
+            if (InputRouter.IsAnyStateActive()) return;
             if (go == null) return;
 
             // Check if the selected object is an inventory item

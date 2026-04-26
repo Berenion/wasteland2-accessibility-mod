@@ -1156,6 +1156,19 @@ namespace Wasteland2AccessibilityMod.States
                 return result;
             }
 
+            // Check for INV_DragDropItem (e.g. weapons in ModItemMenu).
+            // The default UILabel-based path only reads the item name and a quantity/grid label,
+            // which leaves duplicate-named weapons indistinguishable. Override with owner +
+            // equipped/backpack info so the user can tell two M40s apart.
+            INV_DragDropItem dragDrop = element.GetComponent<INV_DragDropItem>();
+            if (dragDrop == null) dragDrop = element.GetComponentInParent<INV_DragDropItem>();
+            if (dragDrop != null)
+            {
+                string built = BuildDragDropItemAnnouncement(dragDrop);
+                if (!string.IsNullOrEmpty(built))
+                    return built;
+            }
+
             // Check for SaveGameListEntry - announce name, location, and time
             SaveGameListEntry saveEntry = element.GetComponent<SaveGameListEntry>();
             if (saveEntry == null) saveEntry = element.GetComponentInParent<SaveGameListEntry>();
@@ -1292,6 +1305,50 @@ namespace Wasteland2AccessibilityMod.States
                 announcement += $", {controlType}";
 
             return announcement;
+        }
+
+        /// <summary>
+        /// Builds a richer announcement for an INV_DragDropItem (used by ModItemMenu's weapon
+        /// list during weapon-mod attachment): "{item name}, equipped by {PC}" or
+        /// "{item name}, in {PC}'s backpack". ModItemMenu.PopulateData calls
+        /// INV_DragDropItem.PopulateData without an EquipmentSlot, so dragDrop.slot is always
+        /// None here — equipped state has to be inferred by reference-comparing against the
+        /// owner PC's WeaponR/WeaponL equipment slots.
+        /// </summary>
+        private string BuildDragDropItemAnnouncement(INV_DragDropItem dragDrop)
+        {
+            ItemInstance item = dragDrop.GetItem();
+            if (item == null || item.template == null) return null;
+
+            string itemName = UITextExtractor.CleanText(
+                Language.Localize(item.template.displayName, false, false, string.Empty));
+
+            PC owner = dragDrop.ownerPC;
+            string ownerName = "";
+            if (owner != null && owner.pcTemplate != null)
+            {
+                ownerName = UITextExtractor.CleanText(
+                    Language.Localize(owner.pcTemplate.displayName, false, false, string.Empty));
+            }
+
+            bool isEquipped = false;
+            if (owner != null && owner.inventory != null && owner.inventory.equipment != null)
+            {
+                var equipment = owner.inventory.equipment;
+                if (equipment[(int)EquipmentSlot.WeaponR] == item
+                    || equipment[(int)EquipmentSlot.WeaponL] == item)
+                {
+                    isEquipped = true;
+                }
+            }
+
+            string location;
+            if (isEquipped)
+                location = !string.IsNullOrEmpty(ownerName) ? $"equipped by {ownerName}" : "equipped";
+            else
+                location = !string.IsNullOrEmpty(ownerName) ? $"in {ownerName}'s backpack" : "in backpack";
+
+            return $"{itemName}, {location}";
         }
 
         // ========== Activation ==========
