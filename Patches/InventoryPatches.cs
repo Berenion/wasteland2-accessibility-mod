@@ -1213,12 +1213,16 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             if (InventoryState.IsManagedNavigation) return;
 
-            // Skip when the grid belongs to a PopupInventoryMenu (loot) or CharacterInfoMenu —
+            // Skip when a PopupInventoryMenu (loot) or CharacterInfoMenu is in the scene —
             // InventoryState handles those, but its IsManagedNavigation flag flips on a frame
-            // *after* the popup's first PopulateData. Without this guard the user hears
-            // "0 items visible" / "N items visible" before the managed loot announcement.
-            if (__instance.GetComponentInParent<PopupInventoryMenu>() != null) return;
-            if (__instance.GetComponentInParent<CharacterInfoMenu>() != null) return;
+            // *after* the popup's first Reposition. We use FindObjectOfType instead of
+            // GetComponentInParent because during popup instantiation the grid's parent
+            // chain isn't reliably walkable yet (parent activeInHierarchy timing), so the
+            // transform-based guard misses and the user hears "0 items visible" /
+            // "N items visible" before the managed loot announcement.
+            if (UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>() != null) return;
+            var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+            if (charInfoMenu != null && charInfoMenu.gameObject.activeInHierarchy) return;
 
             // Count items in the grid
             Transform transform = __instance.transform;

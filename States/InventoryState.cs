@@ -49,6 +49,7 @@ namespace Wasteland2AccessibilityMod.States
         private bool hasSuspendedState = false;
         private bool suspendedWasCharacterInfo = false;
         private bool suspendedWasPopupInventory = false;
+        private int suspendedPopupInstanceId = 0;
 
         // Item info browser mode
         private bool isInfoBrowsing = false;
@@ -201,6 +202,20 @@ namespace Wasteland2AccessibilityMod.States
                 MelonLogger.Msg($"[InventoryState] Context changed (charInfo: {suspendedWasCharacterInfo}->{isCharacterInfoMenu}, popup: {suspendedWasPopupInventory}->{isPopupInventoryMenu}), discarding suspended state");
                 hasSuspendedState = false;
             }
+            // A different PopupInventoryMenu instance means the user opened a new loot
+            // container (not a context-menu return). The new popup's grid hasn't populated
+            // yet, so restoring would announce "Container is empty" before items appear.
+            // Discard so the fresh-open path runs and HandleInput's late-grid-population
+            // retry announces the first item once it's available.
+            if (hasSuspendedState && suspendedWasPopupInventory && isPopupInventoryMenu)
+            {
+                int currentPopupId = GetPopupInstanceId();
+                if (suspendedPopupInstanceId != 0 && currentPopupId != 0 && currentPopupId != suspendedPopupInstanceId)
+                {
+                    MelonLogger.Msg($"[InventoryState] New popup instance (suspended={suspendedPopupInstanceId}, current={currentPopupId}), discarding suspended state");
+                    hasSuspendedState = false;
+                }
+            }
 
             if (hasSuspendedState)
             {
@@ -257,6 +272,7 @@ namespace Wasteland2AccessibilityMod.States
             hasSuspendedState = true;
             suspendedWasCharacterInfo = isCharacterInfoMenu;
             suspendedWasPopupInventory = isPopupInventoryMenu;
+            suspendedPopupInstanceId = trackedPopupInstanceId;
 
             IsManagedNavigation = false;
             lastAnnouncedText = null;
