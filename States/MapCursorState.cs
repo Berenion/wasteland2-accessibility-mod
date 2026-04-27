@@ -959,6 +959,19 @@ namespace Wasteland2AccessibilityMod.States
             return onTile;
         }
 
+        // True when the mob has an InteractableNexus that's still perception-gated
+        // (e.g. Dr. Larsen masquerading as a corpse — only revealed once the
+        // party's perception roll passes). FOWHelper.IsPerceptionGated returns
+        // false for nexuses without a perception challenge, so this is a no-op
+        // for ordinary enemies/NPCs.
+        private static bool IsMobPerceptionGated(Mob mob)
+        {
+            if (mob == null || mob.gameObject == null) return false;
+            var nexus = mob.GetComponent<InteractableNexus>();
+            if (nexus == null) return false;
+            return FOWHelper.IsPerceptionGated(nexus);
+        }
+
         private List<Mob> FindMobsOnTile()
         {
             List<Mob> onTile = new List<Mob>();
@@ -975,6 +988,7 @@ namespace Wasteland2AccessibilityMod.States
                         if (!npc.gameObject.activeInHierarchy) continue;
                         if (npc.mobState == Mob.MobState.DEAD) continue;
                         if (npc.isHidden) continue;
+                        if (IsMobPerceptionGated(npc)) continue;
                         if (!FOWHelper.IsVisibleThroughFOW(npc.transform.position)) continue;
 
                         if (IsOnCurrentTile(npc.transform.position))
@@ -992,6 +1006,7 @@ namespace Wasteland2AccessibilityMod.States
                         if (follower == null || follower.gameObject == null) continue;
                         if (!follower.gameObject.activeInHierarchy) continue;
                         if (follower.isHidden) continue;
+                        if (IsMobPerceptionGated(follower)) continue;
                         if (!FOWHelper.IsVisibleThroughFOW(follower.transform.position)) continue;
 
                         if (IsOnCurrentTile(follower.transform.position))
@@ -1129,10 +1144,13 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
 
-                // Fallback for no-Drama examine objects
+                // Fallback for no-Drama examine objects: difficulty None (no
+                // perception roll) or already-perceived (e.g. corpses whose
+                // VeryEasy perception challenge has fired).
                 if (nexus.skobExamine != null && !nexus.skobExamine.hidden &&
                     nexus.drama == null &&
-                    nexus.skobExamine.difficulty == SkillLevelCategory.None)
+                    (nexus.skobExamine.difficulty == SkillLevelCategory.None ||
+                     nexus.skobExamine.perceived))
                 {
                     string name = GetInteractableName(nexus) ?? "Object";
                     MelonLogger.Msg($"[MapCursorState] Examining (description): {name}");
@@ -1365,10 +1383,16 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            // For examine-only objects without Drama (difficulty None),
-            // add an Examine option that uses CheckExamineDrama directly
+            // For examine-only objects without Drama, add an Examine option
+            // that uses CheckExamineDrama directly. Covers both:
+            //   - difficulty == None: trivially examinable (no perception roll)
+            //   - perceived: skob already passed its perception challenge
+            //     (e.g. corpses with VeryEasy perception once spotted), so the
+            //     game's ExamineDescriptionObject path will produce a description.
             if (contextMenuOptions.Count == 0 && target.skobExamine != null &&
-                target.skobExamine.difficulty == SkillLevelCategory.None)
+                !target.skobExamine.hidden &&
+                (target.skobExamine.difficulty == SkillLevelCategory.None ||
+                 target.skobExamine.perceived))
             {
                 contextMenuOptions.Add(new ContextMenuOption
                 {
@@ -1379,7 +1403,12 @@ namespace Wasteland2AccessibilityMod.States
 
             if (contextMenuOptions.Count == 0)
             {
-                // No actions available — just try default interact
+                // No actions available — just try default interact.
+                // Reset menu state first so a callee that opens its own menu wins,
+                // and a callee that doesn't leaves us closed (avoids a zombie
+                // contextMenuActive=true with empty options, which crashes
+                // HandleContextMenuInput on the next arrow/Enter press).
+                contextMenuActive = false;
                 ExecuteInteraction(target, null);
                 return;
             }
@@ -1389,6 +1418,8 @@ namespace Wasteland2AccessibilityMod.States
                 // Only one action — execute immediately
                 var option = contextMenuOptions[0];
                 MelonLogger.Msg($"[MapCursorState] Single action for {targetName}: {option.DisplayName}");
+                contextMenuActive = false;
+                contextMenuOptions.Clear();
                 ExecuteInteraction(target, option.ASIName);
                 return;
             }
@@ -1405,6 +1436,16 @@ namespace Wasteland2AccessibilityMod.States
 
         private bool HandleContextMenuInput()
         {
+            // Defensive: if the option list is empty, the menu got into a stale
+            // active state (e.g. a sub-menu drilled into a target that produced
+            // no options). Close cleanly instead of dividing by zero / indexing
+            // out of range below.
+            if (contextMenuOptions.Count == 0)
+            {
+                CloseContextMenu();
+                return false;
+            }
+
             // Up/Down to cycle options
             if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
             {
@@ -1624,8 +1665,9 @@ namespace Wasteland2AccessibilityMod.States
                     ScreenReaderManager.SpeakInterrupt("Examining " + name);
                     Drama.ExamineDrama(target.drama, pc, dontExecute: false);
                 }
-                else if (target.skobExamine != null &&
-                    target.skobExamine.difficulty == SkillLevelCategory.None)
+                else if (target.skobExamine != null && !target.skobExamine.hidden &&
+                    (target.skobExamine.difficulty == SkillLevelCategory.None ||
+                     target.skobExamine.perceived))
                 {
                     MelonLogger.Msg($"[MapCursorState] Examining (description): {name}");
                     ScreenReaderManager.SpeakInterrupt("Examining " + name);
