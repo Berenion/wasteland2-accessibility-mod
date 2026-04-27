@@ -137,6 +137,12 @@ namespace Wasteland2AccessibilityMod
         {
             if (string.IsNullOrEmpty(text)) return text;
 
+            // Strip internal zone-marker prefixes (AZ_, AZ1_, CA_, CA3_, LA_, ...) that
+            // leak through when an object has no displayName and falls back to its
+            // GameObject name. Anchored to start and requires trailing underscore so it
+            // never touches mid-sentence text.
+            text = Regex.Replace(text, @"^(AZ|CA|LA)\d?_", "");
+
             // Remove NGUI color/formatting codes like [FFFFFF], [-], [b], [/b], etc.
             text = Regex.Replace(text, @"\[/?[\w-]*\]", "");
 

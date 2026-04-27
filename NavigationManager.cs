@@ -655,6 +655,9 @@ namespace Wasteland2AccessibilityMod
 
             // Remove common suffixes/prefixes
             name = name.Replace("(Clone)", "");
+            // Strip internal zone-marker prefix (AZ_, AZ1_, CA_, LA_, ...) before
+            // converting underscores to spaces.
+            name = System.Text.RegularExpressions.Regex.Replace(name, @"^(AZ|CA|LA)\d?_", "");
             name = System.Text.RegularExpressions.Regex.Replace(name, @"_\d+$", "");
             name = name.Replace("_", " ");
 
