@@ -932,6 +932,91 @@ namespace Wasteland2AccessibilityMod.States
                 || name.IndexOf("Gate", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        // Names that look door-ish but are actually destructible obstacles
+        // (e.g. AZ1_VineDoorBlocker). Open/closed is meaningless for these —
+        // we only care about whether they're destroyed.
+        private static bool NameLooksLikeBlocker(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            return name.IndexOf("Blocker", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Obstacle", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("Vine", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool LooksLikeOpenableDoor(InteractableNexus nexus, InteractableObject io)
+        {
+            if (nexus == null) return false;
+
+            // Real Unity door components — definitive
+            if (nexus.GetComponentInChildren<Door>() != null) return true;
+            if (nexus.GetComponentInChildren<DoorClass>() != null) return true;
+            if (nexus.GetComponentInChildren<Door_Slide>() != null) return true;
+            if (nexus.GetComponentInChildren<Door_Swing>() != null) return true;
+
+            // Name-based fallback for Simple_*_Door style InteractableObjects
+            if (io is InteractableObject_WeakObstacle) return false;
+            if (io is InteractableObject_WeakObstacle_Dynamic) return false;
+            if (NameLooksLikeBlocker(nexus.gameObject.name)) return false;
+
+            return IsDoor(nexus);
+        }
+
+        private static bool ResolveDoorOpen(InteractableNexus nexus, InteractableObject io)
+        {
+            var door = nexus.GetComponentInChildren<Door>();
+            if (door != null) return door.IsOpen();
+
+            var dc = nexus.GetComponentInChildren<DoorClass>();
+            if (dc != null) return dc.IsOpen();
+
+            var slide = nexus.GetComponentInChildren<Door_Slide>();
+            if (slide != null) return slide.isActive;
+
+            var swing = nexus.GetComponentInChildren<Door_Swing>();
+            if (swing != null) return swing.isActive;
+
+            return io != null && io.isActive;
+        }
+
+        // Returns a comma-separated state suffix (without leading comma) such as
+        // "open", "closed", "closed, locked", "destroyed", "exploded" — or null
+        // when there's no relevant state to announce. "locked" is only included
+        // when the lock has been revealed via examine/perception.
+        private static string GetInteractableState(InteractableNexus nexus)
+        {
+            if (nexus == null) return null;
+
+            var io = nexus.GetComponent<InteractableObject>();
+            if (io == null) io = nexus.drama as InteractableObject;
+
+            bool isDoor = LooksLikeOpenableDoor(nexus, io);
+
+            // Destroyed states win over open/closed — once a door is blown apart
+            // there's no meaningful "open" state, you just walk through.
+            if (io != null)
+            {
+                if (io.isExploded) return isDoor ? "destroyed" : "exploded";
+                if (io.isBroken) return "destroyed";
+            }
+
+            var parts = new List<string>(2);
+
+            if (isDoor)
+                parts.Add(ResolveDoorOpen(nexus, io) ? "open" : "closed");
+
+            if (io != null && io.isLocked && io.isPerceived)
+                parts.Add("locked");
+
+            if (parts.Count == 0) return null;
+            return string.Join(", ", parts.ToArray());
+        }
+
+        private static string AppendState(string baseName, InteractableNexus nexus)
+        {
+            string state = GetInteractableState(nexus);
+            return string.IsNullOrEmpty(state) ? baseName : baseName + ", " + state;
+        }
+
         private List<InteractableNexus> FindInteractablesOnTile()
         {
             List<InteractableNexus> onTile = new List<InteractableNexus>();
@@ -1082,7 +1167,7 @@ namespace Wasteland2AccessibilityMod.States
                 string dramaName = interactable.drama.name;
                 if (!string.IsNullOrEmpty(dramaName))
                 {
-                    return UITextExtractor.CleanText(dramaName);
+                    return AppendState(UITextExtractor.CleanText(dramaName), interactable);
                 }
             }
 
@@ -1096,7 +1181,7 @@ namespace Wasteland2AccessibilityMod.States
             // Try SkillObject_Examine
             if (interactable.skobExamine != null)
             {
-                return "Examinable object";
+                return AppendState("Examinable object", interactable);
             }
 
             // Fallback to GameObject name
@@ -1104,10 +1189,10 @@ namespace Wasteland2AccessibilityMod.States
             if (!string.IsNullOrEmpty(goName))
             {
                 goName = goName.Replace("_", " ").Replace("(Clone)", "").Trim();
-                return goName;
+                return AppendState(goName, interactable);
             }
 
-            return "Object";
+            return AppendState("Object", interactable);
         }
 
         // --- Examine ---
