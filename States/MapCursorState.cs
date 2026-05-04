@@ -32,6 +32,15 @@ namespace Wasteland2AccessibilityMod.States
         private const float MOVE_REPEAT_DELAY = 0.25f;
         private float lastMoveTime = 0f;
 
+        // Step size: how many tiles each arrow press moves.
+        // Adjusted with Shift+Left/Right. Ctrl+Arrow ignores this and moves until blocked.
+        private int stepSize = 1;
+        private const int MIN_STEP_SIZE = 1;
+        private const int MAX_STEP_SIZE = 30;
+        private const int UNTIL_WALL_MAX_TILES = 100;
+        private float lastStepChangeTime = 0f;
+        private const float STEP_CHANGE_REPEAT_DELAY = 0.1f;
+
         // Grid settings
         private const float GRID_SQUARE_SIZE = 1.6f;
         // Half-diagonal of a grid square — objects within this distance of
@@ -256,33 +265,75 @@ namespace Wasteland2AccessibilityMod.States
             // Use unscaledTime so cursor movement works during tactical pause (timeScale=0)
             float currentTime = Time.unscaledTime;
             bool canMove = (currentTime - lastMoveTime) >= MOVE_REPEAT_DELAY;
+            bool shiftHeldForArrows = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            bool ctrlHeldForArrows = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
 
-            if (canMove)
+            // Shift+Left/Right: adjust step size (must come before plain arrow handling)
+            if (shiftHeldForArrows && !ctrlHeldForArrows)
             {
+                bool canChangeStep = (currentTime - lastStepChangeTime) >= STEP_CHANGE_REPEAT_DELAY;
+                if (canChangeStep)
+                {
+                    if (Input.GetKey(KeyCode.RightArrow))
+                    {
+                        if (stepSize < MAX_STEP_SIZE)
+                        {
+                            stepSize++;
+                            lastStepChangeTime = currentTime;
+                            ScreenReaderManager.SpeakInterrupt("Step size " + stepSize);
+                        }
+                        SuppressInput();
+                        return true;
+                    }
+                    if (Input.GetKey(KeyCode.LeftArrow))
+                    {
+                        if (stepSize > MIN_STEP_SIZE)
+                        {
+                            stepSize--;
+                            lastStepChangeTime = currentTime;
+                            ScreenReaderManager.SpeakInterrupt("Step size " + stepSize);
+                        }
+                        SuppressInput();
+                        return true;
+                    }
+                }
+                // Consume Shift+Left/Right even during repeat delay
+                if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.RightArrow))
+                {
+                    SuppressInput();
+                    return true;
+                }
+            }
+
+            if (canMove && !shiftHeldForArrows)
+            {
+                // Ctrl+Arrow moves until blocked; plain arrow moves stepSize tiles.
+                int tiles = ctrlHeldForArrows ? UNTIL_WALL_MAX_TILES : stepSize;
+
                 if (Input.GetKey(KeyCode.UpArrow))
                 {
-                    MoveInDirection(0); // North
+                    MoveInDirection(0, tiles); // North
                     lastMoveTime = currentTime;
                     SuppressInput();
                     return true;
                 }
                 if (Input.GetKey(KeyCode.RightArrow))
                 {
-                    MoveInDirection(1); // East
+                    MoveInDirection(1, tiles); // East
                     lastMoveTime = currentTime;
                     SuppressInput();
                     return true;
                 }
                 if (Input.GetKey(KeyCode.DownArrow))
                 {
-                    MoveInDirection(2); // South
+                    MoveInDirection(2, tiles); // South
                     lastMoveTime = currentTime;
                     SuppressInput();
                     return true;
                 }
                 if (Input.GetKey(KeyCode.LeftArrow))
                 {
-                    MoveInDirection(3); // West
+                    MoveInDirection(3, tiles); // West
                     lastMoveTime = currentTime;
                     SuppressInput();
                     return true;
@@ -614,32 +665,84 @@ namespace Wasteland2AccessibilityMod.States
 
         // --- Movement ---
 
-        private void MoveInDirection(int directionIndex)
+        private void MoveInDirection(int directionIndex, int tilesToMove)
         {
             Vector3 direction = CARDINAL_DIRECTIONS[directionIndex];
 
-            // Always move one grid step in the direction
-            cursorGridId = new Vector3(
-                cursorGridId.x + direction.x,
-                cursorGridId.y,
-                cursorGridId.z + direction.z);
-
-            // Update world position — use node position if one exists, otherwise compute
-            CombatAStarNode node = GetNodeAtGridId(cursorGridId);
-            if (node != null)
+            // Single-step preserves the original free off-grid behavior so the
+            // user can still inspect tiles outside the walkable grid.
+            if (tilesToMove <= 1)
             {
-                cursorPosition = node.position;
-            }
-            else
-            {
-                cursorPosition = new Vector3(
-                    cursorGridId.x * GRID_SQUARE_SIZE,
-                    cursorPosition.y,
-                    cursorGridId.z * GRID_SQUARE_SIZE);
+                cursorGridId = new Vector3(
+                    cursorGridId.x + direction.x,
+                    cursorGridId.y,
+                    cursorGridId.z + direction.z);
+
+                CombatAStarNode node = GetNodeAtGridId(cursorGridId);
+                if (node != null)
+                {
+                    cursorPosition = node.position;
+                }
+                else
+                {
+                    cursorPosition = new Vector3(
+                        cursorGridId.x * GRID_SQUARE_SIZE,
+                        cursorPosition.y,
+                        cursorGridId.z * GRID_SQUARE_SIZE);
+                }
+
+                if (cameraFollowsCursor) SnapCameraToCursor();
+                AnnounceCurrentTile(detailed: false);
+                return;
             }
 
+            // Multi-tile move: walk tile-by-tile and stop at the first non-walkable
+            // tile so the cursor doesn't fly through walls.
+            Vector3 currentGridId = cursorGridId;
+            Vector3 currentPosition = cursorPosition;
+            int actualSteps = 0;
+            string blockReason = null;
+
+            for (int i = 0; i < tilesToMove; i++)
+            {
+                Vector3 newGridId = new Vector3(
+                    currentGridId.x + direction.x,
+                    currentGridId.y,
+                    currentGridId.z + direction.z);
+
+                CombatAStarNode node = GetNodeAtGridId(newGridId);
+                if (node != null)
+                {
+                    currentGridId = node.id;
+                    currentPosition = node.position;
+                    actualSteps++;
+                    continue;
+                }
+
+                Vector3 blockedWorldPos = new Vector3(
+                    newGridId.x * GRID_SQUARE_SIZE,
+                    currentPosition.y,
+                    newGridId.z * GRID_SQUARE_SIZE);
+                blockReason = IdentifyObstruction(blockedWorldPos);
+                if (string.IsNullOrEmpty(blockReason))
+                    blockReason = "edge of map";
+                break;
+            }
+
+            if (actualSteps == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt(blockReason ?? "Blocked");
+                return;
+            }
+
+            cursorGridId = currentGridId;
+            cursorPosition = currentPosition;
             if (cameraFollowsCursor) SnapCameraToCursor();
-            AnnounceCurrentTile(detailed: false);
+
+            string prefix = actualSteps + (actualSteps == 1 ? " tile" : " tiles");
+            if (blockReason != null)
+                prefix += ", " + blockReason;
+            AnnounceCurrentTile(detailed: false, prefix: prefix);
         }
 
         /// <summary>
@@ -981,7 +1084,9 @@ namespace Wasteland2AccessibilityMod.States
         // Returns a comma-separated state suffix (without leading comma) such as
         // "open", "closed", "closed, locked", "destroyed", "exploded" — or null
         // when there's no relevant state to announce. "locked" is only included
-        // when the lock has been revealed via examine/perception.
+        // once the player has actually examined the object — `isPerceived` is
+        // true by default for objects with no perception challenge, so it would
+        // leak the lock state before the player investigates.
         private static string GetInteractableState(InteractableNexus nexus)
         {
             if (nexus == null) return null;
@@ -1004,11 +1109,22 @@ namespace Wasteland2AccessibilityMod.States
             if (isDoor)
                 parts.Add(ResolveDoorOpen(nexus, io) ? "open" : "closed");
 
-            if (io != null && io.isLocked && io.isPerceived)
+            if (io != null && io.isLocked && HasBeenExamined(nexus, io))
                 parts.Add("locked");
 
             if (parts.Count == 0) return null;
             return string.Join(", ", parts.ToArray());
+        }
+
+        // True once the player has triggered an examine on this object. Examine()
+        // only sets `examined = true` after a successful perception check (or
+        // immediately when difficulty is None *and* the examine action runs), so
+        // this gates lock-state announcements on the player having investigated.
+        private static bool HasBeenExamined(InteractableNexus nexus, InteractableObject io)
+        {
+            var skob = nexus != null ? nexus.skobExamine : null;
+            if (skob == null && io != null) skob = io.GetComponent<SkillObject_Examine>();
+            return skob != null && skob.examined;
         }
 
         private static string AppendState(string baseName, InteractableNexus nexus)

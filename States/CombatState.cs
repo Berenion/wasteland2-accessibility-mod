@@ -37,6 +37,15 @@ namespace Wasteland2AccessibilityMod.States
         private const float MOVE_REPEAT_DELAY = 0.25f;
         private float lastMoveTime = 0f;
 
+        // Step size: how many tiles each arrow press moves.
+        // Adjusted with Shift+Left/Right. Ctrl+Arrow ignores this and moves until blocked.
+        private int stepSize = 1;
+        private const int MIN_STEP_SIZE = 1;
+        private const int MAX_STEP_SIZE = 30;
+        private const int UNTIL_WALL_MAX_TILES = 100;
+        private float lastStepChangeTime = 0f;
+        private const float STEP_CHANGE_REPEAT_DELAY = 0.1f;
+
         // Grid settings (must match CombatAStar.squareSize)
         private const float GRID_SQUARE_SIZE = 1.6f;
         private const float TILE_MATCH_RADIUS = GRID_SQUARE_SIZE * 0.75f;
@@ -518,42 +527,82 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Arrow key movement
+            // --- Arrow key cursor movement with step size and Ctrl-extend ---
             float currentTime = Time.time;
+            bool shiftForArrows = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
             bool canMove = (currentTime - lastMoveTime) >= MOVE_REPEAT_DELAY;
 
-            if (canMove)
+            // Shift+Left/Right: adjust step size (must come before plain arrow handling)
+            if (shiftForArrows && !ctrl)
             {
+                bool canChangeStep = (currentTime - lastStepChangeTime) >= STEP_CHANGE_REPEAT_DELAY;
+                if (canChangeStep)
+                {
+                    if (Input.GetKey(KeyCode.RightArrow))
+                    {
+                        if (stepSize < MAX_STEP_SIZE)
+                        {
+                            stepSize++;
+                            lastStepChangeTime = currentTime;
+                            ScreenReaderManager.SpeakInterrupt("Step size " + stepSize);
+                        }
+                        SuppressInput();
+                        return true;
+                    }
+                    if (Input.GetKey(KeyCode.LeftArrow))
+                    {
+                        if (stepSize > MIN_STEP_SIZE)
+                        {
+                            stepSize--;
+                            lastStepChangeTime = currentTime;
+                            ScreenReaderManager.SpeakInterrupt("Step size " + stepSize);
+                        }
+                        SuppressInput();
+                        return true;
+                    }
+                }
+                // Consume Shift+Left/Right even during repeat delay
+                if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.RightArrow))
+                {
+                    SuppressInput();
+                    return true;
+                }
+            }
+
+            if (canMove && !shiftForArrows)
+            {
+                // Ctrl+Arrow moves until blocked; plain arrow moves stepSize tiles.
+                int tiles = ctrl ? UNTIL_WALL_MAX_TILES : stepSize;
+
                 if (Input.GetKey(KeyCode.UpArrow))
                 {
-                    MoveCursor(0);
+                    MoveCursor(0, tiles);
                     lastMoveTime = currentTime;
                     SuppressInput();
                     return true;
                 }
                 if (Input.GetKey(KeyCode.RightArrow))
                 {
-                    MoveCursor(1);
+                    MoveCursor(1, tiles);
                     lastMoveTime = currentTime;
                     SuppressInput();
                     return true;
                 }
                 if (Input.GetKey(KeyCode.DownArrow))
                 {
-                    MoveCursor(2);
+                    MoveCursor(2, tiles);
                     lastMoveTime = currentTime;
                     SuppressInput();
                     return true;
                 }
                 if (Input.GetKey(KeyCode.LeftArrow))
                 {
-                    MoveCursor(3);
+                    MoveCursor(3, tiles);
                     lastMoveTime = currentTime;
                     SuppressInput();
                     return true;
                 }
             }
-
             // Right bracket: move current actor to cursor position
             if (Input.GetKeyDown(KeyCode.RightBracket))
             {
@@ -816,43 +865,67 @@ namespace Wasteland2AccessibilityMod.States
 
         // --- Grid Navigation ---
 
-        private void MoveCursor(int directionIndex)
+        private void MoveCursor(int directionIndex, int tilesToMove)
         {
             Vector3 direction = CARDINAL_DIRECTIONS[directionIndex];
+            Vector3 currentGridId = cursorGridId;
+            Vector3 currentPosition = cursorPosition;
+            int actualSteps = 0;
+            string blockReason = null;
 
-            Vector3 newGridId = new Vector3(
-                cursorGridId.x + direction.x,
-                cursorGridId.y,
-                cursorGridId.z + direction.z);
-
-            CombatAStarNode node = GetNodeAtGridId(newGridId);
-            if (node != null)
+            for (int i = 0; i < tilesToMove; i++)
             {
-                cursorGridId = node.id;
-                cursorPosition = node.position;
-                if (cameraFollowsCursor) SnapCameraToCursor();
-                AnnounceTile(detailed: false);
+                Vector3 newGridId = new Vector3(
+                    currentGridId.x + direction.x,
+                    currentGridId.y,
+                    currentGridId.z + direction.z);
+
+                CombatAStarNode node = GetNodeAtGridId(newGridId);
+                if (node != null)
+                {
+                    currentGridId = node.id;
+                    currentPosition = node.position;
+                    actualSteps++;
+                    continue;
+                }
+
+                // No combat node — determine why
+                CombatAStarNode fullMapNode = GetNodeInFullMap(newGridId);
+                if (fullMapNode != null)
+                {
+                    blockReason = "edge of combat area";
+                }
+                else
+                {
+                    Vector3 blockedWorldPos = new Vector3(
+                        newGridId.x * GRID_SQUARE_SIZE,
+                        currentPosition.y,
+                        newGridId.z * GRID_SQUARE_SIZE);
+                    blockReason = IdentifyObstruction(blockedWorldPos);
+                }
+                break;
+            }
+
+            if (actualSteps == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt(blockReason ?? "Blocked");
                 return;
             }
 
-            // No combat node — determine why
-            // Check if the tile exists in fullMap (walkable outside combat bounds)
-            CombatAStarNode fullMapNode = GetNodeInFullMap(newGridId);
-            if (fullMapNode != null)
-            {
-                // Tile exists in the world but is outside the combat boundary
-                ScreenReaderManager.SpeakInterrupt("Edge of combat area");
-                return;
-            }
+            cursorGridId = currentGridId;
+            cursorPosition = currentPosition;
+            if (cameraFollowsCursor) SnapCameraToCursor();
 
-            // Not in fullMap either — there's an obstacle at this position
-            // Compute the world position and identify what's there
-            Vector3 blockedWorldPos = new Vector3(
-                newGridId.x * GRID_SQUARE_SIZE,
-                cursorPosition.y,
-                newGridId.z * GRID_SQUARE_SIZE);
-            string obstruction = IdentifyObstruction(blockedWorldPos);
-            ScreenReaderManager.SpeakInterrupt(obstruction);
+            // For multi-tile moves, prefix the announcement with the tile count
+            // and any blocking reason so the user knows the move stopped early.
+            string prefix = null;
+            if (tilesToMove > 1)
+            {
+                prefix = actualSteps + (actualSteps == 1 ? " tile" : " tiles");
+                if (blockReason != null)
+                    prefix += ", " + blockReason;
+            }
+            AnnounceTile(detailed: false, prefix: prefix);
         }
 
         private CombatAStarNode GetNodeAtGridId(Vector3 gridId)
