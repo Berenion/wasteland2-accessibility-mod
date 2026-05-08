@@ -15,9 +15,10 @@
 - `prompts/code-directory-construction.md`
 - `prompts/large-file-handling.md`
 - `prompts/input-handling.md` — no changes; assessed the existing `Core/InputRouter` + `IAccessibilityState` + `Core/InputSuppressor` architecture as already meeting the prompt's target state-priority-router pattern. User chose to skip optional cleanups (KeyRepeat helper, decoupling state flags from suppressor, disambiguating priority-50 states).
+- `prompts/string-builder.md` — confirmed the mod IS a string-builder mod (915 hits across 52 files; concentrated in the info-browser states and `InventoryFormatting.cs`). User chose to skip migration: existing `parts.Add() / string.Join(", ", ...)` pattern is uniform across the codebase, and migrating would risk wording regressions for announcements tuned over 149 commits. A `MessageBuilder` would mainly help new code; the win didn't justify the migration cost.
 
 ## Prompts pending
-- `prompts/string-builder.md` (next, per `input-handling.md`)
+- `prompts/low-level-cleanup.md` (next, per `string-builder.md`)
 
 ## Optional follow-ups noted but deferred
 - Extract a shared `KeyRepeat` helper for `Time.unscaledTime`-based debounce (each state currently rolls its own).
