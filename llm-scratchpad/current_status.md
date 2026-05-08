@@ -14,9 +14,15 @@
 - `prompts/information-gathering-and-checking.md`
 - `prompts/code-directory-construction.md`
 - `prompts/large-file-handling.md`
+- `prompts/input-handling.md` — no changes; assessed the existing `Core/InputRouter` + `IAccessibilityState` + `Core/InputSuppressor` architecture as already meeting the prompt's target state-priority-router pattern. User chose to skip optional cleanups (KeyRepeat helper, decoupling state flags from suppressor, disambiguating priority-50 states).
 
 ## Prompts pending
-- `prompts/input-handling.md` (next, per `large-file-handling.md`)
+- `prompts/string-builder.md` (next, per `input-handling.md`)
+
+## Optional follow-ups noted but deferred
+- Extract a shared `KeyRepeat` helper for `Time.unscaledTime`-based debounce (each state currently rolls its own).
+- Decouple state-internal static flags (`KeypadState.Active`, `GenericMenuState.blockUIInput`) from `Core/InputSuppressor` so Core stops importing States.
+- Spread the five priority-50 states (`CharacterInfoState`, `CharacterState`, `ConversationState`, `InventoryState`, `ShopState`) onto distinct values — `List<T>.Sort` isn't stable. They're mutually exclusive in practice via `IsActive`, but the equal-priority cluster is fragile.
 
 ## Splits performed under `large-file-handling.md`
 - **`Helpers/CharacterAnnouncementHelper.cs` (1394 → 4 partials)**: split a single static class into `CharacterAnnouncementHelper.cs` (core: reflection cache + per-control announcements + buff/cap helpers, ~436 lines), `.StatDescriptions.cs` (stat & trait description builders + description-panel previews, ~500 lines), `.Snapshots.cs` (derived stats + header / combat snapshots + character summary + XP, ~404 lines), and `.ValueAdjustment.cs` (~107 lines). All four use `static partial class CharacterAnnouncementHelper`; no caller changes required. Smoke-tested.
