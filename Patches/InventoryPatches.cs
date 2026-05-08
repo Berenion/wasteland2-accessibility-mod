@@ -959,7 +959,7 @@ namespace Wasteland2AccessibilityMod.Patches
             return Mathf.Max(1, Mathf.FloorToInt(price + 0.5f));
         }
 
-        private static string FormatStatModifier(string key, int value)
+        internal static string FormatStatModifier(string key, int value)
         {
             string displayName = GetStatDisplayName(key);
             string unit = "";

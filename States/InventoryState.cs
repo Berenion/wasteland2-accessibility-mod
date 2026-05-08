@@ -1434,6 +1434,170 @@ namespace Wasteland2AccessibilityMod.States
             {
                 MelonLogger.Warning($"[InventoryState] Error reading ItemInfoBox labels: {e.Message}");
             }
+
+            // Comparison vs equipped item (suppressed when the focused item is itself equipped)
+            if (currentZone != NavigationZone.Equipment)
+            {
+                AppendComparisonLines(item, pc);
+            }
+        }
+
+        // Appends a "Compared to equipped X" section with stat deltas for weapons and
+        // armor/wearables. Silently skips when no comparable equipped item exists.
+        private void AppendComparisonLines(ItemInstance focused, PC pc)
+        {
+            bool isWeapon = focused is ItemInstance_Weapon;
+            bool isArmorOrWearable = focused is ItemInstance_Armor || focused is ItemInstance_Wearable;
+            if (!isWeapon && !isArmorOrWearable) return;
+
+            ItemInstance equipped = GetEquippedComparisonItem(focused, pc);
+            if (equipped == null) return;
+
+            string equippedName = UITextExtractor.CleanText(
+                Language.Localize(equipped.template.displayName, false, false, string.Empty));
+
+            int headerIndex = infoLines.Count;
+            infoLines.Add($"Compared to equipped {equippedName}:");
+
+            if (isWeapon && equipped is ItemInstance_Weapon ew && focused is ItemInstance_Weapon fw)
+            {
+                AppendIntDiff("minimum damage", fw.GetMinDamage() - ew.GetMinDamage());
+                AppendIntDiff("maximum damage", fw.GetMaxDamage() - ew.GetMaxDamage());
+                AppendIntDiff("attack range", fw.GetAttackRange() - ew.GetAttackRange());
+
+                int fAcc = InventoryPatches.ComputeAccuracyPercent(fw, pc);
+                int eAcc = InventoryPatches.ComputeAccuracyPercent(ew, pc);
+                if (fAcc >= 0 && eAcc >= 0)
+                    AppendIntDiff("accuracy", fAcc - eAcc, " percent");
+
+                int fCrit = InventoryPatches.ComputeCritChancePercent(fw, pc);
+                int eCrit = InventoryPatches.ComputeCritChancePercent(ew, pc);
+                if (fCrit >= 0 && eCrit >= 0)
+                    AppendIntDiff("critical chance", fCrit - eCrit, " percent");
+
+                var fwt = fw.template as ItemTemplate_Weapon;
+                var ewt = ew.template as ItemTemplate_Weapon;
+                if (fwt != null && ewt != null)
+                    AppendIntDiff("armor penetration", fwt.armorPenetration - ewt.armorPenetration);
+
+                AppendWeightDiff(focused.GetWeight() - equipped.GetWeight());
+            }
+            else if (isArmorOrWearable && focused.template is ItemTemplate_Equipment fTpl
+                     && equipped.template is ItemTemplate_Equipment eTpl)
+            {
+                // Union of stat keys from both templates — covers armor, rad resistance,
+                // attribute bonuses, etc. Reuses FormatStatModifier so display names and
+                // negative-stat penalty annotations match the rest of the info browser.
+                var keys = new HashSet<string>();
+                if (fTpl.stats != null)
+                {
+                    foreach (var kvp in fTpl.stats) keys.Add(kvp.Key);
+                }
+                if (eTpl.stats != null)
+                {
+                    foreach (var kvp in eTpl.stats) keys.Add(kvp.Key);
+                }
+                foreach (var key in keys)
+                {
+                    int diff = fTpl.GetStat(key) - eTpl.GetStat(key);
+                    if (diff == 0) continue;
+                    string line = InventoryPatches.FormatStatModifier(key, diff);
+                    if (!string.IsNullOrEmpty(line))
+                        infoLines.Add(line);
+                }
+
+                AppendWeightDiff(focused.GetWeight() - equipped.GetWeight());
+            }
+
+            // No diffs emitted — replace the header with a clearer "identical" line.
+            if (infoLines.Count == headerIndex + 1)
+            {
+                infoLines[headerIndex] = $"Identical stats to equipped {equippedName}";
+            }
+        }
+
+        private void AppendIntDiff(string label, int diff, string units = "")
+        {
+            if (diff == 0) return;
+            string sign = diff > 0 ? "+" : "";
+            infoLines.Add($"{sign}{diff}{units} {label}");
+        }
+
+        private void AppendWeightDiff(float diff)
+        {
+            if (UnityEngine.Mathf.Abs(diff) < 0.05f) return;
+            string sign = diff > 0 ? "+" : "";
+            infoLines.Add($"{sign}{diff:0.0} pounds weight");
+        }
+
+        // Returns the equipped ItemInstance to compare the focused item against:
+        //   - Weapons → INV_MainPanel.weaponSlot1 (always slot 1, never slot 2)
+        //   - Armor/Wearable → equipped item in the slot that matches the focused
+        //     item's ItemTemplate_Equipment.slot
+        // Falls back to iterating pc.equipment when INV_MainPanel isn't present
+        // (e.g. PopupInventoryMenu loot context). Returns null when nothing equipped.
+        private ItemInstance GetEquippedComparisonItem(ItemInstance focused, PC pc)
+        {
+            if (focused == null || pc == null) return null;
+
+            if (focused is ItemInstance_Weapon)
+            {
+                var mainPanel = GetINV_MainPanel();
+                if (mainPanel != null && mainPanel.weaponSlot1 != null)
+                {
+                    var dragDrop = mainPanel.weaponSlot1.GetCurrentItem(false);
+                    var item = dragDrop != null ? dragDrop.GetItem() : null;
+                    if (item != null) return item;
+                }
+
+                // Fallback for loot-popup context: match by slot 1 weapon template.
+                var slot1Tpl = pc.pcStats != null ? pc.pcStats.GetWeaponTemplate(false) : null;
+                var equipment = pc.inventory != null ? pc.inventory.equipment : null;
+                if (slot1Tpl != null && equipment != null)
+                {
+                    foreach (ItemInstance i in equipment)
+                    {
+                        if (i is ItemInstance_Weapon && i.template == slot1Tpl)
+                            return i;
+                    }
+                }
+                return null;
+            }
+
+            if (focused is ItemInstance_Armor || focused is ItemInstance_Wearable)
+            {
+                var focusedTpl = focused.template as ItemTemplate_Equipment;
+                if (focusedTpl == null) return null;
+                EquipmentSlot targetSlot = focusedTpl.slot;
+
+                var mainPanel = GetINV_MainPanel();
+                if (mainPanel != null)
+                {
+                    foreach (string fieldName in equipmentSlotFieldNames)
+                    {
+                        var field = typeof(INV_MainPanel).GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+                        if (field == null) continue;
+                        var slot = field.GetValue(mainPanel) as INV_EquipmentSlot;
+                        if (slot == null || slot.equipmentSlot != targetSlot) continue;
+                        var dragDrop = slot.GetCurrentItem(false);
+                        var item = dragDrop != null ? dragDrop.GetItem() : null;
+                        if (item != null) return item;
+                        break;
+                    }
+                }
+
+                var equipment = pc.inventory != null ? pc.inventory.equipment : null;
+                if (equipment != null)
+                {
+                    foreach (ItemInstance i in equipment)
+                    {
+                        if (i.template is ItemTemplate_Equipment t && t.slot == targetSlot)
+                            return i;
+                    }
+                }
+            }
+
+            return null;
         }
 
         private ItemInstance GetCurrentItemInstance()
