@@ -32,11 +32,13 @@
 - Decompiled-index location is now described as machine-local in CLAUDE.md (no specific D:\ path).
 - MelonLoader log path generic-ized to `<game-install>\MelonLoader\Latest.log` in CLAUDE.md.
 
-## Open questions for the user
-1. **Parent-dir `D:\Claude\Wasteland 2\CLAUDE.md`.** Now that the repo CLAUDE.md is the canonical source, the parent file is mostly redundant. Suggest trimming it down to just the machine-local pointers (decompiled-index path, log path, "repo lives in subfolder X") with a note pointing to the repo CLAUDE.md for everything else. Confirm before touching.
-2. **`test` branch is 5 commits ahead of `origin/test`.** Want them pushed, or keep them local for now?
-3. **`.csproj` `<Description>` is stale** — says "Sets Xbox controller as default input method", which no longer reflects the mod. Worth fixing in a follow-up commit?
-4. **Does `master` serve a purpose** (release tag, public surface) or is it just the abandoned v1.0 snapshot? If the latter, consider deleting or fast-forwarding to `test` at some point — outside the scope of this procedure but worth flagging.
+## Resolved during this prompt
+- **Parent-dir `D:\Claude\Wasteland 2\CLAUDE.md` trimmed** (user chose "trim to machine-local only"). Now contains only: pointer to repo CLAUDE.md, repo path, decompiled-index path, MelonLoader log path. Not in git.
+
+## Still-open questions for later prompts
+1. **`test` branch is 5 commits ahead of `origin/test`.** Push at some point? (Workflow, not docs scope.)
+2. **`.csproj` `<Description>` is stale** — says "Sets Xbox controller as default input method", which no longer reflects the mod. Candidate for the refactoring/cleanup phase later.
+3. **Does `master` serve a purpose** (release tag, public surface) or is it just the abandoned v1.0 snapshot? Outside this procedure's scope but worth flagging.
 
 ## Notes carried over from start
 - In-progress inventory comparison work was committed to `test` branch as `6a8a33c` "Compare focused item to equipped in inventory info browser". `claude-mod-cleanup` is forked from that commit.
