@@ -13,9 +13,17 @@
 - `prompts/sanity-checks-setup.md`
 - `prompts/information-gathering-and-checking.md`
 - `prompts/code-directory-construction.md`
+- `prompts/large-file-handling.md`
 
 ## Prompts pending
-- `prompts/large-file-handling.md` (next — three files exceed 2000 lines: `States/CombatState.cs` 3368, `States/MapCursorState.cs` 3214, `States/InventoryState.cs` 2022)
+- `prompts/input-handling.md` (next, per `large-file-handling.md`)
+
+## Splits performed under `large-file-handling.md`
+- **`Helpers/CharacterAnnouncementHelper.cs` (1394 → 4 partials)**: split a single static class into `CharacterAnnouncementHelper.cs` (core: reflection cache + per-control announcements + buff/cap helpers, ~436 lines), `.StatDescriptions.cs` (stat & trait description builders + description-panel previews, ~500 lines), `.Snapshots.cs` (derived stats + header / combat snapshots + character summary + XP, ~404 lines), and `.ValueAdjustment.cs` (~107 lines). All four use `static partial class CharacterAnnouncementHelper`; no caller changes required. Smoke-tested.
+- **`Patches/InventoryPatches.cs` (1639 → 648) + new `Patches/InventoryFormatting.cs` (1004)**: extracted the 25 formatting/calculation helpers (and the `lastAnnouncedItem` static field) out of the patch file into a new static class `InventoryFormatting`. Updated 41 call sites across `States/InventoryState.cs` (28), `States/ShopState.cs` (2), and the patches themselves (11). Smoke-tested.
+
+## Splits deferred (not trivially separable)
+The other 12 files >500 lines are single mega-classes whose sub-modes share state on `this` — splitting them is real refactoring, not a trivial split. Candidates if a refactoring phase happens later: `States/CombatState.cs` (3368), `States/MapCursorState.cs` (3214), `States/InventoryState.cs` (2022), `States/CharacterState.cs` (1899), `States/CharacterInfoState.cs` (1897), `States/ShopState.cs` (1653), `States/GenericMenuState.cs` (1597), `States/WorldMapState.cs` (856), `States/DialogState.cs` (791), `States/ScannerState.cs` (719), `NavigationManager.cs` (667), `Patches/ConversationPatches.cs` (666).
 
 ## Files in `llm-scratchpad/`
 - `current_status.md` — this file
