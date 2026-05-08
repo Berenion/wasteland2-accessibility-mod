@@ -1131,7 +1131,7 @@ namespace Wasteland2AccessibilityMod.States
             // Type — for weapons use the skill name ("Assault Rifle"), otherwise fall back to GetTypeString
             string typeStr = null;
             if (item is ItemInstance_Weapon)
-                typeStr = InventoryPatches.GetWeaponSkillDisplayName(item.template as ItemTemplate_Weapon);
+                typeStr = InventoryFormatting.GetWeaponSkillDisplayName(item.template as ItemTemplate_Weapon);
             if (string.IsNullOrEmpty(typeStr))
                 typeStr = item.template.GetTypeString();
             if (!string.IsNullOrEmpty(typeStr))
@@ -1174,18 +1174,18 @@ namespace Wasteland2AccessibilityMod.States
                     if (clip > 0)
                         infoLines.Add($"Ammo loaded: {rangedInst.GetAmmoCount()} of {clip}");
 
-                    string reserveLine = InventoryPatches.BuildReserveAmmoLine(rangedInst, pc);
+                    string reserveLine = InventoryFormatting.BuildReserveAmmoLine(rangedInst, pc);
                     if (!string.IsNullOrEmpty(reserveLine))
                         infoLines.Add(reserveLine);
 
-                    string caliber = InventoryPatches.GetWeaponCaliberDisplay(wt);
+                    string caliber = InventoryFormatting.GetWeaponCaliberDisplay(wt);
                     if (!string.IsNullOrEmpty(caliber))
                         infoLines.Add($"Uses: {caliber}");
 
-                    foreach (string line in InventoryPatches.BuildRangeBracketLines(rangedInst, pc))
+                    foreach (string line in InventoryFormatting.BuildRangeBracketLines(rangedInst, pc))
                         infoLines.Add(line);
 
-                    foreach (string line in InventoryPatches.BuildFiringModeLines(rangedInst))
+                    foreach (string line in InventoryFormatting.BuildFiringModeLines(rangedInst))
                         infoLines.Add(line);
                 }
                 else
@@ -1197,31 +1197,31 @@ namespace Wasteland2AccessibilityMod.States
                 }
 
                 // PC-aware accuracy & crit (matches the on-screen ItemInfoBox values)
-                int acc = InventoryPatches.ComputeAccuracyPercent(weapon, pc);
+                int acc = InventoryFormatting.ComputeAccuracyPercent(weapon, pc);
                 if (acc >= 0)
                     infoLines.Add($"Accuracy: {acc} percent");
-                int crit = InventoryPatches.ComputeCritChancePercent(weapon, pc);
+                int crit = InventoryFormatting.ComputeCritChancePercent(weapon, pc);
                 if (crit >= 0)
                     infoLines.Add($"Critical chance: {crit} percent");
 
                 // Operational stats (AP to attack, AP to reload, chance to jam, jammed flag)
-                foreach (string line in InventoryPatches.BuildWeaponOperationalLines(weapon))
+                foreach (string line in InventoryFormatting.BuildWeaponOperationalLines(weapon))
                     infoLines.Add(line);
 
                 if (wt.armorPenetration > 0)
                     infoLines.Add($"Armor penetration: {wt.armorPenetration}");
 
                 // Status-effect afflictor
-                string afflictor = InventoryPatches.BuildAfflictorLine(weapon);
+                string afflictor = InventoryFormatting.BuildAfflictorLine(weapon);
                 if (!string.IsNullOrEmpty(afflictor))
                     infoLines.Add(afflictor);
 
                 // Energy-weapon notes + above/below threshold multipliers
-                foreach (string line in InventoryPatches.BuildEnergyWeaponLines(wt))
+                foreach (string line in InventoryFormatting.BuildEnergyWeaponLines(wt))
                     infoLines.Add(line);
 
                 // Mod slots (installed mods + empty slots)
-                foreach (string line in InventoryPatches.BuildModSlotLines(weapon))
+                foreach (string line in InventoryFormatting.BuildModSlotLines(weapon))
                     infoLines.Add(line);
             }
 
@@ -1233,7 +1233,7 @@ namespace Wasteland2AccessibilityMod.States
                     infoLines.Add($"Armor value: {armorValue}");
 
                 // Mod slots on armor (if any)
-                foreach (string line in InventoryPatches.BuildModSlotLines(armor))
+                foreach (string line in InventoryFormatting.BuildModSlotLines(armor))
                     infoLines.Add(line);
             }
 
@@ -1268,13 +1268,13 @@ namespace Wasteland2AccessibilityMod.States
                     infoLines.Add($"AP cost: {ut.actionPoints}");
 
                 // All skill-driven effect types, with PC-skill-adjusted heal values
-                foreach (string line in InventoryPatches.BuildConsumableEffectLines(usable, pc))
+                foreach (string line in InventoryFormatting.BuildConsumableEffectLines(usable, pc))
                     infoLines.Add($"Effect: {line}");
 
                 // Skill-book / XP-giver items (e.g. "+1 Surgeon skill")
                 if (ut is ItemTemplate_UsableXPGiver xpGiver)
                 {
-                    string xpLine = InventoryPatches.BuildXPGiverLine(xpGiver);
+                    string xpLine = InventoryFormatting.BuildXPGiverLine(xpGiver);
                     if (!string.IsNullOrEmpty(xpLine))
                         infoLines.Add($"Grants: {xpLine}");
                 }
@@ -1294,7 +1294,7 @@ namespace Wasteland2AccessibilityMod.States
             // Weapon mod info (slot, stat bonuses, requirements, allowed weapons)
             if (item is ItemInstance_Mod modItem)
             {
-                foreach (string line in InventoryPatches.BuildWeaponModLines(modItem, pc))
+                foreach (string line in InventoryFormatting.BuildWeaponModLines(modItem, pc))
                     infoLines.Add(line);
             }
 
@@ -1311,15 +1311,15 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             // Equipment stat modifiers (e.g. +3 Strength)
-            foreach (string mod in InventoryPatches.BuildModifierLines(item))
+            foreach (string mod in InventoryFormatting.BuildModifierLines(item))
                 infoLines.Add($"Modifier: {mod}");
 
             // Attribute requirements (annotated with met/not met for the current PC)
-            foreach (string req in InventoryPatches.BuildRequirementLines(item, pc))
+            foreach (string req in InventoryFormatting.BuildRequirementLines(item, pc))
                 infoLines.Add(req);
 
             // Trait-specific item modifiers (e.g. Psychopath, Mysterious Stranger)
-            foreach (string traitLine in InventoryPatches.BuildTraitItemModifierLines(item, pc))
+            foreach (string traitLine in InventoryFormatting.BuildTraitItemModifierLines(item, pc))
                 infoLines.Add(traitLine);
 
             // Weight
@@ -1333,7 +1333,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             // Value — vendor-aware (applies barter adjustment when a vendor screen is open)
-            int itemValue = InventoryPatches.ComputeItemValue(item);
+            int itemValue = InventoryFormatting.ComputeItemValue(item);
             if (itemValue > 0)
             {
                 if (item.quantity > 1)
@@ -1465,13 +1465,13 @@ namespace Wasteland2AccessibilityMod.States
                 AppendIntDiff("maximum damage", fw.GetMaxDamage() - ew.GetMaxDamage());
                 AppendIntDiff("attack range", fw.GetAttackRange() - ew.GetAttackRange());
 
-                int fAcc = InventoryPatches.ComputeAccuracyPercent(fw, pc);
-                int eAcc = InventoryPatches.ComputeAccuracyPercent(ew, pc);
+                int fAcc = InventoryFormatting.ComputeAccuracyPercent(fw, pc);
+                int eAcc = InventoryFormatting.ComputeAccuracyPercent(ew, pc);
                 if (fAcc >= 0 && eAcc >= 0)
                     AppendIntDiff("accuracy", fAcc - eAcc, " percent");
 
-                int fCrit = InventoryPatches.ComputeCritChancePercent(fw, pc);
-                int eCrit = InventoryPatches.ComputeCritChancePercent(ew, pc);
+                int fCrit = InventoryFormatting.ComputeCritChancePercent(fw, pc);
+                int eCrit = InventoryFormatting.ComputeCritChancePercent(ew, pc);
                 if (fCrit >= 0 && eCrit >= 0)
                     AppendIntDiff("critical chance", fCrit - eCrit, " percent");
 
@@ -1501,7 +1501,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     int diff = fTpl.GetStat(key) - eTpl.GetStat(key);
                     if (diff == 0) continue;
-                    string line = InventoryPatches.FormatStatModifier(key, diff);
+                    string line = InventoryFormatting.FormatStatModifier(key, diff);
                     if (!string.IsNullOrEmpty(line))
                         infoLines.Add(line);
                 }
@@ -1699,7 +1699,7 @@ namespace Wasteland2AccessibilityMod.States
                     ItemInstance item = equipped.GetItem();
                     if (item != null)
                     {
-                        string details = InventoryPatches.FormatDetailedItemInfo(item, GetCurrentPC());
+                        string details = InventoryFormatting.FormatDetailedItemInfo(item, GetCurrentPC());
                         ScreenReaderManager.SpeakInterrupt(details);
                         return;
                     }
@@ -1718,7 +1718,7 @@ namespace Wasteland2AccessibilityMod.States
                 ItemInstance item = dragDropItem.GetItem();
                 if (item != null)
                 {
-                    string details = InventoryPatches.FormatDetailedItemInfo(item, GetCurrentPC());
+                    string details = InventoryFormatting.FormatDetailedItemInfo(item, GetCurrentPC());
                     ScreenReaderManager.SpeakInterrupt(details);
                 }
             }
@@ -1778,7 +1778,7 @@ namespace Wasteland2AccessibilityMod.States
                     ItemInstance item = equipped.GetItem();
                     if (item != null)
                     {
-                        string itemAnnouncement = InventoryPatches.FormatItemAnnouncement(item, detailed: true);
+                        string itemAnnouncement = InventoryFormatting.FormatItemAnnouncement(item, detailed: true);
                         return $"{GetSlotName(slot.equipmentSlot)}: {itemAnnouncement}";
                     }
                 }
@@ -1790,7 +1790,7 @@ namespace Wasteland2AccessibilityMod.States
                 ItemInstance item = dragDropItem.GetItem();
                 if (item != null)
                 {
-                    return InventoryPatches.FormatItemAnnouncement(item, detailed: true);
+                    return InventoryFormatting.FormatItemAnnouncement(item, detailed: true);
                 }
                 return "Empty item";
             }

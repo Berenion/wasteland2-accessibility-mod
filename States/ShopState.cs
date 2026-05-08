@@ -1371,7 +1371,7 @@ namespace Wasteland2AccessibilityMod.States
                 ItemInstance item = escrowEntry.Item;
                 if (item == null) return "Empty";
 
-                string baseAnnouncement = InventoryPatches.FormatItemAnnouncement(item, detailed: true);
+                string baseAnnouncement = InventoryFormatting.FormatItemAnnouncement(item, detailed: true);
 
                 // Add price from escrow
                 if (item.template.price > 0)
@@ -1396,7 +1396,7 @@ namespace Wasteland2AccessibilityMod.States
                 ItemInstance item = dragDropItem.GetItem();
                 if (item == null) return "Empty";
 
-                string baseAnnouncement = InventoryPatches.FormatItemAnnouncement(item, detailed: true);
+                string baseAnnouncement = InventoryFormatting.FormatItemAnnouncement(item, detailed: true);
 
                 // Add price info
                 string priceStr = GetItemPriceString(item, dragDropItem);
