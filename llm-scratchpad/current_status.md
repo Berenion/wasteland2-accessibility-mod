@@ -11,14 +11,16 @@
 
 ## Prompts completed
 - `prompts/sanity-checks-setup.md`
-- `prompts/information-gathering-and-checking.md` (this one)
+- `prompts/information-gathering-and-checking.md`
+- `prompts/code-directory-construction.md`
 
 ## Prompts pending
-- `prompts/code-directory-construction.md` (next, per `information-gathering-and-checking.md`)
+- `prompts/large-file-handling.md` (next — three files exceed 2000 lines: `States/CombatState.cs` 3368, `States/MapCursorState.cs` 3214, `States/InventoryState.cs` 2022)
 
 ## Files in `llm-scratchpad/`
 - `current_status.md` — this file
 - `claude_md_validation.md` — validation report; cross-branch findings still apply, test-branch findings now confirmed and folded into the repo CLAUDE.md
+- `code-index/` — structural index of all 61 source files (one `.md` per `.cs`), built by 9 parallel sonnet agents. Use it as a fast map: search by class/method name to find which file owns a symbol without grep-walking the whole tree.
 
 ## Files added during this prompt
 - `CLAUDE.md` (rewrite — facts corrected, gotchas promoted from parent, build instructions reflect bundled `libs/`)
