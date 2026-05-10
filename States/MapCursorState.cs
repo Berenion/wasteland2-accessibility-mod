@@ -112,8 +112,6 @@ namespace Wasteland2AccessibilityMod.States
         // Cover direction names (indices 0-3: forward/right/back/left = N/E/S/W)
         private static readonly string[] COVER_DIRECTIONS = { "north", "east", "south", "west" };
 
-        // Direction names for arrow keys
-        private static readonly string[] DIRECTION_NAMES = { "north", "east", "south", "west" };
         private static readonly Vector3[] CARDINAL_DIRECTIONS =
         {
             Vector3.forward,  // Up arrow = North (+Z)

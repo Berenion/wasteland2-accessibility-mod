@@ -360,8 +360,6 @@ namespace Wasteland2AccessibilityMod.States
             foreach (Transform t in sorted)
             {
                 if (t == null || !t.gameObject.activeSelf) continue;
-                var item = t.GetComponent<VND_DragDropItem>();
-                if (item == null) item = t.GetComponent<VND_DragDropItem>();
                 var baseItem = t.GetComponent<INV_DragDropItem>();
                 if (baseItem != null && baseItem.GetItem() != null)
                 {

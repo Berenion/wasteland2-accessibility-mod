@@ -26,8 +26,6 @@ namespace Wasteland2AccessibilityMod
     {
         private static List<InteractableNexus> filteredInteractables = new List<InteractableNexus>();
         private static int currentIndex = -1;
-        private static string lastAnnouncement = "";
-        private static InteractableNexus lastAnnouncedInteractable = null;
 
         // Separate tracking for keyboard-selected interactable (via cycling)
         // This is NOT overwritten by proximity announcements
@@ -205,8 +203,6 @@ namespace Wasteland2AccessibilityMod
                 // Interactable no longer available (out of range or not visible)
                 ScreenReaderManager.SpeakInterrupt("Previously selected interactable is no longer available");
                 selectedInteractable = null;
-                lastAnnouncedInteractable = null;
-                lastAnnouncement = "";
                 currentIndex = -1;
             }
         }
@@ -231,8 +227,7 @@ namespace Wasteland2AccessibilityMod
             string direction = DirectionHelper.GetDirectionDescription(player.transform.position, nexus.InstigatePoint);
 
             // Format: "Name, Distance, Direction"
-            lastAnnouncement = $"{name}, {distanceStr}, {direction}";
-            lastAnnouncedInteractable = nexus;
+            string announcement = $"{name}, {distanceStr}, {direction}";
 
             // Only update selectedInteractable if this came from keyboard cycling
             // Proximity announcements should NOT overwrite the cycling selection
@@ -241,8 +236,8 @@ namespace Wasteland2AccessibilityMod
                 selectedInteractable = nexus;
             }
 
-            MelonLogger.Msg($"Announcing: {lastAnnouncement} (fromCycling: {isFromCycling})");
-            ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
+            MelonLogger.Msg($"Announcing: {announcement} (fromCycling: {isFromCycling})");
+            ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
         private static void SelectAndAnnounce(int index)

@@ -23,7 +23,6 @@ namespace Wasteland2AccessibilityMod.States
         /// Set by CharacterInfoPatches when C key opens the menu.
         /// </summary>
         // Kept for potential future use but no longer set by CharacterInfoPatches
-        public static bool openToAttributes = false;
 
         /// <summary>
         /// When true, UIInput.ProcessEvent is blocked.
@@ -53,7 +52,6 @@ namespace Wasteland2AccessibilityMod.States
         private bool isEditingValue = false;
 
         // Suspension support
-        private CharacterInfoMenu.InfoPanel suspendedPanel = CharacterInfoMenu.InfoPanel.None;
         private int suspendedIndex = -1;
         private bool hasSuspendedState = false;
 
@@ -208,7 +206,6 @@ namespace Wasteland2AccessibilityMod.States
 
         public void OnDeactivated()
         {
-            suspendedPanel = lastPanel;
             suspendedIndex = controlIndex;
             hasSuspendedState = true;
 
@@ -221,7 +218,7 @@ namespace Wasteland2AccessibilityMod.States
             infoLines.Clear();
             logbookDetailMode = false;
             logbookDetailLines.Clear();
-            MelonLogger.Msg($"[CharacterInfoState] Deactivated (suspended panel={suspendedPanel}, index={suspendedIndex})");
+            MelonLogger.Msg($"[CharacterInfoState] Deactivated (suspended index={suspendedIndex})");
         }
 
         #region Panel Detection & Change

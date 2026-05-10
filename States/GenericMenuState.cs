@@ -57,9 +57,6 @@ namespace Wasteland2AccessibilityMod.States
         /// </summary>
         internal static bool blockUIInput = false;
 
-        // Tab order for OptionsMenu
-        private static readonly string[] tabOrder = { "gameplay", "display", "controls", "audio" };
-
         public bool IsActive
         {
             get
