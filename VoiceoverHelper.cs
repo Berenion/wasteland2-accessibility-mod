@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using MelonLoader;
 using UnityEngine;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod
 {
@@ -12,9 +13,6 @@ namespace Wasteland2AccessibilityMod
     /// </summary>
     public static class VoiceoverHelper
     {
-        private static FieldInfo bubbleTextInfosField = null;
-        private static bool fieldInitialized = false;
-
         /// <summary>
         /// Checks if any voiceover audio is currently playing or will start soon in conversations
         /// </summary>
@@ -22,40 +20,13 @@ namespace Wasteland2AccessibilityMod
         {
             try
             {
-                // Get BubbleTextManager instance
-                var btmInstance = MonoBehaviourSingleton<BubbleTextManager>.GetInstance();
-                if (btmInstance == null)
-                {
+                var bubbleTextInfos = BubbleTextReflection.GetBubbleTextInfos();
+                if (bubbleTextInfos == null || bubbleTextInfos.Count == 0)
                     return false;
-                }
 
-                // Get the private bubbleTextInfos field using reflection (only once)
-                if (!fieldInitialized)
+                // Check each bubble text for audio that is ACTUALLY playing right now
+                foreach (var btInfo in bubbleTextInfos)
                 {
-                    Type btmType = typeof(BubbleTextManager);
-                    bubbleTextInfosField = btmType.GetField("bubbleTextInfos",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                    fieldInitialized = true;
-
-                    if (bubbleTextInfosField == null)
-                    {
-                        MelonLogger.Warning("Could not find bubbleTextInfos field in BubbleTextManager");
-                        return false;
-                    }
-                }
-
-                // Get the list of active bubble texts
-                if (bubbleTextInfosField != null)
-                {
-                    var bubbleTextInfos = bubbleTextInfosField.GetValue(btmInstance) as System.Collections.IList;
-                    if (bubbleTextInfos == null || bubbleTextInfos.Count == 0)
-                    {
-                        return false;
-                    }
-
-                    // Check each bubble text for audio that is ACTUALLY playing right now
-                    foreach (var btInfo in bubbleTextInfos)
-                    {
                         if (btInfo == null) continue;
 
                         Type btInfoType = btInfo.GetType();
@@ -87,10 +58,9 @@ namespace Wasteland2AccessibilityMod
                             }
                         }
 
-                        // Note: We intentionally do NOT check for pending audio (timeStarted == -1).
-                        // Pending bubble texts may wait many seconds behind other bubbles from the
-                        // same owner, and blocking TTS for that long is wrong.
-                    }
+                    // Note: We intentionally do NOT check for pending audio (timeStarted == -1).
+                    // Pending bubble texts may wait many seconds behind other bubbles from the
+                    // same owner, and blocking TTS for that long is wrong.
                 }
 
                 return false;
@@ -112,20 +82,7 @@ namespace Wasteland2AccessibilityMod
         {
             try
             {
-                var btmInstance = MonoBehaviourSingleton<BubbleTextManager>.GetInstance();
-                if (btmInstance == null) return false;
-
-                if (!fieldInitialized)
-                {
-                    Type btmType = typeof(BubbleTextManager);
-                    bubbleTextInfosField = btmType.GetField("bubbleTextInfos",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                    fieldInitialized = true;
-                }
-
-                if (bubbleTextInfosField == null) return false;
-
-                var bubbleTextInfos = bubbleTextInfosField.GetValue(btmInstance) as System.Collections.IList;
+                var bubbleTextInfos = BubbleTextReflection.GetBubbleTextInfos();
                 if (bubbleTextInfos == null || bubbleTextInfos.Count == 0) return false;
 
                 foreach (var btInfo in bubbleTextInfos)
@@ -179,20 +136,7 @@ namespace Wasteland2AccessibilityMod
         {
             try
             {
-                var btmInstance = MonoBehaviourSingleton<BubbleTextManager>.GetInstance();
-                if (btmInstance == null) return false;
-
-                if (!fieldInitialized)
-                {
-                    Type btmType = typeof(BubbleTextManager);
-                    bubbleTextInfosField = btmType.GetField("bubbleTextInfos",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                    fieldInitialized = true;
-                }
-
-                if (bubbleTextInfosField == null) return false;
-
-                var bubbleTextInfos = bubbleTextInfosField.GetValue(btmInstance) as System.Collections.IList;
+                var bubbleTextInfos = BubbleTextReflection.GetBubbleTextInfos();
                 if (bubbleTextInfos == null || bubbleTextInfos.Count == 0) return false;
 
                 foreach (var btInfo in bubbleTextInfos)
@@ -238,20 +182,7 @@ namespace Wasteland2AccessibilityMod
         {
             try
             {
-                var btmInstance = MonoBehaviourSingleton<BubbleTextManager>.GetInstance();
-                if (btmInstance == null) return false;
-
-                if (!fieldInitialized)
-                {
-                    Type btmType = typeof(BubbleTextManager);
-                    bubbleTextInfosField = btmType.GetField("bubbleTextInfos",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                    fieldInitialized = true;
-                }
-
-                if (bubbleTextInfosField == null) return false;
-
-                var bubbleTextInfos = bubbleTextInfosField.GetValue(btmInstance) as System.Collections.IList;
+                var bubbleTextInfos = BubbleTextReflection.GetBubbleTextInfos();
                 if (bubbleTextInfos == null || bubbleTextInfos.Count == 0) return false;
 
                 foreach (var btInfo in bubbleTextInfos)
@@ -287,17 +218,8 @@ namespace Wasteland2AccessibilityMod
         {
             try
             {
-                var btmInstance = MonoBehaviourSingleton<BubbleTextManager>.GetInstance();
-                if (btmInstance == null || bubbleTextInfosField == null)
-                {
-                    return 0f;
-                }
-
-                var bubbleTextInfos = bubbleTextInfosField.GetValue(btmInstance) as System.Collections.IList;
-                if (bubbleTextInfos == null || bubbleTextInfos.Count == 0)
-                {
-                    return 0f;
-                }
+                var bubbleTextInfos = BubbleTextReflection.GetBubbleTextInfos();
+                if (bubbleTextInfos == null || bubbleTextInfos.Count == 0) return 0f;
 
                 float maxRemainingTime = 0f;
 

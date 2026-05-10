@@ -3,6 +3,7 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod
 {
@@ -42,10 +43,6 @@ namespace Wasteland2AccessibilityMod
         private const float DELAY_AFTER_AUDIO_STOPS = 0.4f; // 400ms delay after audio stops
         private const float DELAY_AFTER_CONVERSATION_ENDS = 0.2f; // 200ms delay after conversation ends
         private const float CONVERSATION_GRACE_PERIOD = 0.5f; // 500ms grace period to detect if conversation has audio
-
-        // Reflection fields for accessing BubbleTextManager internals
-        private static FieldInfo bubbleTextInfosField = null;
-        private static bool fieldInitialized = false;
 
         public void Initialize()
         {
@@ -126,107 +123,64 @@ namespace Wasteland2AccessibilityMod
         {
             try
             {
-                // Get BubbleTextManager instance
-                var btmInstance = MonoBehaviourSingleton<BubbleTextManager>.GetInstance();
-                if (btmInstance == null)
+                var bubbleTextInfos = BubbleTextReflection.GetBubbleTextInfos();
+                if (bubbleTextInfos == null) return false;
+
+                // If conversation/cutscene started and no bubble texts yet, queue temporarily
+                if ((Drama.isConversationOn || Drama.isCutsceneOn) && bubbleTextInfos.Count == 0)
                 {
-                    return false;
+                    float timeSinceConversationStart = Time.time - conversationStartTime;
+                    return timeSinceConversationStart < CONVERSATION_GRACE_PERIOD;
                 }
 
-                // Get the private bubbleTextInfos field using reflection (only once)
-                if (!fieldInitialized)
+                // No bubble texts outside conversation = no audio
+                if (bubbleTextInfos.Count == 0) return false;
+
+                // Check each bubble text for audio that is ACTUALLY playing right now
+                foreach (var btInfo in bubbleTextInfos)
                 {
-                    Type btmType = typeof(BubbleTextManager);
-                    bubbleTextInfosField = btmType.GetField("bubbleTextInfos",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                    fieldInitialized = true;
+                    if (btInfo == null) continue;
 
-                    if (bubbleTextInfosField == null)
+                    Type btInfoType = btInfo.GetType();
+
+                    // Get the textKind to filter out barks and radio messages
+                    FieldInfo textKindField = btInfoType.GetField("textKind");
+                    if (textKindField == null) continue;
+
+                    object textKindValue = textKindField.GetValue(btInfo);
+                    if (textKindValue == null) continue;
+
+                    string textKindName = textKindValue.ToString();
+
+                    // Only consider actual conversation dialogue, not barks or radio
+                    if (textKindName.Contains("Bark") || textKindName == "Radio" || textKindName == "RadioBark" || textKindName == "Label")
+                        continue;
+
+                    // Check if audio is ACTUALLY playing via audioRef
+                    FieldInfo audioRefField = btInfoType.GetField("audioRef");
+                    if (audioRefField == null) continue;
+
+                    var audioRef = audioRefField.GetValue(btInfo);
+                    if (audioRef == null) continue;
+
+                    MethodInfo getMethod = audioRef.GetType().GetMethod("Get");
+                    if (getMethod == null) continue;
+
+                    var audioObject = getMethod.Invoke(audioRef, null);
+                    if (audioObject == null) continue;
+
+                    MethodInfo isPlayingMethod = audioObject.GetType().GetMethod("IsPlaying");
+                    if (isPlayingMethod == null) continue;
+
+                    if ((bool)isPlayingMethod.Invoke(audioObject, null))
                     {
-                        MelonLogger.Warning("[AudioAware] Could not find bubbleTextInfos field in BubbleTextManager");
-                        return false;
-                    }
-                }
-
-                // Get the list of active bubble texts
-                if (bubbleTextInfosField != null)
-                {
-                    var bubbleTextInfos = bubbleTextInfosField.GetValue(btmInstance) as System.Collections.IList;
-
-                    // If conversation just started and no bubble texts yet, queue temporarily
-                    if ((Drama.isConversationOn || Drama.isCutsceneOn) &&
-                        (bubbleTextInfos == null || bubbleTextInfos.Count == 0))
-                    {
-                        float timeSinceConversationStart = Time.time - conversationStartTime;
-                        if (timeSinceConversationStart < CONVERSATION_GRACE_PERIOD)
-                        {
-                            // Still in grace period - queue to be safe
-                            return true;
-                        }
-                        // Grace period expired, no bubble texts = text-only conversation
-                        return false;
+                        MelonLogger.Msg($"[AudioAware] Audio playing: textKind={textKindName}");
+                        return true;
                     }
 
-                    // No bubble texts outside conversation = no audio
-                    if (bubbleTextInfos == null || bubbleTextInfos.Count == 0)
-                    {
-                        return false;
-                    }
-
-                    // Check each bubble text for audio that is ACTUALLY playing right now
-                    foreach (var btInfo in bubbleTextInfos)
-                    {
-                        if (btInfo == null) continue;
-
-                        Type btInfoType = btInfo.GetType();
-
-                        // Get the textKind to filter out barks and radio messages
-                        FieldInfo textKindField = btInfoType.GetField("textKind");
-                        if (textKindField == null) continue;
-
-                        object textKindValue = textKindField.GetValue(btInfo);
-                        if (textKindValue == null) continue;
-
-                        string textKindName = textKindValue.ToString();
-
-                        // Only consider actual conversation dialogue, not barks or radio
-                        if (textKindName.Contains("Bark") || textKindName == "Radio" || textKindName == "RadioBark" || textKindName == "Label")
-                        {
-                            continue;
-                        }
-
-                        // Check if audio is ACTUALLY playing via audioRef
-                        FieldInfo audioRefField = btInfoType.GetField("audioRef");
-                        if (audioRefField != null)
-                        {
-                            var audioRef = audioRefField.GetValue(btInfo);
-                            if (audioRef != null)
-                            {
-                                MethodInfo getMethod = audioRef.GetType().GetMethod("Get");
-                                if (getMethod != null)
-                                {
-                                    var audioObject = getMethod.Invoke(audioRef, null);
-                                    if (audioObject != null)
-                                    {
-                                        MethodInfo isPlayingMethod = audioObject.GetType().GetMethod("IsPlaying");
-                                        if (isPlayingMethod != null)
-                                        {
-                                            bool isPlaying = (bool)isPlayingMethod.Invoke(audioObject, null);
-                                            if (isPlaying)
-                                            {
-                                                MelonLogger.Msg($"[AudioAware] Audio playing: textKind={textKindName}");
-                                                return true;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Note: We intentionally do NOT check for pending audio (timeStarted == -1).
-                        // Pending bubble texts may wait many seconds behind other bubbles from the
-                        // same owner, and blocking TTS for that long is wrong.
-                    }
+                    // Note: We intentionally do NOT check for pending audio (timeStarted == -1).
+                    // Pending bubble texts may wait many seconds behind other bubbles from the
+                    // same owner, and blocking TTS for that long is wrong.
                 }
 
                 return false;
