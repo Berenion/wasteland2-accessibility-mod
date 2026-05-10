@@ -297,94 +297,15 @@ namespace Wasteland2AccessibilityMod
                 // Continue below to also add regular interactables
             }
 
-            // Diagnostic: check if ShortcutDoor nexus is in the list at all
-            foreach (var dbgNexus in InteractableNexus.interactables)
-            {
-                if (dbgNexus != null && dbgNexus.transform != null)
-                {
-                    Vector3 dp = dbgNexus.transform.position;
-                    if (dp.x > 88f && dp.x < 93f && dp.z > 111f && dp.z < 116f)
-                        MelonLogger.Msg($"  [NavDiag] Found nexus near ShortcutDoor: {dbgNexus.name} at {dp}, isVisible={dbgNexus.isVisible}, isHidden={dbgNexus.isHidden}, active={dbgNexus.gameObject.activeInHierarchy}");
-                }
-            }
-
             foreach (var nexus in InteractableNexus.interactables)
             {
-                // Step-by-step trace for ShortcutDoor
-                bool traceThis = false;
-                if (nexus != null && nexus.transform != null)
-                {
-                    Vector3 tp = nexus.transform.position;
-                    traceThis = (tp.x > 88f && tp.x < 93f && tp.z > 111f && tp.z < 116f);
-                }
-                if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name} at {nexus.transform.position}: step=start");
-
-                // Apply visibility filters
-                if (nexus == null) { if (traceThis) MelonLogger.Msg($"  [NavTrace] SKIPPED: nexus==null"); continue; }
-                if (!nexus.isVisible)
-                {
-                    // Log rejections near ShortcutDoor position to diagnose disappearance
-                    if (nexus.transform != null)
-                    {
-                        Vector3 p = nexus.transform.position;
-                        if ((p.x > 85f && p.x < 95f && p.z > 108f && p.z < 118f) ||
-                            nexus.drama is InteractableTeleporter)
-                        {
-                            bool hasTp = nexus.GetComponent<InteractableTeleporter>() != null;
-                            MelonLogger.Msg($"  [NavReject] {nexus.name} at {p}: failed isVisible (isHidden={nexus.isHidden}, active={nexus.gameObject.activeInHierarchy}, dramaType={(nexus.drama != null ? nexus.drama.GetType().Name : "null")}, hasTpComponent={hasTp})");
-                        }
-                    }
-                    continue;
-                }
-                if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name}: passed isVisible");
-                if (nexus.transform == null) { if (traceThis) MelonLogger.Msg($"  [NavTrace] SKIPPED: transform==null"); continue; }
-                if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name}: checking IsVisibleThroughFOW");
-                if (!FOWHelper.IsVisibleThroughFOW(nexus.transform.position))
-                {
-                    if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name}: FAILED IsVisibleThroughFOW");
-                    // Log teleporter rejections for diagnostics
-                    if (nexus.drama is InteractableTeleporter || traceThis)
-                        MelonLogger.Msg($"  [NavReject] {nexus.name}: failed IsVisibleThroughFOW at {nexus.transform.position}");
-                    continue;
-                }
-                if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name}: checking IsPerceptionGated, drama={(nexus.drama != null ? nexus.drama.GetType().Name : "null")}");
-                if (FOWHelper.IsPerceptionGated(nexus))
-                {
-                    if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name}: FAILED IsPerceptionGated");
-                    MelonLogger.Msg($"  [NavReject] {nexus.name}: failed IsPerceptionGated");
-                    // Log teleporter details
-                    var tp = nexus.drama as InteractableTeleporter;
-                    if (tp != null && tp.targetTransform != null)
-                    {
-                        float dist = Vector3.Distance(nexus.transform.position, tp.targetTransform.position);
-                        bool explored = FOWSystem.instance != null ? FOWSystem.instance.IsExplored(tp.targetTransform.position) : true;
-                        MelonLogger.Msg($"  [NavReject]   teleporter dest={tp.targetTransform.position}, dist={dist:F1}, destExplored={explored}");
-                    }
-                    continue;
-                }
-
-                // Apply category filter
-                if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name}: checking MatchesCategory({currentCategory})");
-                if (!MatchesCategory(nexus, currentCategory)) { if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name}: FAILED MatchesCategory"); continue; }
-                if (traceThis) MelonLogger.Msg($"  [NavTrace] {nexus.name}: PASSED ALL FILTERS - added to list");
-
+                if (nexus == null) continue;
+                if (!nexus.isVisible) continue;
+                if (nexus.transform == null) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(nexus.transform.position)) continue;
+                if (FOWHelper.IsPerceptionGated(nexus)) continue;
+                if (!MatchesCategory(nexus, currentCategory)) continue;
                 filteredInteractables.Add(nexus);
-
-                // Diagnostic: log properties that may help filter perception-gated objects
-                string objName = nexus.name ?? "null";
-                string dramaType = nexus.drama != null ? nexus.drama.GetType().Name : "null";
-                bool instigateBlocked = nexus.drama != null && nexus.drama.bInstigateBlocked;
-                SkillObject_Examine skob = nexus.skobExamine;
-                if (skob == null && nexus.gameObject != null)
-                    skob = nexus.gameObject.GetComponent<SkillObject_Examine>();
-                string skobInfo = skob != null
-                    ? $"skob(diff={skob.difficulty}, perceived={skob.perceived}, hidden={skob.hidden})"
-                    : "skob=null";
-                var teleporter = nexus.drama as InteractableTeleporter;
-                string tpInfo = teleporter != null && teleporter.targetTransform != null
-                    ? $"tp={teleporter.targetTransform.position}"
-                    : "";
-                MelonLogger.Msg($"  [NavFilter] {objName}: type={dramaType}, blocked={instigateBlocked}, {skobInfo} {tpInfo}");
             }
 
             // Sort by distance (nearest first)
