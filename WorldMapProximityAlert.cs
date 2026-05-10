@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using MelonLoader;
 using UnityEngine;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod
 {
@@ -152,7 +153,7 @@ namespace Wasteland2AccessibilityMod
 
                 int id = poi.GetInstanceID();
                 Vector3 poiPos = poi.transform.position;
-                float distance = Vector2Distance(cursorPosition, poiPos);
+                float distance = WorldMapMath.Vector2Distance(cursorPosition, poiPos);
 
                 // Determine which threshold we're at
                 float currentThreshold = 0f;
@@ -280,7 +281,7 @@ namespace Wasteland2AccessibilityMod
                 {
                     if (poi != null && poi.GetInstanceID() == kvp.Key)
                     {
-                        float distance = Vector2Distance(cursorPosition, poi.transform.position);
+                        float distance = WorldMapMath.Vector2Distance(cursorPosition, poi.transform.position);
                         if (distance > RESET_DISTANCE)
                             toRemove.Add(kvp.Key);
                         found = true;
@@ -378,11 +379,5 @@ namespace Wasteland2AccessibilityMod
             return true;
         }
 
-        private static float Vector2Distance(Vector3 a, Vector3 b)
-        {
-            float dx = a.x - b.x;
-            float dz = a.z - b.z;
-            return Mathf.Sqrt(dx * dx + dz * dz);
-        }
     }
 }

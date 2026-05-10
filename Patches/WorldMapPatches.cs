@@ -3,6 +3,7 @@ using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod.Patches
 {
@@ -69,7 +70,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     Vector3 partyPos = WorldMapParty.instance.transform.position;
                     Vector3 poiPos = __instance.transform.position;
-                    float distance = WorldMapPatchUtils.Vector2Distance(partyPos, poiPos);
+                    float distance = WorldMapMath.Vector2Distance(partyPos, poiPos);
                     string direction = DirectionHelper.GetDirectionDescription(partyPos, poiPos);
                     directionInfo = $", {Mathf.RoundToInt(distance)} units, {direction}";
                 }
@@ -217,14 +218,4 @@ namespace Wasteland2AccessibilityMod.Patches
         }
     }
 
-    // Utility shared across patches
-    internal static class WorldMapPatchUtils
-    {
-        internal static float Vector2Distance(Vector3 a, Vector3 b)
-        {
-            float dx = a.x - b.x;
-            float dz = a.z - b.z;
-            return Mathf.Sqrt(dx * dx + dz * dz);
-        }
-    }
 }

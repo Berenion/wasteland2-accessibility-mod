@@ -2,6 +2,7 @@ using System.Reflection;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Helpers;
 using Wasteland2AccessibilityMod.Patches;
 
 namespace Wasteland2AccessibilityMod.States
@@ -409,7 +410,7 @@ namespace Wasteland2AccessibilityMod.States
             if (WorldMapParty.instance == null) return "Empty";
 
             Vector3 partyPos = WorldMapParty.instance.transform.position;
-            float distance = Vector2Distance(cursorPosition, partyPos);
+            float distance = WorldMapMath.Vector2Distance(cursorPosition, partyPos);
             string direction = DirectionHelper.GetDirectionDescription(partyPos, cursorPosition);
 
             // Check if inside radiation
@@ -493,7 +494,7 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            float distance = Vector2Distance(cursorPosition, selectedPos.Value);
+            float distance = WorldMapMath.Vector2Distance(cursorPosition, selectedPos.Value);
             string direction = DirectionHelper.GetDirectionDescription(cursorPosition, selectedPos.Value);
 
             WorldMapPOI poi = WorldMapNavigationManager.GetSelectedPOI();
@@ -528,7 +529,7 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            float distance = Vector2Distance(party.transform.position, cursorPosition);
+            float distance = WorldMapMath.Vector2Distance(party.transform.position, cursorPosition);
             float sampleDistance = party.sampleDistance;
             if (sampleDistance <= 0)
             {
@@ -560,7 +561,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             Vector3 partyPos = WorldMapParty.instance.transform.position;
-            float distance = Vector2Distance(cursorPosition, partyPos);
+            float distance = WorldMapMath.Vector2Distance(cursorPosition, partyPos);
             string direction = DirectionHelper.GetDirectionDescription(cursorPosition, partyPos);
 
             lastAnnouncement = $"Party, {Mathf.RoundToInt(distance)} units, {direction} from cursor";
@@ -668,7 +669,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (poi == null) continue;
                 if (!poi.IsVisible()) continue;
 
-                float distance = Vector2Distance(cursorPosition, poi.transform.position);
+                float distance = WorldMapMath.Vector2Distance(cursorPosition, poi.transform.position);
                 if (distance < closestDistance)
                 {
                     closestDistance = distance;
@@ -696,7 +697,7 @@ namespace Wasteland2AccessibilityMod.States
             if (party == null) return;
 
             string poiName = WorldMapNavigationManager.GetPOIName(closestPOI);
-            float partyDistance = Vector2Distance(party.transform.position, closestPOI.transform.position);
+            float partyDistance = WorldMapMath.Vector2Distance(party.transform.position, closestPOI.transform.position);
 
             if (partyDistance <= closestPOI.instigateRadius)
             {
@@ -732,7 +733,7 @@ namespace Wasteland2AccessibilityMod.States
             if (WorldMapParty.instance != null)
             {
                 Vector3 partyPos = WorldMapParty.instance.transform.position;
-                float partyDist = Vector2Distance(cursorPosition, partyPos);
+                float partyDist = WorldMapMath.Vector2Distance(cursorPosition, partyPos);
                 string partyDir = DirectionHelper.GetDirectionDescription(partyPos, cursorPosition);
                 parts.Add($"{Mathf.RoundToInt(partyDist)} units {partyDir} from party");
             }
@@ -760,7 +761,7 @@ namespace Wasteland2AccessibilityMod.States
                 foreach (var poi in pois)
                 {
                     if (poi == null || !poi.IsVisible()) continue;
-                    float d = Vector2Distance(cursorPosition, poi.transform.position);
+                    float d = WorldMapMath.Vector2Distance(cursorPosition, poi.transform.position);
                     if (d < nearestDist)
                     {
                         nearestDist = d;
@@ -844,13 +845,5 @@ namespace Wasteland2AccessibilityMod.States
             InputSuppressor.ShouldSuppressUINavigation = true;
         }
 
-        // --- Utility ---
-
-        private static float Vector2Distance(Vector3 a, Vector3 b)
-        {
-            float dx = a.x - b.x;
-            float dz = a.z - b.z;
-            return Mathf.Sqrt(dx * dx + dz * dz);
-        }
     }
 }

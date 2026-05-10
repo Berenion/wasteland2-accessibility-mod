@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MelonLoader;
 using UnityEngine;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod
 {
@@ -167,7 +168,7 @@ namespace Wasteland2AccessibilityMod
             string name = GetPOIName(poi);
             string typeName = GetPOITypeName(poi.type);
             Vector3 poiPos = poi.transform.position;
-            float distance = Vector2Distance(relativeTo, poiPos);
+            float distance = WorldMapMath.Vector2Distance(relativeTo, poiPos);
             string distanceStr = $"{Mathf.RoundToInt(distance)} units";
             string direction = DirectionHelper.GetDirectionDescription(relativeTo, poiPos);
 
@@ -176,7 +177,7 @@ namespace Wasteland2AccessibilityMod
             if (WorldMapParty.instance != null)
             {
                 Vector3 partyPos = WorldMapParty.instance.transform.position;
-                float partyDistance = Vector2Distance(partyPos, poiPos);
+                float partyDistance = WorldMapMath.Vector2Distance(partyPos, poiPos);
                 int waterCost = EstimateWaterCost(partyDistance);
                 if (waterCost > 0)
                     waterInfo = $", {waterCost} water from party";
@@ -190,7 +191,7 @@ namespace Wasteland2AccessibilityMod
         private static void AnnounceRadiationCloud(WorldMapRadiationCloud cloud, Vector3 relativeTo)
         {
             Vector3 cloudPos = cloud.transform.position;
-            float distance = Vector2Distance(relativeTo, cloudPos);
+            float distance = WorldMapMath.Vector2Distance(relativeTo, cloudPos);
             string distanceStr = $"{Mathf.RoundToInt(distance)} units";
             string direction = DirectionHelper.GetDirectionDescription(relativeTo, cloudPos);
             int level = cloud.radiationLevel;
@@ -221,7 +222,7 @@ namespace Wasteland2AccessibilityMod
                 .OrderBy(item =>
                 {
                     Vector3 pos = GetItemPosition(item);
-                    return Vector2Distance(relativeTo, pos);
+                    return WorldMapMath.Vector2Distance(relativeTo, pos);
                 })
                 .ToList();
         }
@@ -377,14 +378,5 @@ namespace Wasteland2AccessibilityMod
             return Mathf.CeilToInt(distance / sampleDistance);
         }
 
-        /// <summary>
-        /// 2D distance on the X/Z plane (ignoring Y), matching the game's distance checks.
-        /// </summary>
-        private static float Vector2Distance(Vector3 a, Vector3 b)
-        {
-            float dx = a.x - b.x;
-            float dz = a.z - b.z;
-            return Mathf.Sqrt(dx * dx + dz * dz);
-        }
     }
 }
