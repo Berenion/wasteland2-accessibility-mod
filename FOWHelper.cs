@@ -107,28 +107,17 @@ namespace Wasteland2AccessibilityMod
         /// Call periodically to track teleporter nexuses that transition from
         /// inactive to active. This identifies doors activated at runtime
         /// (e.g. by perception checks) vs doors that were always present.
+        /// Event-driven logs only fire on transitions; no periodic dump.
         /// </summary>
-        private static float lastTrackDiagTime = 0f;
-
         public static void UpdateActivationTracking()
         {
-            bool doDiag = (Time.time - lastTrackDiagTime) > 5f;
-            if (doDiag) lastTrackDiagTime = Time.time;
-
-            int teleporterCount = 0;
             foreach (var nexus in InteractableNexus.interactables)
             {
                 if (nexus == null || nexus.gameObject == null) continue;
+                if (!(nexus.drama is InteractableTeleporter)) continue;
 
-                bool isTeleporter = nexus.drama is InteractableTeleporter;
-                if (!isTeleporter) continue;
-
-                teleporterCount++;
                 bool active = nexus.gameObject.activeInHierarchy;
                 bool isNew = !knownTeleporters.Contains(nexus);
-
-                if (doDiag)
-                    MelonLogger.Msg($"[ActivationTrack] Teleporter: {nexus.name} active={active} pos={nexus.transform.position} isNew={isNew} inSeenInactive={seenInactive.Contains(nexus)} inRecentlyActivated={recentlyActivated.Contains(nexus)}");
 
                 if (!active)
                 {
@@ -142,7 +131,7 @@ namespace Wasteland2AccessibilityMod
                     recentlyActivated.Add(nexus);
                     seenInactive.Remove(nexus);
                 }
-                else if (isNew && active && IsNearParty(nexus.transform.position, NewTeleporterDetectionRange))
+                else if (isNew && IsNearParty(nexus.transform.position, NewTeleporterDetectionRange))
                 {
                     // Teleporter just appeared in the interactables list near the party.
                     // This handles doors that were never in the list while inactive
@@ -153,9 +142,6 @@ namespace Wasteland2AccessibilityMod
 
                 knownTeleporters.Add(nexus);
             }
-
-            if (doDiag)
-                MelonLogger.Msg($"[ActivationTrack] Summary: {teleporterCount} teleporters, {seenInactive.Count} seenInactive, {recentlyActivated.Count} recentlyActivated");
         }
 
         /// <summary>
