@@ -127,21 +127,6 @@ namespace Wasteland2AccessibilityMod.Helpers
             }
         }
 
-        /// <summary>
-        /// Back-compat: dump the description as one spoken string. New code should
-        /// prefer BuildStatDescriptionLines + the info browser.
-        /// </summary>
-        public static void AnnounceStatDescription(GameObject obj)
-        {
-            var lines = BuildStatDescriptionLines(obj);
-            if (lines == null || lines.Count == 0)
-            {
-                ScreenReaderManager.SpeakInterrupt("No description available");
-                return;
-            }
-            ScreenReaderManager.SpeakInterrupt(string.Join(". ", lines.ToArray()));
-        }
-
         // ========== Description Panel Previews ==========
 
         private static CHA_DescriptionPanel FindAnyDescriptionPanel()
@@ -364,39 +349,6 @@ namespace Wasteland2AccessibilityMod.Helpers
             EnsureReflectionCached();
             if (editor == null || traitEditorTraitField == null) return null;
             return traitEditorTraitField.GetValue(editor) as Trait;
-        }
-
-        public static string GetTraitDescription(CHA_TraitEditor editor)
-        {
-            EnsureReflectionCached();
-            try
-            {
-                if (traitEditorTraitField != null)
-                {
-                    var trait = traitEditorTraitField.GetValue(editor) as Trait;
-                    if (trait != null)
-                    {
-                        string built = BuildTraitDescription(trait);
-                        if (!string.IsNullOrEmpty(built))
-                            return built;
-                    }
-                }
-
-                // Fallback: tooltip text
-                if (editor.tooltip != null)
-                {
-                    string tooltipText = editor.tooltip.text;
-                    if (!string.IsNullOrEmpty(tooltipText))
-                        return UITextExtractor.CleanText(tooltipText);
-                }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Warning($"[CharacterAnnouncementHelper] Error getting trait description: {ex.Message}");
-                return null;
-            }
         }
 
         /// <summary>

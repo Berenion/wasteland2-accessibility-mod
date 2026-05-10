@@ -3067,17 +3067,6 @@ namespace Wasteland2AccessibilityMod.States
 
         // --- Party Member Info ---
 
-        private PC FindPCOnTile()
-        {
-            var mobs = FindMobsOnTile();
-            foreach (var mob in mobs)
-            {
-                if (mob is PC && mob.mobState != Mob.MobState.DEAD)
-                    return mob as PC;
-            }
-            return null;
-        }
-
         private List<PC> FindPCsOnTile()
         {
             var result = new List<PC>();

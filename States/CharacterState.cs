@@ -1692,13 +1692,6 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        // ========== Trait Description ==========
-
-        private string GetTraitDescription(CHA_TraitEditor editor)
-        {
-            return CharacterAnnouncementHelper.GetTraitDescription(editor);
-        }
-
         // ========== Derived Stats Browser ==========
 
         private void OpenDerivedStatsBrowser(CharacterScreen screen)

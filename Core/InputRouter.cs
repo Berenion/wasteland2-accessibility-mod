@@ -17,9 +17,6 @@ namespace Wasteland2AccessibilityMod.Core
         // Tracks whether input was consumed this frame
         public static bool InputConsumedThisFrame { get; private set; }
 
-        // Tracks which keys were consumed this frame for selective suppression
-        private static readonly HashSet<KeyCode> consumedKeys = new HashSet<KeyCode>();
-
         // Tracks previous active state of each registered state for activation/deactivation callbacks
         private static readonly Dictionary<IAccessibilityState, bool> previousActiveState =
             new Dictionary<IAccessibilityState, bool>();
@@ -46,7 +43,6 @@ namespace Wasteland2AccessibilityMod.Core
         public static void ProcessInput()
         {
             InputConsumedThisFrame = false;
-            consumedKeys.Clear();
 
             // Reset suppression flags each frame
             InputSuppressor.Reset();
@@ -88,23 +84,6 @@ namespace Wasteland2AccessibilityMod.Core
         }
 
         /// <summary>
-        /// Mark a specific key as consumed this frame.
-        /// Called by state HandleInput implementations.
-        /// </summary>
-        public static void MarkKeyConsumed(KeyCode key)
-        {
-            consumedKeys.Add(key);
-        }
-
-        /// <summary>
-        /// Check if a specific key was consumed by an accessibility state this frame.
-        /// </summary>
-        public static bool WasKeyConsumed(KeyCode key)
-        {
-            return consumedKeys.Contains(key);
-        }
-
-        /// <summary>
         /// Check if any accessibility state is currently active.
         /// Used by UIFocusPatches to suppress legacy focus announcements
         /// when refactored states are handling their own announcements.
@@ -114,20 +93,6 @@ namespace Wasteland2AccessibilityMod.Core
             for (int i = 0; i < states.Count; i++)
             {
                 if (states[i].IsActive)
-                    return true;
-            }
-            return false;
-        }
-
-        /// <summary>
-        /// Check if any accessibility state that needs input suppression is currently active.
-        /// Used by InputSuppressor to decide whether to block game input.
-        /// </summary>
-        public static bool IsAnyMenuStateActive()
-        {
-            for (int i = 0; i < states.Count; i++)
-            {
-                if (states[i].IsActive && states[i].Priority >= 30)
                     return true;
             }
             return false;

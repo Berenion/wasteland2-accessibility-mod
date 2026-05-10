@@ -324,28 +324,11 @@ namespace Wasteland2AccessibilityMod
         }
 
         /// <summary>
-        /// Get the current size of the announcement queue
-        /// </summary>
-        public int GetQueueSize()
-        {
-            return announcementQueue.Count;
-        }
-
-        /// <summary>
         /// Clear all queued announcements
         /// </summary>
         public void ClearQueue()
         {
             announcementQueue.Clear();
-        }
-
-        /// <summary>
-        /// Check if voice audio is currently playing
-        /// This can be used by other systems to decide whether to queue announcements
-        /// </summary>
-        public bool IsDialogueAudioPlaying()
-        {
-            return IsVoiceAudioPlaying();
         }
     }
 }
