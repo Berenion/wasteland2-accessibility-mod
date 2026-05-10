@@ -68,11 +68,7 @@ namespace Wasteland2AccessibilityMod.States
         private static bool reflectionCached = false;
         private static MethodInfo openContextMenuMethod;
         private static FieldInfo charInfoCurrentPCField;
-        private static FieldInfo charInfoPcContainerButtonsField;
-        private static FieldInfo popupPcContainerButtonsField;
-        private static FieldInfo inventoryContainerFilterField;
         private static MethodInfo inventoryContainerSetFilterMethod;
-        private static FieldInfo charInfoCurrentPanelField;
 
         // Equipment slot order (fixed, learnable)
         private static readonly string[] equipmentSlotFieldNames = new string[]
@@ -1988,31 +1984,11 @@ namespace Wasteland2AccessibilityMod.States
             if (charInfoCurrentPCField == null)
                 MelonLogger.Warning("[InventoryState] Could not find CharacterInfoMenu.currentPC");
 
-            // CharacterInfoMenu.pcContainerButtons (private)
-            charInfoPcContainerButtonsField = typeof(CharacterInfoMenu).GetField("pcContainerButtons",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            if (charInfoPcContainerButtonsField == null)
-                MelonLogger.Warning("[InventoryState] Could not find CharacterInfoMenu.pcContainerButtons");
-
-            // PopupInventoryMenu.pcContainerButtons (private)
-            popupPcContainerButtonsField = typeof(PopupInventoryMenu).GetField("pcContainerButtons",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            if (popupPcContainerButtonsField == null)
-                MelonLogger.Warning("[InventoryState] Could not find PopupInventoryMenu.pcContainerButtons");
-
-            // InventoryContainer.filter (protected)
-            inventoryContainerFilterField = typeof(InventoryContainer).GetField("filter",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-
             // InventoryContainer.SetFilter (protected)
             inventoryContainerSetFilterMethod = typeof(InventoryContainer).GetMethod("SetFilter",
                 BindingFlags.NonPublic | BindingFlags.Instance);
             if (inventoryContainerSetFilterMethod == null)
                 MelonLogger.Warning("[InventoryState] Could not find InventoryContainer.SetFilter");
-
-            // CharacterInfoMenu.currentPanel (private)
-            charInfoCurrentPanelField = typeof(CharacterInfoMenu).GetField("currentPanel",
-                BindingFlags.NonPublic | BindingFlags.Instance);
 
             MelonLogger.Msg("[InventoryState] Reflection cached");
         }

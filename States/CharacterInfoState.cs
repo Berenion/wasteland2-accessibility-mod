@@ -78,8 +78,6 @@ namespace Wasteland2AccessibilityMod.States
         private static bool reflectionCached = false;
         private static FieldInfo charInfoCurrentPanelField;
         private static FieldInfo charInfoCurrentPCField;
-        private static FieldInfo skillInfoEditorsField;
-        private static FieldInfo skillInfoCurrentCategoryField;
 
         public bool IsActive
         {
@@ -1884,9 +1882,6 @@ namespace Wasteland2AccessibilityMod.States
             charInfoCurrentPCField = typeof(CharacterInfoMenu).GetField("currentPC", flags);
             if (charInfoCurrentPCField == null)
                 MelonLogger.Warning("[CharacterInfoState] Could not find CharacterInfoMenu.currentPC");
-
-            skillInfoEditorsField = typeof(CHA_SkillInfoPanel).GetField("skillEditors", flags);
-            skillInfoCurrentCategoryField = typeof(CHA_SkillInfoPanel).GetField("currentCategory", flags);
 
             reflectionCached = true;
             MelonLogger.Msg("[CharacterInfoState] Reflection cached");

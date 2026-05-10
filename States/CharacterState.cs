@@ -57,13 +57,9 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo panelTypeField;
         private static FieldInfo currentPCField;
         private static FieldInfo skillEditorsField;
-        private static FieldInfo skillCurrentCategoryField;
         private static FieldInfo traitEditorsField;
         private static FieldInfo attrEditorsField;
         private static FieldInfo addCharEntryListField;
-        private static FieldInfo addCharCurrentEntryField;
-        private static FieldInfo traitCurrentEditorField;
-        private static FieldInfo statDisplayListField;
         private static MethodInfo onDoneClickedMethod;
         private static bool reflectionCached = false;
 
@@ -230,16 +226,12 @@ namespace Wasteland2AccessibilityMod.States
             onDoneClickedMethod = typeof(CharacterScreen).GetMethod("OnDoneClicked", flags);
 
             skillEditorsField = typeof(CHA_SkillPanel).GetField("skillEditors", flags);
-            skillCurrentCategoryField = typeof(CHA_SkillPanel).GetField("currentCategory", flags);
 
             traitEditorsField = typeof(CHA_TraitsPanel).GetField("traitEditors", flags);
-            traitCurrentEditorField = typeof(CHA_TraitsPanel).GetField("currentEditor", flags);
 
             attrEditorsField = typeof(CHA_AttributePanel).GetField("attributeEditors", flags);
-            statDisplayListField = typeof(CHA_AttributePanel).GetField("statDisplayList", flags);
 
             addCharEntryListField = typeof(CHA_AddCharacterPanel).GetField("entryList", flags);
-            addCharCurrentEntryField = typeof(CHA_AddCharacterPanel).GetField("currentEntry", flags);
 
             // Editor-level reflection is cached in CharacterAnnouncementHelper
             CharacterAnnouncementHelper.EnsureReflectionCached();
