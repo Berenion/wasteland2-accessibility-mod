@@ -46,9 +46,8 @@ namespace Wasteland2AccessibilityMod.States
         private float lastStepChangeTime = 0f;
         private const float STEP_CHANGE_REPEAT_DELAY = 0.1f;
 
-        // Grid settings (must match CombatAStar.squareSize)
-        private const float GRID_SQUARE_SIZE = 1.6f;
-        private const float TILE_MATCH_RADIUS = GRID_SQUARE_SIZE * 0.75f;
+        // Grid match radius (canonical tile size lives in TileCoordinateSystem.SquareSize)
+        private const float TILE_MATCH_RADIUS = TileCoordinateSystem.SquareSize * 0.75f;
 
         // Camera follow
         private bool cameraFollowsCursor = true;
@@ -898,9 +897,9 @@ namespace Wasteland2AccessibilityMod.States
                 else
                 {
                     Vector3 blockedWorldPos = new Vector3(
-                        newGridId.x * GRID_SQUARE_SIZE,
+                        newGridId.x * TileCoordinateSystem.SquareSize,
                         currentPosition.y,
-                        newGridId.z * GRID_SQUARE_SIZE);
+                        newGridId.z * TileCoordinateSystem.SquareSize);
                     blockReason = IdentifyObstruction(blockedWorldPos);
                 }
                 break;
@@ -1027,7 +1026,7 @@ namespace Wasteland2AccessibilityMod.States
             Vector3 horizontalDir = (worldPos - cursorPosition).normalized;
             if (horizontalDir.sqrMagnitude > 0.01f &&
                 Physics.Raycast(cursorPosition + Vector3.up * 0.5f, horizontalDir,
-                    out hit, GRID_SQUARE_SIZE * 1.5f, obstructionMask))
+                    out hit, TileCoordinateSystem.SquareSize * 1.5f, obstructionMask))
             {
                 return DescribeHitObject(hit);
             }
@@ -1565,8 +1564,8 @@ namespace Wasteland2AccessibilityMod.States
             }
             else
             {
-                targetGridX = Mathf.RoundToInt(targetPos.x / GRID_SQUARE_SIZE);
-                targetGridZ = Mathf.RoundToInt(targetPos.z / GRID_SQUARE_SIZE);
+                targetGridX = Mathf.RoundToInt(targetPos.x / TileCoordinateSystem.SquareSize);
+                targetGridZ = Mathf.RoundToInt(targetPos.z / TileCoordinateSystem.SquareSize);
             }
 
             int tileDistX = Mathf.Abs((int)cursorGridId.x - targetGridX);

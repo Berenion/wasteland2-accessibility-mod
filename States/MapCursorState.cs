@@ -41,11 +41,10 @@ namespace Wasteland2AccessibilityMod.States
         private float lastStepChangeTime = 0f;
         private const float STEP_CHANGE_REPEAT_DELAY = 0.1f;
 
-        // Grid settings
-        private const float GRID_SQUARE_SIZE = 1.6f;
         // Half-diagonal of a grid square — objects within this distance of
-        // the node center are considered "on" this tile
-        private const float TILE_MATCH_RADIUS = GRID_SQUARE_SIZE * 0.75f;
+        // the node center are considered "on" this tile.
+        // Canonical tile size lives in TileCoordinateSystem.SquareSize.
+        private const float TILE_MATCH_RADIUS = TileCoordinateSystem.SquareSize * 0.75f;
 
         // Camera follow
         private bool cameraFollowsCursor = true;
@@ -580,10 +579,10 @@ namespace Wasteland2AccessibilityMod.States
             else
             {
                 // No node found — compute grid ID from world position directly
-                int gridX = Mathf.RoundToInt(worldPos.x / GRID_SQUARE_SIZE);
-                int gridZ = Mathf.RoundToInt(worldPos.z / GRID_SQUARE_SIZE);
+                int gridX = Mathf.RoundToInt(worldPos.x / TileCoordinateSystem.SquareSize);
+                int gridZ = Mathf.RoundToInt(worldPos.z / TileCoordinateSystem.SquareSize);
                 cursorGridId = new Vector3(gridX, 0, gridZ);
-                cursorPosition = new Vector3(gridX * GRID_SQUARE_SIZE, worldPos.y, gridZ * GRID_SQUARE_SIZE);
+                cursorPosition = new Vector3(gridX * TileCoordinateSystem.SquareSize, worldPos.y, gridZ * TileCoordinateSystem.SquareSize);
             }
             cursorInitialized = true;
             MelonLogger.Msg($"[MapCursorState] Party at world ({worldPos.x:F1}, {worldPos.y:F1}, {worldPos.z:F1}) -> grid {cursorGridId}");
@@ -595,8 +594,8 @@ namespace Wasteland2AccessibilityMod.States
 
             // Try direct ID lookup first (works when grid origin aligns with world origin)
             int floor = GetFloorLevel(worldPos);
-            int gridX = Mathf.RoundToInt(worldPos.x / GRID_SQUARE_SIZE);
-            int gridZ = Mathf.RoundToInt(worldPos.z / GRID_SQUARE_SIZE);
+            int gridX = Mathf.RoundToInt(worldPos.x / TileCoordinateSystem.SquareSize);
+            int gridZ = Mathf.RoundToInt(worldPos.z / TileCoordinateSystem.SquareSize);
 
             // Try multiple floor levels since GetFloorLevel raycast may fail
             for (int f = 0; f <= 5; f++)
@@ -684,9 +683,9 @@ namespace Wasteland2AccessibilityMod.States
                 else
                 {
                     cursorPosition = new Vector3(
-                        cursorGridId.x * GRID_SQUARE_SIZE,
+                        cursorGridId.x * TileCoordinateSystem.SquareSize,
                         cursorPosition.y,
-                        cursorGridId.z * GRID_SQUARE_SIZE);
+                        cursorGridId.z * TileCoordinateSystem.SquareSize);
                 }
 
                 if (cameraFollowsCursor) SnapCameraToCursor();
@@ -718,9 +717,9 @@ namespace Wasteland2AccessibilityMod.States
                 }
 
                 Vector3 blockedWorldPos = new Vector3(
-                    newGridId.x * GRID_SQUARE_SIZE,
+                    newGridId.x * TileCoordinateSystem.SquareSize,
                     currentPosition.y,
-                    newGridId.z * GRID_SQUARE_SIZE);
+                    newGridId.z * TileCoordinateSystem.SquareSize);
                 blockReason = IdentifyObstruction(blockedWorldPos);
                 if (string.IsNullOrEmpty(blockReason))
                     blockReason = "edge of map";
@@ -973,7 +972,7 @@ namespace Wasteland2AccessibilityMod.States
             // Threshold: if the object is beyond this distance from tile center
             // in a cardinal direction, check for a walkable neighbor that way.
             // Objects near tile edges in walled-off directions get rejected.
-            float edgeThreshold = GRID_SQUARE_SIZE * 0.4f;
+            float edgeThreshold = TileCoordinateSystem.SquareSize * 0.4f;
 
             bool blocked = false;
 
@@ -1970,8 +1969,8 @@ namespace Wasteland2AccessibilityMod.States
             inputManager.MoveInFormation(inputManager.formation, cursorPosition,
                 false, null, 0f, null, true);
 
-            int tileDistX = Mathf.Abs((int)cursorGridId.x - Mathf.RoundToInt(pc.transform.position.x / GRID_SQUARE_SIZE));
-            int tileDistZ = Mathf.Abs((int)cursorGridId.z - Mathf.RoundToInt(pc.transform.position.z / GRID_SQUARE_SIZE));
+            int tileDistX = Mathf.Abs((int)cursorGridId.x - Mathf.RoundToInt(pc.transform.position.x / TileCoordinateSystem.SquareSize));
+            int tileDistZ = Mathf.Abs((int)cursorGridId.z - Mathf.RoundToInt(pc.transform.position.z / TileCoordinateSystem.SquareSize));
             int tileDist = Mathf.Max(tileDistX, tileDistZ);
 
             string subject = inputManager.isPartyGrouped ? "party" : GetPCDisplayName(pc);
@@ -2015,8 +2014,8 @@ namespace Wasteland2AccessibilityMod.States
             // a walkable A* node exists there. Falling back to a "nearest node"
             // can place the cursor one tile off when the object's tile is
             // unwalkable (walls, props) and the nearest node is on a neighbor.
-            int naturalX = Mathf.RoundToInt(worldPos.x / GRID_SQUARE_SIZE);
-            int naturalZ = Mathf.RoundToInt(worldPos.z / GRID_SQUARE_SIZE);
+            int naturalX = Mathf.RoundToInt(worldPos.x / TileCoordinateSystem.SquareSize);
+            int naturalZ = Mathf.RoundToInt(worldPos.z / TileCoordinateSystem.SquareSize);
 
             // If a node happens to exist at the natural tile, use its position
             // for an accurate Y (floor height). Otherwise synthesize from the
@@ -2043,7 +2042,7 @@ namespace Wasteland2AccessibilityMod.States
             else
             {
                 cursorGridId = new Vector3(naturalX, 0, naturalZ);
-                cursorPosition = new Vector3(naturalX * GRID_SQUARE_SIZE, worldPos.y, naturalZ * GRID_SQUARE_SIZE);
+                cursorPosition = new Vector3(naturalX * TileCoordinateSystem.SquareSize, worldPos.y, naturalZ * TileCoordinateSystem.SquareSize);
             }
 
             MelonLogger.Msg($"[JumpToSelected] target={selected.name} worldPos={worldPos} naturalTile=({naturalX},{naturalZ}) nodeFound={(naturalTileNode != null)} cursorGridId={cursorGridId} cursorPos={cursorPosition}");
@@ -2084,8 +2083,8 @@ namespace Wasteland2AccessibilityMod.States
 
             // Compute tile distance from cursor to selected interactable
             Vector3 targetWorldPos = selected.transform.position;
-            int targetGridX = Mathf.RoundToInt(targetWorldPos.x / GRID_SQUARE_SIZE);
-            int targetGridZ = Mathf.RoundToInt(targetWorldPos.z / GRID_SQUARE_SIZE);
+            int targetGridX = Mathf.RoundToInt(targetWorldPos.x / TileCoordinateSystem.SquareSize);
+            int targetGridZ = Mathf.RoundToInt(targetWorldPos.z / TileCoordinateSystem.SquareSize);
 
             // Try to get more accurate grid ID from a node lookup
             CombatAStarNode targetNode = FindNodeAtPosition(targetWorldPos);
@@ -2131,8 +2130,8 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             Vector3 targetWorldPos = pc.transform.position;
-            int targetGridX = Mathf.RoundToInt(targetWorldPos.x / GRID_SQUARE_SIZE);
-            int targetGridZ = Mathf.RoundToInt(targetWorldPos.z / GRID_SQUARE_SIZE);
+            int targetGridX = Mathf.RoundToInt(targetWorldPos.x / TileCoordinateSystem.SquareSize);
+            int targetGridZ = Mathf.RoundToInt(targetWorldPos.z / TileCoordinateSystem.SquareSize);
 
             CombatAStarNode targetNode = FindNodeAtPosition(targetWorldPos);
             if (targetNode != null)
@@ -2186,7 +2185,7 @@ namespace Wasteland2AccessibilityMod.States
 
             // Also try raycasting horizontally from the current node toward the target
             Vector3 horizontalDir = (worldPos - cursorPosition).normalized;
-            if (Physics.Raycast(cursorPosition + Vector3.up * 0.5f, horizontalDir, out hit, GRID_SQUARE_SIZE * 1.5f, obstructionMask))
+            if (Physics.Raycast(cursorPosition + Vector3.up * 0.5f, horizontalDir, out hit, TileCoordinateSystem.SquareSize * 1.5f, obstructionMask))
             {
                 return DescribeHitObject(hit);
             }
