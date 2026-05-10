@@ -172,11 +172,6 @@ namespace Wasteland2AccessibilityMod.States
             AnnounceScanSummary();
         }
 
-        private bool IsVisibleThroughFOW(Vector3 position)
-        {
-            return FOWHelper.IsVisibleThroughFOW(position);
-        }
-
         private void ScanForEnemies(Vector3 origin)
         {
             Mob[] allMobs = UnityEngine.Object.FindObjectsOfType<Mob>();
@@ -186,7 +181,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (mob == null || mob.gameObject == null) continue;
                 if (!mob.gameObject.activeInHierarchy) continue;
                 if (mob is PC) continue; // Skip party members
-                if (!IsVisibleThroughFOW(mob.transform.position)) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(mob.transform.position)) continue;
 
                 float distance = Vector3.Distance(origin, mob.transform.position);
                 if (distance > currentScanRange) continue;
@@ -234,7 +229,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (mob == null || mob.gameObject == null) continue;
                 if (!mob.gameObject.activeInHierarchy) continue;
                 if (mob is PC) continue;
-                if (!IsVisibleThroughFOW(mob.transform.position)) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(mob.transform.position)) continue;
 
                 float distance = Vector3.Distance(origin, mob.transform.position);
                 if (distance > currentScanRange) continue;
@@ -338,7 +333,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (nexus == null || !nexus.isVisible) continue;
                 if (nexus.isPC) continue;
-                if (!IsVisibleThroughFOW(nexus.transform.position)) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(nexus.transform.position)) continue;
                 if (FOWHelper.IsPerceptionGated(nexus)) continue;
 
                 // Check if this nexus is a lootable container (unlocked or locked)
@@ -392,7 +387,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (exit == null || exit.gameObject == null) continue;
                 if (!exit.gameObject.activeInHierarchy) continue;
-                if (!IsVisibleThroughFOW(exit.transform.position)) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(exit.transform.position)) continue;
 
                 float distance = Vector3.Distance(origin, exit.transform.position);
                 if (distance > currentScanRange) continue;
@@ -422,7 +417,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (interactable == null || !interactable.isVisible) continue;
                 if (interactable.isPC) continue;
-                if (!IsVisibleThroughFOW(interactable.transform.position)) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(interactable.transform.position)) continue;
                 if (FOWHelper.IsPerceptionGated(interactable)) continue;
 
                 float distance = Vector3.Distance(origin, interactable.transform.position);
