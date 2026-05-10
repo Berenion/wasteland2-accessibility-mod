@@ -108,16 +108,6 @@ namespace Wasteland2AccessibilityMod.States
             { "computerTech", "Computer Tech" },
         };
 
-        // Cover direction names (indices 0-3: forward/right/back/left = N/E/S/W)
-        private static readonly string[] COVER_DIRECTIONS = { "north", "east", "south", "west" };
-
-        private static readonly Vector3[] CARDINAL_DIRECTIONS =
-        {
-            Vector3.forward,  // Up arrow = North (+Z)
-            Vector3.right,    // Right arrow = East (+X)
-            Vector3.back,     // Down arrow = South (-Z)
-            Vector3.left      // Left arrow = West (-X)
-        };
 
         public bool IsActive
         {
@@ -664,7 +654,7 @@ namespace Wasteland2AccessibilityMod.States
 
         private void MoveInDirection(int directionIndex, int tilesToMove)
         {
-            Vector3 direction = CARDINAL_DIRECTIONS[directionIndex];
+            Vector3 direction = CardinalDirections.Vectors[directionIndex];
 
             // Single-step preserves the original free off-grid behavior so the
             // user can still inspect tiles outside the walkable grid.
@@ -924,10 +914,10 @@ namespace Wasteland2AccessibilityMod.States
             if (node == null || node.cover == null) return "No cover info";
 
             List<string> coverDirs = new List<string>();
-            for (int i = 0; i < node.cover.Length && i < COVER_DIRECTIONS.Length; i++)
+            for (int i = 0; i < node.cover.Length && i < CardinalDirections.Names.Length; i++)
             {
                 if (node.cover[i])
-                    coverDirs.Add(COVER_DIRECTIONS[i]);
+                    coverDirs.Add(CardinalDirections.Names[i]);
             }
 
             if (coverDirs.Count == 0) return "No cover";

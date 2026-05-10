@@ -58,17 +58,6 @@ namespace Wasteland2AccessibilityMod.States
         private int combatantCategory = 0; // 0=All, 1=Enemies, 2=Allies
         private static readonly string[] COMBATANT_CATEGORIES = { "All", "Enemies", "Allies" };
 
-        // Cover direction names (indices 0-3: forward/right/back/left = N/E/S/W)
-        private static readonly string[] COVER_DIRECTIONS = { "north", "east", "south", "west" };
-
-        // Cardinal direction vectors for arrow keys
-        private static readonly Vector3[] CARDINAL_DIRECTIONS =
-        {
-            Vector3.forward,  // Up arrow = North (+Z)
-            Vector3.right,    // Right arrow = East (+X)
-            Vector3.back,     // Down arrow = South (-Z)
-            Vector3.left      // Left arrow = West (-X)
-        };
 
         // Initiative browsing state
         private bool browsingInitiative = false;
@@ -866,7 +855,7 @@ namespace Wasteland2AccessibilityMod.States
 
         private void MoveCursor(int directionIndex, int tilesToMove)
         {
-            Vector3 direction = CARDINAL_DIRECTIONS[directionIndex];
+            Vector3 direction = CardinalDirections.Vectors[directionIndex];
             Vector3 currentGridId = cursorGridId;
             Vector3 currentPosition = cursorPosition;
             int actualSteps = 0;
@@ -1235,10 +1224,10 @@ namespace Wasteland2AccessibilityMod.States
             if (node == null || node.cover == null) return null;
 
             var coverDirs = new List<string>();
-            for (int i = 0; i < node.cover.Length && i < COVER_DIRECTIONS.Length; i++)
+            for (int i = 0; i < node.cover.Length && i < CardinalDirections.Names.Length; i++)
             {
                 if (node.cover[i])
-                    coverDirs.Add(COVER_DIRECTIONS[i]);
+                    coverDirs.Add(CardinalDirections.Names[i]);
             }
 
             if (coverDirs.Count == 0) return null;

@@ -43,7 +43,6 @@ namespace Wasteland2AccessibilityMod.States
             new Vector3(-1, 0, 0)   // West (-X)
         };
 
-        private static readonly string[] DIRECTION_NAMES = { "north", "east", "south", "west" };
 
         public bool IsActive
         {
@@ -401,7 +400,7 @@ namespace Wasteland2AccessibilityMod.States
             }
             else
             {
-                ScreenReaderManager.SpeakInterrupt($"Blocked, {DIRECTION_NAMES[directionIndex]}");
+                ScreenReaderManager.SpeakInterrupt($"Blocked, {CardinalDirections.Names[directionIndex]}");
             }
         }
 
