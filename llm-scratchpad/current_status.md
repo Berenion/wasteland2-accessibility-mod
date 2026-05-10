@@ -18,7 +18,25 @@
 - `prompts/string-builder.md` — confirmed the mod IS a string-builder mod (915 hits across 52 files; concentrated in the info-browser states and `InventoryFormatting.cs`). User chose to skip migration: existing `parts.Add() / string.Join(", ", ...)` pattern is uniform across the codebase, and migrating would risk wording regressions for announcements tuned over 149 commits. A `MessageBuilder` would mainly help new code; the win didn't justify the migration cost.
 
 ## Prompts pending
-- `prompts/low-level-cleanup.md` (next, per `string-builder.md`)
+- `prompts/low-level-cleanup.md` (in progress — bundles A/B/C/D approved, Bundle E deferred to a future session)
+- `prompts/high-level-cleanup.md` (next after low-level-cleanup completes)
+
+## Deferred work for future session: Bundle E (method merges)
+
+User approved bundles A, B, C, D for the current session and deferred Bundle E. Full triage with all 250 findings is in `llm-scratchpad/cleanup-findings/` (one file per batch; `PRIORITIZED.md` is the consolidated table). Bundle E specifically:
+
+- **E1** — Merge `HandleAttributesInput`/`HandleSkillsInput` edit-mode block: `States/CharacterState.cs` (~60 lines duplicated) and `States/CharacterInfoState.cs` (~22 lines duplicated). Extract a parameterised handler. ~80 lines saved, **medium risk** — touches attribute/skill +/- input. Smoke-test in character creation + character info.
+- **E2** — Extract shared info-browser navigator (Up/Down/Home/End/Escape over `List<string>`) implemented near-identically in `InventoryState`, `CharacterState`, `CharacterInfoState`. ~60 lines saved, **medium risk** — touches I-key info-browser flow.
+- **E3** — Merge `MainMenuState.NavigateUp`/`NavigateDown` (mirror methods) + collapse 6 structurally identical `ButtonEntry` blocks in `RebuildButtonList`. ~40 lines, **low risk** (main menu only).
+- **E4** — Merge `NavigationManager.NextCategory`/`PreviousCategory` and `CycleNext`/`CyclePrevious`; same pattern in `WorldMapNavigationManager`. ~35 lines, **low risk**.
+- **E5** — Merge identical 4-line bodies in `Patches/UITooltipPatches.cs` (`UITooltip_SetText` and `TextTooltip_SetText`). ~10 lines, **low risk**.
+- **E6** — Merge identical bodies of `CharacterScreenPatches.UIInput_ProcessEvent_Patch` and `UIInput_Update_Patch`. ~15 lines, **low risk**.
+- **E7** — Merge `ConversationPatches.OnTopicPressed`/`OnTopicMouseOver` reflection walks (~45 duplicated lines each). ~45 lines, **medium risk** — touches conversation announcement timing.
+- **E8** — Merge `SaveLoadScreen_OnSaveClicked_Suppressor` and `SaveLoadScreen_OnLoadClicked_Suppressor` (identical bodies). ~20 lines, **low risk**.
+- **E9** — Merge `ScannerState.ScanForEnemies` + `ScanForNPCs` into one pass over `Mob[]` (currently both call `FindObjectsOfType<Mob>` independently). ~30 lines, **medium risk** — affects scanner output ordering.
+- **E10** — Combine `CombatState.FormatAction`/`FormatTargetAction` (identical bodies). ~30 lines, **low risk**.
+
+When resuming: read `llm-scratchpad/cleanup-findings/PRIORITIZED.md` Bundle E section and the per-batch files for full context.
 
 ## Optional follow-ups noted but deferred
 - Extract a shared `KeyRepeat` helper for `Time.unscaledTime`-based debounce (each state currently rolls its own).
