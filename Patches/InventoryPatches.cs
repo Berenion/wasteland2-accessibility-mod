@@ -37,25 +37,6 @@ namespace Wasteland2AccessibilityMod.Patches
     }
 
     /// <summary>
-    /// Patch for INV_DragDropItem OnEnable - announces when items become active
-    /// Only announces if the item is selected when it becomes active
-    /// </summary>
-    [HarmonyPatch(typeof(INV_DragDropItem), "OnEnable")]
-    public class INV_DragDropItem_OnEnable_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(INV_DragDropItem __instance)
-        {
-            // Wait a frame to check selection, as selection might happen after OnEnable
-            // We'll rely on the focus system to handle this via UICamera patches
-        }
-    }
-
-    // Removed: INV_MainPanel.PopulateData patch
-    // No longer automatically announces inventory summary when switching characters
-    // Users will hear individual items as they navigate instead
-
-    /// <summary>
     /// Patch for InventoryGrid.SelectItem - announces when an item is selected in the grid
     /// </summary>
     [HarmonyPatch(typeof(InventoryGrid), "SelectItem")]
