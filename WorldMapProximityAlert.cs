@@ -26,9 +26,6 @@ namespace Wasteland2AccessibilityMod
         private static HashSet<int> insideRadiationClouds = new HashSet<int>();
         private static HashSet<int> insideDiscoveryBoundary = new HashSet<int>();
 
-        // Track encounter zone entry/exit
-        private static HashSet<int> insideEncounterZones = new HashSet<int>();
-
         /// <summary>
         /// Check proximity to all known objects from the cursor position.
         /// Call this each time the cursor moves.
@@ -129,7 +126,6 @@ namespace Wasteland2AccessibilityMod
             announcedPOIs.Clear();
             insideRadiationClouds.Clear();
             insideDiscoveryBoundary.Clear();
-            insideEncounterZones.Clear();
         }
 
         private static string CheckPOIProximity(Vector3 cursorPosition)
@@ -259,39 +255,6 @@ namespace Wasteland2AccessibilityMod
             return string.Join(". ", alerts.ToArray());
         }
 
-        private static string CheckEncounterZoneProximity(Vector3 cursorPosition)
-        {
-            if (WorldMapManager.instance == null) return "";
-
-            var zones = WorldMapManager.instance.randomEncounterZones;
-            if (zones == null) return "";
-
-            List<string> alerts = new List<string>();
-
-            foreach (var zone in zones)
-            {
-                if (zone == null) continue;
-                int id = zone.GetInstanceID();
-
-                bool inZone = IsPointInEncounterZone(cursorPosition, zone);
-                bool wasInZone = insideEncounterZones.Contains(id);
-
-                if (inZone && !wasInZone)
-                {
-                    insideEncounterZones.Add(id);
-                    alerts.Add("Entering random encounter zone");
-                }
-                else if (!inZone && wasInZone)
-                {
-                    insideEncounterZones.Remove(id);
-                    alerts.Add("Leaving encounter zone");
-                }
-            }
-
-            if (alerts.Count == 0) return "";
-            return string.Join(". ", alerts.ToArray());
-        }
-
         private static void CleanupDistantEntries(Vector3 cursorPosition)
         {
             // Remove POI tracking entries for POIs that are now far away
@@ -354,16 +317,6 @@ namespace Wasteland2AccessibilityMod
                    point.x > cloudPos.x - expandX / 2f &&
                    point.z < cloudPos.z + expandZ / 2f &&
                    point.z > cloudPos.z - expandZ / 2f;
-        }
-
-        private static bool IsPointInEncounterZone(Vector3 point, WorldMapRandomEncounterZone zone)
-        {
-            Vector3 zonePos = zone.transform.position;
-            Vector2 zoneSize = zone.zoneSize;
-            return point.x < zonePos.x + zoneSize.x / 2f &&
-                   point.x > zonePos.x - zoneSize.x / 2f &&
-                   point.z < zonePos.z + zoneSize.y / 2f &&
-                   point.z > zonePos.z - zoneSize.y / 2f;
         }
 
         /// <summary>
