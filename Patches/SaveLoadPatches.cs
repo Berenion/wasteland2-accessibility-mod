@@ -40,17 +40,18 @@ namespace Wasteland2AccessibilityMod.Patches
     [HarmonyPatch(typeof(SaveLoadScreen), "PopulateData")]
     public class SaveLoadScreen_PopulateData_Patch
     {
+        // saveGrid is a public field on SaveLoadScreen; cache once at class load.
+        private static readonly FieldInfo saveGridField =
+            typeof(SaveLoadScreen).GetField("saveGrid", BindingFlags.Public | BindingFlags.Instance);
+
         [HarmonyPrefix]
         public static void Prefix(SaveLoadScreen __instance)
         {
             try
             {
-                // saveGrid is a public field on SaveLoadScreen
-                var gridField = typeof(SaveLoadScreen).GetField("saveGrid",
-                    BindingFlags.Public | BindingFlags.Instance);
-                if (gridField == null) return;
+                if (saveGridField == null) return;
 
-                var grid = gridField.GetValue(__instance) as UIGrid;
+                var grid = saveGridField.GetValue(__instance) as UIGrid;
                 if (grid == null) return;
 
                 // Ensure the grid actually applies its sort function during Reposition()
