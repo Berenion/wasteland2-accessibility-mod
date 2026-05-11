@@ -35,6 +35,8 @@ The mod has two cooperating pipelines: a **state-based input router** that owns 
 2. Fires `OnActivated` / `OnDeactivated` as `IsActive` flips.
 3. Walks states top-down; the highest-priority active state whose `HandleInput()` returns `true` consumes input for that frame.
 
+States inherit from `Core/AccessibilityStateBase` (which implements `IAccessibilityState`) for default lifecycle logging — its `OnActivated` / `OnDeactivated` emit `[ClassName] Activated` / `[ClassName] Deactivated`. Subclasses can override and either call `base.OnActivated()` to keep the default log line or skip it when they emit a richer one (e.g. `CombatState` logs `combat started`/`combat ended` instead).
+
 Priorities are intentional and load-bearing — see the gotchas below. The actual values live in each `States/*.cs` file (search `Priority =>`); examples include `ScannerState` 80, `DialogState` 70, `MainMenuState` 60, `KeypadState` 58, `GenericMenuState` 55, the 50-54 character-creation/info/conversation/inventory/shop cluster, `CombatState` 45, `MapCursorState` 30, `WorldMapState` 20, `ExplorationState` 10. The 50-54 cluster is spread because `List<T>.Sort` is not stable; the states are mutually exclusive in practice via `IsActive` but identical priorities could reorder between runs.
 
 ### Harmony Patches
@@ -74,7 +76,7 @@ Both feed `DialogState`. When adding support for a new tutorial-like popup, iden
 
 `InputRouter` walks states in priority order, so on any given frame, higher-priority states announce before lower ones. To avoid clobbering, lower-priority states must use `Speak()` (queue) when a higher-priority state is also speaking that frame.
 
-Example: when a `TutorialPopupMenu` is up during character creation, `DialogState` (70) announces the dialog. `CharacterState` (50) needs to use `Speak()` (not `SpeakInterrupt()`) for its panel-change announcement so the dialog is still heard.
+Example: when a `TutorialPopupMenu` is up during character creation, `DialogState` (70) announces the dialog. `CharacterState` (53) needs to use `Speak()` (not `SpeakInterrupt()`) for its panel-change announcement so the dialog is still heard.
 
 ### Stacked Dialogs
 
@@ -130,7 +132,7 @@ To add coverage for a new UI element:
 
 1. **Find the right hook.** Identify the method in the game that populates or activates the element. Use the decompiled code index — don't guess.
 2. **Decide between a state and a patch.**
-   - If the element introduces a new keyboard navigation context (a new screen, popup, or modal flow), add an `IAccessibilityState` in `States/`.
+   - If the element introduces a new keyboard navigation context (a new screen, popup, or modal flow), add a state in `States/` that inherits from `Core/AccessibilityStateBase` and register it in `MelonMod.OnLateInitializeMelon`. Pick a priority that doesn't collide with the existing values (see the priority list above).
    - If you only need to react to an existing UI event, add a Harmony patch in the matching `Patches/*.cs` file.
 3. **Write the patch.**
    ```csharp
