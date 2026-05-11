@@ -448,7 +448,8 @@ namespace Wasteland2AccessibilityMod.States
             if (cameraFollowsCursor)
                 SnapCameraToCursor();
 
-            ScreenReaderManager.SpeakInterrupt("Cursor at party position");
+            lastAnnouncement = "Cursor at party position";
+            ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
             MelonLogger.Msg("[WorldMapState] Jumped cursor to party");
         }
 
