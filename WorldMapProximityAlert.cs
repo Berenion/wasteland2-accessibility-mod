@@ -244,12 +244,6 @@ namespace Wasteland2AccessibilityMod
                     // Left discovery boundary
                     insideDiscoveryBoundary.Remove(id);
                 }
-
-                // Update cloud tracking
-                if (inCloud)
-                    insideRadiationClouds.Add(id);
-                if (inDiscovery)
-                    insideDiscoveryBoundary.Add(id);
             }
 
             if (alerts.Count == 0) return "";
