@@ -177,20 +177,13 @@ namespace Wasteland2AccessibilityMod.States
                     string currentValue = nameInput.value ?? "";
                     bool changed = false;
 
-                    // Handle backspace
-                    if (Input.GetKeyDown(KeyCode.Backspace) && currentValue.Length > 0)
-                    {
-                        currentValue = currentValue.Substring(0, currentValue.Length - 1);
-                        changed = true;
-                    }
-
-                    // Handle typed characters from Input.inputString
+                    // Handle typed characters from Input.inputString (backspace comes through as '\b')
                     string inputString = Input.inputString;
                     if (!string.IsNullOrEmpty(inputString))
                     {
                         foreach (char c in inputString)
                         {
-                            if (c == '\b') // Backspace (also comes through inputString)
+                            if (c == '\b')
                             {
                                 if (currentValue.Length > 0)
                                 {
