@@ -68,6 +68,7 @@ namespace Wasteland2AccessibilityMod.States
         private static bool reflectionCached = false;
         private static MethodInfo openContextMenuMethod;
         private static FieldInfo charInfoCurrentPCField;
+        private static FieldInfo popupInvPcSelectedField;
         private static MethodInfo inventoryContainerSetFilterMethod;
 
         // Equipment slot order (fixed, learnable)
@@ -1832,13 +1833,9 @@ namespace Wasteland2AccessibilityMod.States
             else if (isPopupInventoryMenu)
             {
                 var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
-                if (popupInv != null)
+                if (popupInv != null && popupInvPcSelectedField != null)
                 {
-                    // pcSelected is protected, use reflection
-                    var field = typeof(PopupInventoryMenu).GetField("pcSelected",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (field != null)
-                        return field.GetValue(popupInv) as PC;
+                    return popupInvPcSelectedField.GetValue(popupInv) as PC;
                 }
             }
 
@@ -1983,6 +1980,12 @@ namespace Wasteland2AccessibilityMod.States
                 BindingFlags.NonPublic | BindingFlags.Instance);
             if (charInfoCurrentPCField == null)
                 MelonLogger.Warning("[InventoryState] Could not find CharacterInfoMenu.currentPC");
+
+            // PopupInventoryMenu.pcSelected (protected)
+            popupInvPcSelectedField = typeof(PopupInventoryMenu).GetField("pcSelected",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            if (popupInvPcSelectedField == null)
+                MelonLogger.Warning("[InventoryState] Could not find PopupInventoryMenu.pcSelected");
 
             // InventoryContainer.SetFilter (protected)
             inventoryContainerSetFilterMethod = typeof(InventoryContainer).GetMethod("SetFilter",
