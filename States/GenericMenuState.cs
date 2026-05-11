@@ -47,6 +47,12 @@ namespace Wasteland2AccessibilityMod.States
         // Cached HUD_SkillUseMenu reference (item-use popup from skill targeting)
         private HUD_SkillUseMenu cachedSkillUseMenu = null;
 
+        // Reflection caches
+        private static readonly FieldInfo uiInputMValueField =
+            typeof(UIInput).GetField("mValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo saveGameListEntrySaveTimeField =
+            typeof(SaveGameListEntry).GetField("saveTime", BindingFlags.NonPublic | BindingFlags.Instance);
+
         // Text field editing mode (SaveLoadScreen name input)
         private bool isEditingTextField = false;
         private string editingOriginalValue = "";
@@ -132,10 +138,9 @@ namespace Wasteland2AccessibilityMod.States
                     if (cachedSaveLoadScreen != null && cachedSaveLoadScreen.nameInput != null
                         && !string.IsNullOrEmpty(editingOriginalValue))
                     {
-                        var mValueField = typeof(UIInput).GetField("mValue", BindingFlags.NonPublic | BindingFlags.Instance);
-                        if (mValueField != null)
+                        if (uiInputMValueField != null)
                         {
-                            mValueField.SetValue(cachedSaveLoadScreen.nameInput, editingOriginalValue);
+                            uiInputMValueField.SetValue(cachedSaveLoadScreen.nameInput, editingOriginalValue);
                             cachedSaveLoadScreen.nameInput.UpdateLabel();
                         }
                         else
@@ -207,10 +212,9 @@ namespace Wasteland2AccessibilityMod.States
                     {
                         // Use reflection to set mValue directly to avoid triggering
                         // ExecuteOnChange() -> OnInputEntry() -> OnSaveClicked()
-                        var mValueField = typeof(UIInput).GetField("mValue", BindingFlags.NonPublic | BindingFlags.Instance);
-                        if (mValueField != null)
+                        if (uiInputMValueField != null)
                         {
-                            mValueField.SetValue(nameInput, currentValue);
+                            uiInputMValueField.SetValue(nameInput, currentValue);
                             nameInput.UpdateLabel();
                         }
                         else
@@ -684,16 +688,14 @@ namespace Wasteland2AccessibilityMod.States
                 }
 
                 // Sort by save time descending (newest first)
-                var saveTimeField = typeof(SaveGameListEntry).GetField("saveTime",
-                    BindingFlags.NonPublic | BindingFlags.Instance);
                 children.Sort((a, b) =>
                 {
                     var entryA = a.GetComponent<SaveGameListEntry>();
                     var entryB = b.GetComponent<SaveGameListEntry>();
-                    if (entryA != null && entryB != null && saveTimeField != null)
+                    if (entryA != null && entryB != null && saveGameListEntrySaveTimeField != null)
                     {
-                        var timeA = (DateTime)saveTimeField.GetValue(entryA);
-                        var timeB = (DateTime)saveTimeField.GetValue(entryB);
+                        var timeA = (DateTime)saveGameListEntrySaveTimeField.GetValue(entryA);
+                        var timeB = (DateTime)saveGameListEntrySaveTimeField.GetValue(entryB);
                         return DateTime.Compare(timeB, timeA); // descending
                     }
                     return string.Compare(a.name, b.name, StringComparison.Ordinal);
@@ -1412,10 +1414,9 @@ namespace Wasteland2AccessibilityMod.States
                     editingOriginalValue = cachedSaveLoadScreen.nameInput.value ?? "";
                     // Clear the field so user starts fresh. Use reflection to set mValue directly
                     // to avoid triggering ExecuteOnChange() -> OnInputEntry() -> OnSaveClicked()
-                    var mValueField = typeof(UIInput).GetField("mValue", BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (mValueField != null)
+                    if (uiInputMValueField != null)
                     {
-                        mValueField.SetValue(cachedSaveLoadScreen.nameInput, "");
+                        uiInputMValueField.SetValue(cachedSaveLoadScreen.nameInput, "");
                         cachedSaveLoadScreen.nameInput.UpdateLabel();
                     }
                     else
