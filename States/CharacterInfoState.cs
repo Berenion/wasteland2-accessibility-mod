@@ -546,7 +546,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (label.color == GUIManager.buffedTextColor) state = ", buffed";
                 else if (label.color == GUIManager.debuffedTextColor) state = ", debuffed";
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterInfoState] AddDossierSkillPointsPerLevel buff color compare failed: {ex.Message}"); }
 
             dossierLines.Add($"Skill Points Per Level: {text}{state}");
         }

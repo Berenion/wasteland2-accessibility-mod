@@ -1340,7 +1340,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (IsOnCurrentTile(mob.transform.position))
                         onTile.Add(mob);
                 }
-                catch { }
+                catch (Exception ex) { MelonLogger.Warning($"[CombatState] FindMobsOnTile mob transform check failed: {ex.Message}"); }
             }
 
             // Unconscious party members are removed from cm.mobs by PC.KnockOut, so
@@ -1362,7 +1362,7 @@ namespace Wasteland2AccessibilityMod.States
                             if (IsOnCurrentTile(pc.transform.position))
                                 onTile.Add(pc);
                         }
-                        catch { }
+                        catch (Exception ex) { MelonLogger.Warning($"[CombatState] FindMobsOnTile unconscious PC transform check failed: {ex.Message}"); }
                     }
                 }
             }
@@ -2184,7 +2184,7 @@ namespace Wasteland2AccessibilityMod.States
                     partyInfoLines.Add(weaponLine);
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CombatState] BuildPartyMemberInfo weapon section failed: {ex.Message}"); }
 
             // --- Status Effects ---
             try
@@ -2200,7 +2200,7 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CombatState] BuildPartyMemberInfo status effects section failed: {ex.Message}"); }
         }
 
         private string FormatPartyInfoLine(int index)
@@ -2736,7 +2736,7 @@ namespace Wasteland2AccessibilityMod.States
                         maxDmg = pc.CalculateDamage(target, pc.transform.position, maxDmg,
                             out mit, weaponInstance.template as ItemTemplate_Weapon);
                     }
-                    catch { }
+                    catch (Exception ex) { MelonLogger.Warning($"[CombatState] BuildAttackInfo CalculateDamage failed: {ex.Message}"); }
 
                     if (minDmg == maxDmg)
                         parts.Add(minDmg + " damage");
@@ -2782,7 +2782,7 @@ namespace Wasteland2AccessibilityMod.States
                         maxDmg = pc.CalculateDamage(target, pc.transform.position, maxDmg,
                             out mit, weaponInstance.template as ItemTemplate_Weapon);
                     }
-                    catch { }
+                    catch (Exception ex) { MelonLogger.Warning($"[CombatState] BuildAttackInfoForMode CalculateDamage failed: {ex.Message}"); }
 
                     if (minDmg == maxDmg)
                         parts.Add(minDmg + " damage");

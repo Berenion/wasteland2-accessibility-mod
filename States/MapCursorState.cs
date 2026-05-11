@@ -3104,7 +3104,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (!string.IsNullOrEmpty(xpLine))
                     partyInfoLines.Add(xpLine);
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] BuildPartyMemberInfo XP section failed: {ex.Message}"); }
 
             // --- Weapon ---
             try
@@ -3124,7 +3124,7 @@ namespace Wasteland2AccessibilityMod.States
                     partyInfoLines.Add(weaponLine);
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] BuildPartyMemberInfo weapon section failed: {ex.Message}"); }
 
             // --- Status Effects ---
             try
@@ -3140,7 +3140,7 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] BuildPartyMemberInfo status effects section failed: {ex.Message}"); }
         }
 
         private string FormatPartyInfoLine(int index)
