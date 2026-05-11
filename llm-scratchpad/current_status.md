@@ -16,10 +16,11 @@
 - `prompts/large-file-handling.md`
 - `prompts/input-handling.md` — no changes; assessed the existing `Core/InputRouter` + `IAccessibilityState` + `Core/InputSuppressor` architecture as already meeting the prompt's target state-priority-router pattern. User chose to skip optional cleanups (KeyRepeat helper, decoupling state flags from suppressor, disambiguating priority-50 states).
 - `prompts/string-builder.md` — confirmed the mod IS a string-builder mod (915 hits across 52 files; concentrated in the info-browser states and `InventoryFormatting.cs`). User chose to skip migration: existing `parts.Add() / string.Join(", ", ...)` pattern is uniform across the codebase, and migrating would risk wording regressions for announcements tuned over 149 commits. A `MessageBuilder` would mainly help new code; the win didn't justify the migration cost.
+- `prompts/low-level-cleanup.md` — bundles A, B, C, D implemented and committed (24 commits total on branch `claude-mod-cleanup`). Bundle E still deferred. Also caught and fixed a pre-existing bug not in the original triage: shop info-browser Type line for weapons showed generic "Weapon" instead of the weapon-skill name ("Handguns" etc.) that inventory's info-browser uses — fixed in `532a20b` to match inventory's logic.
 
 ## Prompts pending
-- `prompts/low-level-cleanup.md` (in progress — bundles A/B/C/D approved, Bundle E deferred to a future session)
-- `prompts/high-level-cleanup.md` (next after low-level-cleanup completes)
+- `prompts/high-level-cleanup.md` (in progress — code review pass next)
+- `prompts/finalization.md` (after high-level-cleanup)
 
 ## Deferred work for future session: Bundle E (method merges)
 
@@ -53,7 +54,7 @@ The other 12 files >500 lines are single mega-classes whose sub-modes share stat
 ## Files in `llm-scratchpad/`
 - `current_status.md` — this file
 - `claude_md_validation.md` — validation report; cross-branch findings still apply, test-branch findings now confirmed and folded into the repo CLAUDE.md
-- `code-index/` — structural index of all 61 source files (one `.md` per `.cs`), built by 9 parallel sonnet agents. Use it as a fast map: search by class/method name to find which file owns a symbol without grep-walking the whole tree.
+- `cleanup-findings/` — triage from `prompts/low-level-cleanup.md`; `PRIORITIZED.md` is the consolidated bundle table, batch-*.md are the raw per-area findings
 
 ## Files added during this prompt
 - `CLAUDE.md` (rewrite — facts corrected, gotchas promoted from parent, build instructions reflect bundled `libs/`)
