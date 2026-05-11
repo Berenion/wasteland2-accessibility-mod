@@ -3,6 +3,7 @@ using MelonLoader;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 using Wasteland2AccessibilityMod.States;
 
@@ -316,6 +317,9 @@ namespace Wasteland2AccessibilityMod.Patches
     [HarmonyPatch(typeof(ConversationHUD), "OnTopicPressed")]
     public class ConversationHUD_OnTopicPressed_Patch
     {
+        private static readonly FieldInfo buttonListField =
+            typeof(ConversationHUD).GetField("buttonList", BindingFlags.NonPublic | BindingFlags.Instance);
+
         [HarmonyPrefix]
         public static void Prefix(ConversationHUD __instance, UnityEngine.GameObject button)
         {
@@ -346,9 +350,6 @@ namespace Wasteland2AccessibilityMod.Patches
                 // Find the corresponding ButtonInfo to get the full response text
                 try
                 {
-                    var buttonListField = typeof(ConversationHUD).GetField("buttonList",
-                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
                     if (buttonListField != null)
                     {
                         var buttonList = buttonListField.GetValue(__instance) as System.Collections.IList;
@@ -433,6 +434,8 @@ namespace Wasteland2AccessibilityMod.Patches
     {
         private static string lastHoveredButton = "";
         private static float lastHoverTime = 0f;
+        private static readonly FieldInfo buttonListField =
+            typeof(ConversationHUD).GetField("buttonList", BindingFlags.NonPublic | BindingFlags.Instance);
 
         [HarmonyPostfix]
         public static void Postfix(ConversationHUD __instance, UnityEngine.GameObject button)
@@ -466,9 +469,6 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 try
                 {
-                    var buttonListField = typeof(ConversationHUD).GetField("buttonList",
-                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
                     if (buttonListField != null)
                     {
                         var buttonList = buttonListField.GetValue(__instance) as System.Collections.IList;
