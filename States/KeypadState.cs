@@ -10,10 +10,10 @@ namespace Wasteland2AccessibilityMod.States
     /// digit-entry handling, below DialogState (70) so the "Incorrect Passcode"
     /// modal that appears after a wrong entry takes over cleanly.
     /// </summary>
-    public class KeypadState : IAccessibilityState
+    public class KeypadState : AccessibilityStateBase
     {
-        public string Name => "Keypad";
-        public int Priority => 58;
+        public override string Name => "Keypad";
+        public override int Priority => 58;
 
         // Set while this state is active so the OnGUI suppressor patch can block
         // the keypad's native key handling and avoid double-entry.
@@ -25,7 +25,7 @@ namespace Wasteland2AccessibilityMod.States
         private static readonly MethodInfo addToValueMethod =
             typeof(KeypadMenu).GetMethod("AddToValue", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -34,7 +34,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             if (cachedMenu == null || !cachedMenu.gameObject.activeInHierarchy)
             {
@@ -92,18 +92,20 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             Active = true;
             cachedMenu = UnityEngine.Object.FindObjectOfType<KeypadMenu>();
             ScreenReaderManager.SpeakInterrupt(
                 "Enter passcode. Type digits, Backspace to delete, C to clear, Enter to submit, Escape to cancel.");
+            base.OnActivated();
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             Active = false;
             cachedMenu = null;
+            base.OnDeactivated();
         }
 
         private void EnterDigit(int digit)

@@ -14,10 +14,10 @@ namespace Wasteland2AccessibilityMod.States
     /// Four navigation zones: PlayerInventory, Escrow, VendorInventory, Filters.
     /// Priority 50 - same level as InventoryState (mutually exclusive).
     /// </summary>
-    public class ShopState : IAccessibilityState
+    public class ShopState : AccessibilityStateBase
     {
-        public string Name => "Shop";
-        public int Priority => 50;
+        public override string Name => "Shop";
+        public override int Priority => 50;
 
         /// <summary>
         /// When true, managed navigation is active and patch-based announcements should be suppressed.
@@ -85,7 +85,7 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo inventoryContainerFilterField;
         private static MethodInfo onSellJunkClickedMethod;
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -101,7 +101,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             InputSuppressor.ShouldSuppressGameInput = true;
             InputSuppressor.ShouldSuppressUINavigation = true;
@@ -198,7 +198,7 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             IsManagedNavigation = true;
             if (!reflectionCached) CacheReflection();
@@ -259,7 +259,7 @@ namespace Wasteland2AccessibilityMod.States
             MelonLogger.Msg($"[ShopState] Activated, zone={currentZone}, items={currentList.Count}");
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             suspendedZone = currentZone;
             suspendedIndex = currentIndex;

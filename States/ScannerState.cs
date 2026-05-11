@@ -12,10 +12,10 @@ namespace Wasteland2AccessibilityMod.States
     /// of nearby objects (enemies, NPCs, items, exits, interactables).
     /// Priority 80 - highest priority to ensure scan key is always captured.
     /// </summary>
-    public class ScannerState : IAccessibilityState
+    public class ScannerState : AccessibilityStateBase
     {
-        public string Name => "Scanner";
-        public int Priority => 80;
+        public override string Name => "Scanner";
+        public override int Priority => 80;
 
         // Scan settings
         private const float SHORT_RANGE = 10f;
@@ -51,7 +51,7 @@ namespace Wasteland2AccessibilityMod.States
             public object Source; // Original object reference
         }
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -65,7 +65,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             // S key triggers a new scan (works even when not "active")
             if (Input.GetKeyDown(KeyCode.S) && !scanInProgress)
@@ -126,16 +126,11 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
-        {
-            MelonLogger.Msg("[ScannerState] Activated");
-        }
-
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             scanInProgress = false;
             lastScanResults.Clear();
-            MelonLogger.Msg("[ScannerState] Deactivated");
+            base.OnDeactivated();
         }
 
         private void PerformScan()

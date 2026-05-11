@@ -15,10 +15,10 @@ namespace Wasteland2AccessibilityMod.States
     /// whatever objects are on the tile.
     /// Priority 30 - below menu states but above exploration cycling.
     /// </summary>
-    public class MapCursorState : IAccessibilityState
+    public class MapCursorState : AccessibilityStateBase
     {
-        public string Name => "MapCursor";
-        public int Priority => 30;
+        public override string Name => "MapCursor";
+        public override int Priority => 30;
 
         // Grid state
         private static FieldInfo fullMapField;
@@ -109,7 +109,7 @@ namespace Wasteland2AccessibilityMod.States
         };
 
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -137,7 +137,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             // Tactical pause toggle (Space) - handle before anything else
             if (Input.GetKeyDown(KeyCode.Space))
@@ -467,22 +467,22 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
-            MelonLogger.Msg("[MapCursorState] Activated");
             if (!cursorInitialized)
             {
                 InitializeToPartyPosition();
             }
+            base.OnActivated();
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             browsingActions = false;
             actionList.Clear();
             browsingPartyInfo = false;
             partyInfoLines.Clear();
-            MelonLogger.Msg("[MapCursorState] Deactivated");
+            base.OnDeactivated();
         }
 
         // --- Grid Access ---

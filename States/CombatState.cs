@@ -14,10 +14,10 @@ namespace Wasteland2AccessibilityMod.States
     /// Arrow keys move one grid cell at a time reporting tile contents.
     /// Priority 45 - above MapCursorState(30) but below menu states(50+).
     /// </summary>
-    public class CombatState : IAccessibilityState
+    public class CombatState : AccessibilityStateBase
     {
-        public string Name => "Combat";
-        public int Priority => 45;
+        public override string Name => "Combat";
+        public override int Priority => 45;
 
         // Reflection cache
         private static FieldInfo curActorField;
@@ -113,7 +113,7 @@ namespace Wasteland2AccessibilityMod.States
             public System.Action Execute;
         }
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -132,7 +132,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             // Ensure cursor is ready
             EnsureCursorReady();
@@ -711,7 +711,7 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             MelonLogger.Msg("[CombatState] Activated - combat started");
             cursorInitialized = false;
@@ -719,7 +719,7 @@ namespace Wasteland2AccessibilityMod.States
             EnsureCursorReady();
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             browsingInitiative = false;
             initiativeList.Clear();

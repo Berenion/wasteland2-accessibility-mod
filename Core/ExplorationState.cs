@@ -9,12 +9,12 @@ namespace Wasteland2AccessibilityMod.Core
     /// announcement repeat (\), direction toggle (=), and scrap query (').
     /// Lowest priority (10) - only handles input when no menus or cursor are active.
     /// </summary>
-    public class ExplorationState : IAccessibilityState
+    public class ExplorationState : AccessibilityStateBase
     {
-        public string Name => "Exploration";
-        public int Priority => 10;
+        public override string Name => "Exploration";
+        public override int Priority => 10;
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -49,7 +49,7 @@ namespace Wasteland2AccessibilityMod.Core
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             // Camera lock toggle (F10) - works in exploration mode
             if (Input.GetKeyDown(KeyCode.F10))
@@ -181,16 +181,12 @@ namespace Wasteland2AccessibilityMod.Core
             return false;
         }
 
-        public void OnActivated()
-        {
-            // No special activation behavior needed
-        }
-
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             // Auto-resume tactical pause when leaving exploration
             // (entering menus, combat, conversations, etc.)
             TacticalPauseManager.ForceResumeIfPaused();
+            base.OnDeactivated();
         }
 
         private static void StopPartyMovement()

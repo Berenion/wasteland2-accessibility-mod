@@ -40,9 +40,25 @@ User approved bundles A, B, C, D for the current session and deferred Bundle E. 
 When resuming: read `llm-scratchpad/cleanup-findings/PRIORITIZED.md` Bundle E section and the per-batch files for full context.
 
 ## Optional follow-ups noted but deferred
-- Extract a shared `KeyRepeat` helper for `Time.unscaledTime`-based debounce (each state currently rolls its own).
-- Decouple state-internal static flags (`KeypadState.Active`, `GenericMenuState.blockUIInput`) from `Core/InputSuppressor` so Core stops importing States.
-- Spread the five priority-50 states (`CharacterInfoState`, `CharacterState`, `ConversationState`, `InventoryState`, `ShopState`) onto distinct values — `List<T>.Sort` isn't stable. They're mutually exclusive in practice via `IsActive`, but the equal-priority cluster is fragile.
+*(Updated after the high-level-cleanup review pass. Items the user explicitly deferred from that pass appear under "High-level review — deferred themes" below; this section is now for residual smaller items.)*
+
+- Extract a shared `KeyRepeat` helper for `Time.unscaledTime`-based debounce. (Only 3 files use this pattern — `MapCursorState`, `Patches/UITooltipPatches`, `Patches/UISliderPatches` — so the win is small.)
+- Decouple `KeypadState.Active` (the other state-internal flag besides `GenericMenuState.blockUIInput`) from `Patches/InputSuppressor` if a third such coupling appears. Theme 1A already moved the SaveLoad suppressors out of Core; `KeypadState.Active` is referenced only inside `States/`, so this isn't a layering violation today.
+
+## High-level review — themes performed
+From the code-review pass at the start of `prompts/high-level-cleanup.md`:
+- **1A — SaveLoad suppressors moved out of Core.** `Patches/SaveLoadInputSuppressorPatches.cs` now owns `SaveLoadScreenSuppressor` + the three Harmony patches. `Core/InputSuppressor.cs` no longer imports `States.GenericMenuState`. GenericMenuState's 4 call sites updated.
+- **2A — Priority-50 cluster spread.** Alphabetical descending: CharacterInfoState=54, CharacterState=53, ConversationState=52, InventoryState=51, ShopState=50. CombatState=45 and GenericMenuState=55 leave the range clear. `IAccessibilityState` doc comment + repo `CLAUDE.md` priority list updated.
+- **6c — `AccessibilityStateBase`.** New `Core/AccessibilityStateBase.cs` provides default `OnActivated`/`OnDeactivated` that log `[ClassName] Activated/Deactivated`. All 14 states inherit from it; states with richer existing log lines (CombatState, ConversationState, InventoryState, ShopState, WorldMapState) keep those and skip `base`; states with bare logging call `base.On*` instead.
+- **7A — `code-index/` deleted.** It was a stale snapshot and grep + the source tree are authoritative.
+
+## High-level review — deferred themes
+User chose not to address these in this session; they remain for future reference.
+- **Theme 3 — Cache `FindObjectOfType` per frame.** Real perf concern (64 calls across 13 files, several in per-frame `IsActive` predicates) but no observed lag, so the trade-off didn't favor it now. If lag surfaces, build `Core/SceneRefCache` that resolves each `FindObjectOfType<T>()` once per frame and route `IsActive` predicates through it.
+- **Theme 4 — Consolidate the 81 reflection sites into one `Helpers/GameReflection.cs` registry.** Wasteland 2 isn't being patched anymore, so the latent fragility (game-side renames silently breaking features) is unlikely to bite. Revisit if a game patch ever lands.
+- **Theme 5 — Restructure mega-classes (CombatState 3368, MapCursorState 3214, etc.).** Real but big refactor (~500 lines of structural churn per class). No specific change is currently blocked by the structure, so defer until one is.
+- **Theme 6a — Shared `KeyRepeat` helper.** Only 3 files use the pattern; win didn't justify a new helper.
+- **Theme 6b — Extract shared info-browser navigator (Up/Down/Home/End/Escape over `List<string>`).** This is **Bundle E2** from `cleanup-findings/PRIORITIZED.md`. Already on the Bundle E list, will be addressed if/when E is tackled.
 
 ## Splits performed under `large-file-handling.md`
 - **`Helpers/CharacterAnnouncementHelper.cs` (1394 → 4 partials)**: split a single static class into `CharacterAnnouncementHelper.cs` (core: reflection cache + per-control announcements + buff/cap helpers, ~436 lines), `.StatDescriptions.cs` (stat & trait description builders + description-panel previews, ~500 lines), `.Snapshots.cs` (derived stats + header / combat snapshots + character summary + XP, ~404 lines), and `.ValueAdjustment.cs` (~107 lines). All four use `static partial class CharacterAnnouncementHelper`; no caller changes required. Smoke-tested.

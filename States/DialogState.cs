@@ -12,10 +12,10 @@ namespace Wasteland2AccessibilityMod.States
     /// Higher priority (70) than conversation/inventory so it captures input
     /// when a dialog appears over other screens.
     /// </summary>
-    public class DialogState : IAccessibilityState
+    public class DialogState : AccessibilityStateBase
     {
-        public string Name => "Dialog";
-        public int Priority => 70;
+        public override string Name => "Dialog";
+        public override int Priority => 70;
 
         private int selectedButtonIndex = 0;
         private readonly List<DialogButton> buttons = new List<DialogButton>();
@@ -46,7 +46,7 @@ namespace Wasteland2AccessibilityMod.States
             public Action ClickAction;
         }
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -54,7 +54,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             bool dialogChanged = RefreshButtons();
 
@@ -226,17 +226,17 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             selectedButtonIndex = 0;
             currentDialogId = "";
             RefreshButtons();
             AnnounceDialog();
 
-            MelonLogger.Msg("[DialogState] Activated");
+            base.OnActivated();
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             selectedButtonIndex = 0;
             buttons.Clear();
@@ -245,7 +245,7 @@ namespace Wasteland2AccessibilityMod.States
             currentQuantityMenu = null;
             lastAnnouncedQuantity = -1;
 
-            MelonLogger.Msg("[DialogState] Deactivated");
+            base.OnDeactivated();
         }
 
         private bool IsModalDialogOpen()

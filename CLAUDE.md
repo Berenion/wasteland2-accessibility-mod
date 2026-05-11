@@ -35,7 +35,7 @@ The mod has two cooperating pipelines: a **state-based input router** that owns 
 2. Fires `OnActivated` / `OnDeactivated` as `IsActive` flips.
 3. Walks states top-down; the highest-priority active state whose `HandleInput()` returns `true` consumes input for that frame.
 
-Priorities are intentional and load-bearing — see the gotchas below. The actual values live in each `States/*.cs` file (search `Priority =>`); examples include `ScannerState` 80, `DialogState` 70, `GenericMenuState` 55, `CharacterState` 50, `CombatState` 45, `MapCursorState` 30, `ExplorationState` 10.
+Priorities are intentional and load-bearing — see the gotchas below. The actual values live in each `States/*.cs` file (search `Priority =>`); examples include `ScannerState` 80, `DialogState` 70, `MainMenuState` 60, `KeypadState` 58, `GenericMenuState` 55, the 50-54 character-creation/info/conversation/inventory/shop cluster, `CombatState` 45, `MapCursorState` 30, `WorldMapState` 20, `ExplorationState` 10. The 50-54 cluster is spread because `List<T>.Sort` is not stable; the states are mutually exclusive in practice via `IsActive` but identical priorities could reorder between runs.
 
 ### Harmony Patches
 

@@ -7,10 +7,10 @@ using Wasteland2AccessibilityMod.Patches;
 
 namespace Wasteland2AccessibilityMod.States
 {
-    public class WorldMapState : IAccessibilityState
+    public class WorldMapState : AccessibilityStateBase
     {
-        public string Name => "WorldMap";
-        public int Priority => 20;
+        public override string Name => "WorldMap";
+        public override int Priority => 20;
 
         // Review cursor
         private Vector3 cursorPosition;
@@ -44,7 +44,7 @@ namespace Wasteland2AccessibilityMod.States
         };
 
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -73,7 +73,7 @@ namespace Wasteland2AccessibilityMod.States
         // Track which map we were on to detect actual map changes vs menu open/close
         private string lastMapName = "";
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             string mapName = "Arizona";
             if (Application.loadedLevelName == "LosAngelesWorldMap")
@@ -108,13 +108,13 @@ namespace Wasteland2AccessibilityMod.States
             MelonLogger.Msg($"[WorldMapState] Activated on {mapName}, cursorInitialized={cursorInitialized}, mapChanged={mapChanged}");
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             // Don't reset cursor position - preserve it for when we return
-            MelonLogger.Msg("[WorldMapState] Deactivated");
+            base.OnDeactivated();
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             if (!cursorInitialized) return false;
 

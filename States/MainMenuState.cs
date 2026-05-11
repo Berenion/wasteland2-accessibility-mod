@@ -12,10 +12,10 @@ namespace Wasteland2AccessibilityMod.States
     /// Implements direct keyboard navigation since the game's UIButtonKeys
     /// may not be configured for keyboard-only use.
     /// </summary>
-    public class MainMenuState : IAccessibilityState
+    public class MainMenuState : AccessibilityStateBase
     {
-        public string Name => "MainMenu";
-        public int Priority => 60;
+        public override string Name => "MainMenu";
+        public override int Priority => 60;
 
         // Track the last selected object to detect external changes
         private GameObject lastSelectedObject = null;
@@ -34,7 +34,7 @@ namespace Wasteland2AccessibilityMod.States
             public string name;
         }
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -49,7 +49,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             MainMenu menu = GetMainMenu();
             if (menu == null) return false;
@@ -87,9 +87,9 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
-            MelonLogger.Msg("[MainMenuState] Activated");
+            base.OnActivated();
             lastSelectedObject = null;
             currentIndex = -1;
             menuButtons.Clear();
@@ -135,12 +135,12 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
-            MelonLogger.Msg("[MainMenuState] Deactivated");
             lastSelectedObject = null;
             currentIndex = -1;
             menuButtons.Clear();
+            base.OnDeactivated();
         }
 
         private MainMenu GetMainMenu()

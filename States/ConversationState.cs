@@ -13,10 +13,10 @@ namespace Wasteland2AccessibilityMod.States
     /// Reads ConversationHUD.buttonList via reflection and provides
     /// Up/Down/Enter navigation independently of the game's UI focus system.
     /// </summary>
-    public class ConversationState : IAccessibilityState
+    public class ConversationState : AccessibilityStateBase
     {
-        public string Name => "Conversation";
-        public int Priority => 50;
+        public override string Name => "Conversation";
+        public override int Priority => 52;
 
         /// <summary>
         /// When true, passive ConversationPatches should not announce
@@ -88,7 +88,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -103,7 +103,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             // === Advance mode: voiceover/text playing, Enter to skip ===
             if (IsInAdvanceMode)
@@ -196,7 +196,7 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             IsManagingNavigation = true;
             selectedIndex = 0;
@@ -222,14 +222,14 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             IsManagingNavigation = false;
             selectedIndex = -1;
             currentOptions.Clear();
             lastKnownButtonCount = 0;
 
-            MelonLogger.Msg("[ConversationState] Deactivated");
+            base.OnDeactivated();
         }
 
         private void EnsureFieldsCached()

@@ -13,10 +13,10 @@ namespace Wasteland2AccessibilityMod.States
     /// Handles all 8 panel types: UseDefaultParty, Party, AddCharacter, Attributes, Skills, Traits, Dossier, Flavor.
     /// Priority 50 - same as Inventory/Conversation.
     /// </summary>
-    public class CharacterState : IAccessibilityState
+    public class CharacterState : AccessibilityStateBase
     {
-        public string Name => "Character";
-        public int Priority => 50;
+        public override string Name => "Character";
+        public override int Priority => 53;
 
         // Navigation state
         private List<GameObject> controlList = new List<GameObject>();
@@ -63,7 +63,7 @@ namespace Wasteland2AccessibilityMod.States
         private static MethodInfo onDoneClickedMethod;
         private static bool reflectionCached = false;
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -80,7 +80,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             var charScreen = CharacterScreen.instance;
             if (charScreen == null) return false;
@@ -167,7 +167,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             blockUIInput = true;
             lastAnnouncedText = null;
@@ -194,10 +194,10 @@ namespace Wasteland2AccessibilityMod.States
                 OnPanelChanged(charScreen, panelType);
             }
 
-            MelonLogger.Msg("[CharacterState] Activated");
+            base.OnActivated();
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             blockUIInput = false;
             isEditingTextField = false;
@@ -212,7 +212,7 @@ namespace Wasteland2AccessibilityMod.States
             controlList.Clear();
             controlIndex = -1;
             skillsFocused = false;
-            MelonLogger.Msg("[CharacterState] Deactivated");
+            base.OnDeactivated();
         }
 
         // ========== Reflection ==========

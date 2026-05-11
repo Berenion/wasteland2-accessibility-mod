@@ -14,7 +14,12 @@ namespace Wasteland2AccessibilityMod.Core
 
         /// <summary>
         /// Priority for input routing. Higher values are checked first.
-        /// Scanner=80, Dialog=70, Conversation/Inventory/Character=50, MapCursor=30, Exploration=10
+        /// Scanner=80, Dialog=70, MainMenu=60, Keypad=58, GenericMenu=55,
+        /// CharacterInfo=54, Character=53, Conversation=52, Inventory=51, Shop=50,
+        /// Combat=45, MapCursor=30, WorldMap=20, Exploration=10.
+        /// The 50-54 cluster is mutually exclusive in practice via IsActive;
+        /// values are spread (alphabetical descending) because List&lt;T&gt;.Sort
+        /// is not stable, so identical priorities can reorder between runs.
         /// </summary>
         int Priority { get; }
 

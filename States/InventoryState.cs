@@ -15,10 +15,10 @@ namespace Wasteland2AccessibilityMod.States
     /// 2. PopupInventoryMenu (loot containers)
     /// Priority 50 - same level as CharacterState/ConversationState.
     /// </summary>
-    public class InventoryState : IAccessibilityState
+    public class InventoryState : AccessibilityStateBase
     {
-        public string Name => "Inventory";
-        public int Priority => 50;
+        public override string Name => "Inventory";
+        public override int Priority => 51;
 
         /// <summary>
         /// When true, managed navigation is active and patch-based announcements should be suppressed.
@@ -88,7 +88,7 @@ namespace Wasteland2AccessibilityMod.States
             "packSlot"
         };
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -129,7 +129,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             // Suppress all game input - we handle everything
             InputSuppressor.ShouldSuppressGameInput = true;
@@ -176,7 +176,7 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             IsManagedNavigation = true;
             if (!reflectionCached) CacheReflection();
@@ -261,7 +261,7 @@ namespace Wasteland2AccessibilityMod.States
             MelonLogger.Msg($"[InventoryState] Activated, zone={currentZone}, items={currentList.Count}");
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             // Suspend state so we can restore on reactivation (e.g. after context menu closes)
             suspendedZone = currentZone;

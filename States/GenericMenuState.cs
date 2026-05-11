@@ -12,10 +12,10 @@ namespace Wasteland2AccessibilityMod.States
     /// Priority 55 - below MainMenu but above conversation states.
     /// Builds custom navigation for the Options menu since it has no native keyboard support.
     /// </summary>
-    public class GenericMenuState : IAccessibilityState
+    public class GenericMenuState : AccessibilityStateBase
     {
-        public string Name => "GenericMenu";
-        public int Priority => 55;
+        public override string Name => "GenericMenu";
+        public override int Priority => 55;
 
         // Track the last selected object to detect changes
         private GameObject lastSelectedObject = null;
@@ -63,7 +63,7 @@ namespace Wasteland2AccessibilityMod.States
         /// </summary>
         internal static bool blockUIInput = false;
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -115,7 +115,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             // Suppress game input to prevent double-processing of keys.
             // EventManager.Update() dispatches "Attack Current Target" (Enter) and "Back" (Escape)
@@ -168,7 +168,7 @@ namespace Wasteland2AccessibilityMod.States
                     // Trigger save with the entered name
                     if (cachedSaveLoadScreen != null)
                     {
-                        Core.SaveLoadScreenSuppressor.AllowNextAction = true;
+                        Patches.SaveLoadScreenSuppressor.AllowNextAction = true;
                         cachedSaveLoadScreen.OnSaveClicked();
                     }
 
@@ -329,18 +329,17 @@ namespace Wasteland2AccessibilityMod.States
             return false;
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
-            MelonLogger.Msg("[GenericMenuState] Activated");
             blockUIInput = true;
             isEditingTextField = false;
             GUIScreen topScreen = FindTopScreen();
             ReinitializeForScreen(topScreen);
+            base.OnActivated();
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
-            MelonLogger.Msg("[GenericMenuState] Deactivated");
             lastSelectedObject = null;
             lastAnnouncedText = null;
             selectionEnsured = false;
@@ -353,6 +352,7 @@ namespace Wasteland2AccessibilityMod.States
             cachedTopScreen = null;
             blockUIInput = false;
             isEditingTextField = false;
+            base.OnDeactivated();
         }
 
         /// <summary>
@@ -1392,7 +1392,7 @@ namespace Wasteland2AccessibilityMod.States
                     saveLoadScreen.OnEntrySelected(saveEntry);
 
                     // Set the allow flag so our Harmony prefix lets this call through
-                    Core.SaveLoadScreenSuppressor.AllowNextAction = true;
+                    Patches.SaveLoadScreenSuppressor.AllowNextAction = true;
                     if (saveLoadScreen.IsLoading())
                         saveLoadScreen.OnLoadClicked();
                     else
@@ -1429,14 +1429,14 @@ namespace Wasteland2AccessibilityMod.States
                 }
                 if (cachedSaveLoadScreen.saveButton != null && current == cachedSaveLoadScreen.saveButton.gameObject)
                 {
-                    Core.SaveLoadScreenSuppressor.AllowNextAction = true;
+                    Patches.SaveLoadScreenSuppressor.AllowNextAction = true;
                     cachedSaveLoadScreen.OnSaveClicked();
                     MelonLogger.Msg("[GenericMenuState] SaveLoad save button activated");
                     return;
                 }
                 if (cachedSaveLoadScreen.loadButton != null && current == cachedSaveLoadScreen.loadButton.gameObject)
                 {
-                    Core.SaveLoadScreenSuppressor.AllowNextAction = true;
+                    Patches.SaveLoadScreenSuppressor.AllowNextAction = true;
                     cachedSaveLoadScreen.OnLoadClicked();
                     MelonLogger.Msg("[GenericMenuState] SaveLoad load button activated");
                     return;

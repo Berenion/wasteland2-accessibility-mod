@@ -13,10 +13,10 @@ namespace Wasteland2AccessibilityMod.States
     /// on non-Inventory tabs: Attributes, Skills, Traits, Dossier, Logbook.
     /// Priority 50 - same level as InventoryState/CharacterState.
     /// </summary>
-    public class CharacterInfoState : IAccessibilityState
+    public class CharacterInfoState : AccessibilityStateBase
     {
-        public string Name => "CharacterInfo";
-        public int Priority => 50;
+        public override string Name => "CharacterInfo";
+        public override int Priority => 54;
 
         /// <summary>
         /// When true, the next CharacterInfoMenu.OnEnable should switch to Attributes tab.
@@ -77,7 +77,7 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo charInfoCurrentPanelField;
         private static FieldInfo charInfoCurrentPCField;
 
-        public bool IsActive
+        public override bool IsActive
         {
             get
             {
@@ -102,7 +102,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public bool HandleInput()
+        public override bool HandleInput()
         {
             var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
             if (charInfoMenu == null) return false;
@@ -154,7 +154,7 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
-        public void OnActivated()
+        public override void OnActivated()
         {
             blockUIInput = true;
             lastAnnouncedText = null;
@@ -201,10 +201,10 @@ namespace Wasteland2AccessibilityMod.States
                 OnPanelChanged(charInfoMenu, panel);
             }
 
-            MelonLogger.Msg("[CharacterInfoState] Activated");
+            base.OnActivated();
         }
 
-        public void OnDeactivated()
+        public override void OnDeactivated()
         {
             suspendedIndex = controlIndex;
             hasSuspendedState = true;
@@ -218,7 +218,8 @@ namespace Wasteland2AccessibilityMod.States
             infoLines.Clear();
             logbookDetailMode = false;
             logbookDetailLines.Clear();
-            MelonLogger.Msg($"[CharacterInfoState] Deactivated (suspended index={suspendedIndex})");
+            MelonLogger.Msg($"[CharacterInfoState] Suspended at index={suspendedIndex}");
+            base.OnDeactivated();
         }
 
         #region Panel Detection & Change
