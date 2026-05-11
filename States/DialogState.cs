@@ -26,6 +26,19 @@ namespace Wasteland2AccessibilityMod.States
         private AskQuantityMenu currentQuantityMenu;
         private int lastAnnouncedQuantity = -1;
 
+        // Reflection caches — resolved once at class load; null fallbacks preserved at call sites
+        // so a future game rename degrades to default values instead of breaking the class.
+        private static readonly FieldInfo qtyMinValueField =
+            typeof(AskQuantityMenu).GetField("minValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo qtyMaxValueField =
+            typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo qtyQuantityField =
+            typeof(AskQuantityMenu).GetField("quantity", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo qtyUnitValueField =
+            typeof(AskQuantityMenu).GetField("unitValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        private static readonly FieldInfo diffGameDifficultyIndexField =
+            typeof(DifficultySelectionMenu).GetField("gameDifficultyIndex", BindingFlags.NonPublic | BindingFlags.Instance);
+
         private class DialogButton
         {
             public string Label;
@@ -148,8 +161,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 if (Input.GetKeyDown(KeyCode.End))
                 {
-                    var maxField = typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
-                    int max = maxField != null ? (int)maxField.GetValue(currentQuantityMenu) : 999;
+                    int max = qtyMaxValueField != null ? (int)qtyMaxValueField.GetValue(currentQuantityMenu) : 999;
                     SetQuantity(max);
                     InputSuppressor.ShouldSuppressUINavigation = true;
                     InputSuppressor.ShouldSuppressGameInput = true;
@@ -295,10 +307,9 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     currentDifficultyMenu = diffMenu;
                     // Sync difficulty index via reflection (gameDifficultyIndex is private)
-                    var field = typeof(DifficultySelectionMenu).GetField("gameDifficultyIndex", BindingFlags.NonPublic | BindingFlags.Instance);
-                    if (field != null)
+                    if (diffGameDifficultyIndexField != null)
                     {
-                        difficultyIndex = (int)field.GetValue(diffMenu);
+                        difficultyIndex = (int)diffGameDifficultyIndexField.GetValue(diffMenu);
                     }
                 }
                 else
@@ -555,8 +566,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (modal.messageLabel != null && !string.IsNullOrEmpty(modal.messageLabel.text))
                         qtyMessage = UITextExtractor.CleanText(modal.messageLabel.text);
 
-                    var maxField = typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
-                    int max = maxField != null ? (int)maxField.GetValue(currentQuantityMenu) : 0;
+                    int max = qtyMaxValueField != null ? (int)qtyMaxValueField.GetValue(currentQuantityMenu) : 0;
                     int current = currentQuantityMenu.GetQuantity();
                     lastAnnouncedQuantity = current;
 
@@ -566,8 +576,7 @@ namespace Wasteland2AccessibilityMod.States
                     qtyAnnouncement += $"{current} of {max}";
 
                     // Include unit price and total if available (vendor quantity dialogs)
-                    var unitValueField = typeof(AskQuantityMenu).GetField("unitValue", BindingFlags.NonPublic | BindingFlags.Instance);
-                    float unitValue = unitValueField != null ? (float)unitValueField.GetValue(currentQuantityMenu) : 0f;
+                    float unitValue = qtyUnitValueField != null ? (float)qtyUnitValueField.GetValue(currentQuantityMenu) : 0f;
                     if (unitValue > 0f)
                     {
                         int unitPrice = Mathf.CeilToInt(unitValue);
@@ -729,10 +738,8 @@ namespace Wasteland2AccessibilityMod.States
             if (currentQuantityMenu == null) return;
 
             int current = currentQuantityMenu.GetQuantity();
-            var minField = typeof(AskQuantityMenu).GetField("minValue", BindingFlags.NonPublic | BindingFlags.Instance);
-            var maxField = typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
-            int min = minField != null ? (int)minField.GetValue(currentQuantityMenu) : 1;
-            int max = maxField != null ? (int)maxField.GetValue(currentQuantityMenu) : 999;
+            int min = qtyMinValueField != null ? (int)qtyMinValueField.GetValue(currentQuantityMenu) : 1;
+            int max = qtyMaxValueField != null ? (int)qtyMaxValueField.GetValue(currentQuantityMenu) : 999;
 
             int newValue = Mathf.Clamp(current + delta, min, max);
             SetQuantity(newValue);
@@ -742,17 +749,14 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (currentQuantityMenu == null) return;
 
-            var minField = typeof(AskQuantityMenu).GetField("minValue", BindingFlags.NonPublic | BindingFlags.Instance);
-            var maxField = typeof(AskQuantityMenu).GetField("maxValue", BindingFlags.NonPublic | BindingFlags.Instance);
-            int min = minField != null ? (int)minField.GetValue(currentQuantityMenu) : 1;
-            int max = maxField != null ? (int)maxField.GetValue(currentQuantityMenu) : 999;
+            int min = qtyMinValueField != null ? (int)qtyMinValueField.GetValue(currentQuantityMenu) : 1;
+            int max = qtyMaxValueField != null ? (int)qtyMaxValueField.GetValue(currentQuantityMenu) : 999;
 
             value = Mathf.Clamp(value, min, max);
 
             // Update the quantity field
-            var qtyField = typeof(AskQuantityMenu).GetField("quantity", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (qtyField != null)
-                qtyField.SetValue(currentQuantityMenu, value);
+            if (qtyQuantityField != null)
+                qtyQuantityField.SetValue(currentQuantityMenu, value);
 
             // Update the text input to reflect the new value
             if (currentQuantityMenu.quantityInput != null)
@@ -772,8 +776,7 @@ namespace Wasteland2AccessibilityMod.States
                 lastAnnouncedQuantity = value;
 
                 // Include total price if this is a vendor quantity dialog
-                var unitValueField = typeof(AskQuantityMenu).GetField("unitValue", BindingFlags.NonPublic | BindingFlags.Instance);
-                float unitValue = unitValueField != null ? (float)unitValueField.GetValue(currentQuantityMenu) : 0f;
+                float unitValue = qtyUnitValueField != null ? (float)qtyUnitValueField.GetValue(currentQuantityMenu) : 0f;
                 if (unitValue > 0f)
                 {
                     int totalPrice = Mathf.CeilToInt(value * unitValue);
