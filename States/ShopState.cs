@@ -1086,8 +1086,13 @@ namespace Wasteland2AccessibilityMod.States
             string name = UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty));
             infoLines.Add($"Name: {name}");
 
-            // Type
-            string typeStr = item.template.GetTypeString();
+            // Type — for weapons use the skill name ("Handguns", "Assault Rifle") to match
+            // the inventory info-browser; fall back to the generic GetTypeString otherwise.
+            string typeStr = null;
+            if (item is ItemInstance_Weapon)
+                typeStr = InventoryFormatting.GetWeaponSkillDisplayName(item.template as ItemTemplate_Weapon);
+            if (string.IsNullOrEmpty(typeStr))
+                typeStr = item.template.GetTypeString();
             if (!string.IsNullOrEmpty(typeStr))
                 infoLines.Add($"Type: {typeStr}");
 
