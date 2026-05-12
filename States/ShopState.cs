@@ -44,7 +44,7 @@ namespace Wasteland2AccessibilityMod.States
 
         // Current state
         private ShopZone currentZone;
-        private List<object> currentList = new List<object>(); // VND_DragDropItem, string (for escrow summary/finalize), or GameObject (for filters)
+        private List<object> currentList = new List<object>(); // ShopItemEntry, EscrowEntry, string (escrow markers), or GameObject (filters)
         private int currentIndex = -1;
         private bool isDirty = false;
 
@@ -73,6 +73,19 @@ namespace Wasteland2AccessibilityMod.States
             public ItemInstance Item;
             public bool IsSelling; // true = player item being sold, false = vendor item being bought
             public Escrow ParentEscrow;
+        }
+
+        /// <summary>
+        /// Wrapper for player/vendor inventory items, read directly from the Inventory data model.
+        /// Reading from the data model avoids stale positionCache and grid timing issues that
+        /// caused the displayed list to lag behind reality after a sell/buy.
+        /// </summary>
+        private class ShopItemEntry
+        {
+            public ItemInstance Item;
+            public Inventory OwnerInventory;
+            public PC OwnerPC; // null for vendor items
+            public bool IsVendor;
         }
 
         // Cached VendorScreen reference
@@ -353,22 +366,35 @@ namespace Wasteland2AccessibilityMod.States
             var vendorScreen = GetVendorScreen();
             if (vendorScreen == null) return;
 
-            InventoryGrid grid = vendorScreen.playerInventoryGrid;
-            if (grid == null) return;
+            var container = vendorScreen.playerInventoryContainer;
+            if (container == null) return;
 
-            List<Transform> sorted = grid.GetPositionSortedList();
-            foreach (Transform t in sorted)
+            InventoryFilter filter = container.GetFilter();
+
+            if (container.inventory != null)
             {
-                if (t == null || !t.gameObject.activeSelf) continue;
-                var baseItem = t.GetComponent<INV_DragDropItem>();
-                if (baseItem != null && baseItem.GetItem() != null)
+                PC ownerPC = GetCurrentPC();
+                AddInventoryItemsToList(container.inventory, filter, ownerPC, isVendor: false, excludeNoDrop: true);
+            }
+            else
+            {
+                // "All Squad Members" mode: container has no single inventory; iterate party
+                var game = MonoBehaviourSingleton<Game>.GetInstance();
+                if (game != null && game.party != null)
                 {
-                    currentList.Add(baseItem);
+                    for (int i = 0; i < game.party.Count; i++)
+                    {
+                        PC pc = game.party[i];
+                        if (pc != null && vendorScreen.IsPCWithinRange(pc) && pc.inventory != null && pc.inventory.inventory != null)
+                        {
+                            AddInventoryItemsToList(pc.inventory.inventory, filter, pc, isVendor: false, excludeNoDrop: true);
+                        }
+                    }
                 }
             }
 
             ClampIndex();
-            MelonLogger.Msg($"[ShopState] Built player item list: {currentList.Count} items");
+            MelonLogger.Msg($"[ShopState] Built player item list: {currentList.Count} items (filter={filter})");
         }
 
         private void BuildVendorItemList()
@@ -379,22 +405,62 @@ namespace Wasteland2AccessibilityMod.States
             var vendorScreen = GetVendorScreen();
             if (vendorScreen == null) return;
 
-            InventoryGrid grid = vendorScreen.vendorInventoryGrid;
-            if (grid == null) return;
+            var container = vendorScreen.vendorInventoryContainer;
+            if (container == null) return;
 
-            List<Transform> sorted = grid.GetPositionSortedList();
-            foreach (Transform t in sorted)
+            InventoryFilter filter = container.GetFilter();
+
+            if (container.inventory != null)
             {
-                if (t == null || !t.gameObject.activeSelf) continue;
-                var baseItem = t.GetComponent<INV_DragDropItem>();
-                if (baseItem != null && baseItem.GetItem() != null)
-                {
-                    currentList.Add(baseItem);
-                }
+                AddInventoryItemsToList(container.inventory, filter, null, isVendor: true, excludeNoDrop: false);
             }
 
             ClampIndex();
-            MelonLogger.Msg($"[ShopState] Built vendor item list: {currentList.Count} items");
+            MelonLogger.Msg($"[ShopState] Built vendor item list: {currentList.Count} items (filter={filter})");
+        }
+
+        private void AddInventoryItemsToList(Inventory inv, InventoryFilter filter, PC ownerPC, bool isVendor, bool excludeNoDrop)
+        {
+            if (inv == null) return;
+            List<ItemInstance> items;
+            try
+            {
+                items = inv.GetFilteredList(filter);
+            }
+            catch (Exception e)
+            {
+                MelonLogger.Warning($"[ShopState] GetFilteredList failed: {e.Message}");
+                return;
+            }
+            if (items == null) return;
+            foreach (ItemInstance item in items)
+            {
+                if (item == null || item.template == null) continue;
+                // Player inventory in vendor view excludes partyNoDrop items (matches game's ConsistencyCheck)
+                if (excludeNoDrop && item.template.partyNoDrop) continue;
+
+                currentList.Add(new ShopItemEntry
+                {
+                    Item = item,
+                    OwnerInventory = inv,
+                    OwnerPC = ownerPC,
+                    IsVendor = isVendor
+                });
+            }
+        }
+
+        private VND_DragDropItem FindGridDragDropItem(ItemInstance item, InventoryGrid grid)
+        {
+            if (item == null || grid == null) return null;
+            for (int i = 0; i < grid.transform.childCount; i++)
+            {
+                Transform t = grid.transform.GetChild(i);
+                if (t == null || !t.gameObject.activeSelf) continue;
+                var dd = t.GetComponent<VND_DragDropItem>();
+                if (dd != null && dd.GetItem() == item)
+                    return dd;
+            }
+            return null;
         }
 
         private void BuildEscrowList()
@@ -589,30 +655,23 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            // Item in player/vendor zone - move to escrow
-            if (current is INV_DragDropItem dragDropItem)
+            // Player/vendor inventory item: move to escrow
+            if (current is ShopItemEntry shopEntry)
             {
-                TradeItem(dragDropItem);
+                TradeItem(shopEntry);
                 return;
             }
 
             ScreenReaderManager.SpeakInterrupt("Cannot act on this");
         }
 
-        private void TradeItem(INV_DragDropItem dragDropItem)
+        private void TradeItem(ShopItemEntry entry)
         {
             var vendorScreen = GetVendorScreen();
             if (vendorScreen == null) return;
 
-            VND_DragDropItem vndItem = dragDropItem as VND_DragDropItem;
-            if (vndItem == null)
-            {
-                ScreenReaderManager.SpeakInterrupt("Cannot trade this item");
-                return;
-            }
-
-            ItemInstance item = vndItem.GetItem();
-            if (item == null)
+            ItemInstance item = entry?.Item;
+            if (item == null || item.template == null)
             {
                 ScreenReaderManager.SpeakInterrupt("No item");
                 return;
@@ -624,10 +683,16 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
+            Inventory ownerInventory = entry.OwnerInventory;
+            if (ownerInventory == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("Cannot trade this item");
+                return;
+            }
+
             string itemName = UITextExtractor.CleanText(
                 Language.Localize(item.template.displayName, false, false, string.Empty));
 
-            // Use TryGetDestInventory to find where the item should go
             if (tryGetDestInventoryMethod == null)
             {
                 ScreenReaderManager.SpeakInterrupt("Trade not available");
@@ -637,7 +702,6 @@ namespace Wasteland2AccessibilityMod.States
 
             try
             {
-                Inventory ownerInventory = vndItem.ownerInventory;
                 object[] args = new object[] { ownerInventory, null, null };
                 bool found = (bool)tryGetDestInventoryMethod.Invoke(vendorScreen, args);
 
@@ -657,40 +721,52 @@ namespace Wasteland2AccessibilityMod.States
                     return;
                 }
 
-                // For stackable items with quantity > 1, ask for quantity (via the game's dialog)
+                // For stackable items with quantity > 1, open the game's quantity dialog.
+                // AskForQuantity needs an INV_DragDropItem reference, so look it up from the active grid.
                 if (item.isStackable && item.quantity > 1)
                 {
+                    InventoryGrid grid = entry.IsVendor
+                        ? vendorScreen.vendorInventoryGrid
+                        : vendorScreen.playerInventoryGrid;
+                    VND_DragDropItem vndItem = FindGridDragDropItem(item, grid);
                     VND_DragDropContainer vndDDContainer = dstContainer.dragDropContainer != null
                         ? dstContainer.dragDropContainer
                         : dstContainer.GetComponentInChildren<VND_DragDropContainer>();
-                    if (vndDDContainer != null)
+                    if (vndItem != null && vndDDContainer != null)
                     {
                         vndDDContainer.AskForQuantity(vndItem);
                         ScreenReaderManager.SpeakInterrupt($"{itemName}, select quantity");
                         return;
                     }
+                    // If we couldn't find the grid item, fall through and transfer the whole stack.
+                    MelonLogger.Msg($"[ShopState] No grid item for stackable {itemName}, transferring whole stack");
                 }
 
-                // Unequip if necessary
-                if (vndItem.slot != EquipmentSlot.None && vndItem.ownerPC != null)
+                // Unequip if currently equipped on the owning PC
+                if (entry.OwnerPC != null && entry.OwnerPC.inventory != null)
                 {
-                    vndItem.ownerPC.inventory.UnEquip(vndItem.slot);
+                    var equipment = entry.OwnerPC.inventory.equipment;
+                    if (equipment != null)
+                    {
+                        for (int slot = 0; slot < equipment.Length; slot++)
+                        {
+                            if (slot == (int)EquipmentSlot.None) continue;
+                            if (equipment[slot] == item)
+                            {
+                                entry.OwnerPC.inventory.UnEquip((EquipmentSlot)slot);
+                                break;
+                            }
+                        }
+                    }
                 }
 
-                // Move item from source to destination inventory (escrow)
-                ItemInstance[] items = vndItem.RemoveItems();
-                for (int i = 0; i < items.Length; i++)
-                {
-                    ownerInventory.Remove(items[i]);
-                }
-                dstInv.AddItems(items);
+                // Move via the data model. Refresh() on the containers cleans up the stale UI items.
+                int qty = item.quantity;
+                ownerInventory.RemoveItemInstance(item, qty, removeActualInstance: true);
+                ownerInventory.UpdateTotalValue();
+                dstInv.AddItems(new[] { item });
 
-                // Destroy the UI element
-                vndItem.SetCurrentParent(UIDragDropRoot.root);
-                vndItem.gameObject.SetActive(false);
-                UnityEngine.Object.Destroy(vndItem.gameObject, 0.03f);
-
-                // Refresh containers and recalculate scrap (but do NOT finalize the trade)
+                // Refresh containers (do NOT finalize — items stay in escrow until user confirms)
                 vendorScreen.playerInventoryContainer.Refresh();
                 vendorScreen.playerEscrowContainer.Refresh();
                 vendorScreen.vendorInventoryContainer.Refresh();
@@ -699,14 +775,10 @@ namespace Wasteland2AccessibilityMod.States
 
                 isDirty = true;
 
-                if (currentZone == ShopZone.Escrow)
-                    ScreenReaderManager.SpeakInterrupt($"Removed {itemName} from escrow");
-                else if (currentZone == ShopZone.PlayerInventory)
-                    ScreenReaderManager.SpeakInterrupt($"Added {itemName} to sell");
-                else if (currentZone == ShopZone.VendorInventory)
+                if (entry.IsVendor)
                     ScreenReaderManager.SpeakInterrupt($"Added {itemName} to buy");
                 else
-                    ScreenReaderManager.SpeakInterrupt($"Moved {itemName}");
+                    ScreenReaderManager.SpeakInterrupt($"Added {itemName} to sell");
 
                 MelonLogger.Msg($"[ShopState] Moved item to escrow: {itemName}");
             }
@@ -1244,11 +1316,10 @@ namespace Wasteland2AccessibilityMod.States
 
             if (escrow != null)
             {
-                // Determine which inventory the item is in to get correct price
-                INV_DragDropItem dragDropItem = GetCurrentDragDropItem();
-                if (dragDropItem != null && dragDropItem.ownerInventory != null)
+                Inventory ownerInventory = GetCurrentOwnerInventory();
+                if (ownerInventory != null)
                 {
-                    float tradeValue = escrow.TradeValueOfItem(item, dragDropItem.ownerInventory, true);
+                    float tradeValue = escrow.TradeValueOfItem(item, ownerInventory, true);
                     int price = Mathf.FloorToInt(tradeValue);
 
                     if (currentZone == ShopZone.VendorInventory)
@@ -1393,16 +1464,15 @@ namespace Wasteland2AccessibilityMod.States
                 return baseAnnouncement;
             }
 
-            // Item (VND_DragDropItem or INV_DragDropItem)
-            if (current is INV_DragDropItem dragDropItem)
+            // Player/vendor inventory item (from data model)
+            if (current is ShopItemEntry shopEntry)
             {
-                ItemInstance item = dragDropItem.GetItem();
+                ItemInstance item = shopEntry.Item;
                 if (item == null) return "Empty";
 
                 string baseAnnouncement = InventoryFormatting.FormatItemAnnouncement(item, detailed: true);
 
-                // Add price info
-                string priceStr = GetItemPriceString(item, dragDropItem);
+                string priceStr = GetItemPriceString(item, shopEntry.OwnerInventory);
                 if (!string.IsNullOrEmpty(priceStr))
                     baseAnnouncement += $", {priceStr}";
 
@@ -1412,16 +1482,16 @@ namespace Wasteland2AccessibilityMod.States
             return null;
         }
 
-        private string GetItemPriceString(ItemInstance item, INV_DragDropItem dragDropItem)
+        private string GetItemPriceString(ItemInstance item, Inventory ownerInventory)
         {
             if (item.template.price <= 0) return null;
 
             PC pc = GetCurrentPC();
             Escrow escrow = pc != null ? Escrow.GetEscrowForPC(pc) : null;
 
-            if (escrow != null && dragDropItem.ownerInventory != null)
+            if (escrow != null && ownerInventory != null)
             {
-                float tradeValue = escrow.TradeValueOfItem(item, dragDropItem.ownerInventory, true);
+                float tradeValue = escrow.TradeValueOfItem(item, ownerInventory, true);
                 int price = Mathf.FloorToInt(tradeValue);
 
                 if (item.quantity > 1)
@@ -1585,16 +1655,20 @@ namespace Wasteland2AccessibilityMod.States
             if (current is EscrowEntry escrowEntry)
                 return escrowEntry.Item;
 
-            if (current is INV_DragDropItem dragDropItem)
-                return dragDropItem.GetItem();
+            if (current is ShopItemEntry shopEntry)
+                return shopEntry.Item;
 
             return null;
         }
 
-        private INV_DragDropItem GetCurrentDragDropItem()
+        private Inventory GetCurrentOwnerInventory()
         {
             if (currentIndex < 0 || currentIndex >= currentList.Count) return null;
-            return currentList[currentIndex] as INV_DragDropItem;
+            object current = currentList[currentIndex];
+            if (current is ShopItemEntry shopEntry) return shopEntry.OwnerInventory;
+            if (current is EscrowEntry escrowEntry)
+                return escrowEntry.IsSelling ? (Inventory)escrowEntry.ParentEscrow.invEscrowPlayer : escrowEntry.ParentEscrow.invEscrowVendor;
+            return null;
         }
 
         private string GetFilterName(InventoryFilter filter)
