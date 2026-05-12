@@ -1554,7 +1554,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     foreach (ItemInstance i in equipment)
                     {
-                        if (i is ItemInstance_Weapon && i.template == slot1Tpl)
+                        if (i != null && i is ItemInstance_Weapon && i.template == slot1Tpl)
                             return i;
                     }
                 }
@@ -1588,7 +1588,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     foreach (ItemInstance i in equipment)
                     {
-                        if (i.template is ItemTemplate_Equipment t && t.slot == targetSlot)
+                        if (i != null && i.template is ItemTemplate_Equipment t && t.slot == targetSlot)
                             return i;
                     }
                 }
