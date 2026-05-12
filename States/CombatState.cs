@@ -1396,12 +1396,15 @@ namespace Wasteland2AccessibilityMod.States
                 if (mob.mobState == Mob.MobState.DEAD) continue;
                 if (mob.isHidden) continue;
 
-                // NPCs must be visible (fog of war) and part of this combat
+                // NPCs that are scripted to delay joining are not committed combatants yet.
+                // Don't filter on fowRenderer.isVisible: that's a per-frame LOS render flag and
+                // would drop combatants the party currently can't see, making the cycle list
+                // shrink/grow as the party moves. Membership in cm.mobs + !waitToJoinCombat is
+                // the authoritative "actively engaged" signal.
                 if (mob is NPC)
                 {
                     NPC npc = mob as NPC;
                     if (npc.waitToJoinCombat) continue;
-                    if (FOWSystem.instance != null && !npc.fowRenderer.isVisible) continue;
                 }
 
                 // Filter by category
