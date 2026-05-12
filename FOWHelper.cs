@@ -52,6 +52,27 @@ namespace Wasteland2AccessibilityMod
         }
 
         /// <summary>
+        /// Returns true if a sighted player could see/click this GameObject right now.
+        /// Mirrors InputManager.CheckInstigateDrama:
+        ///   - objects with FOWRenderers (NPCs/Mobs — added at runtime by NPC.AddNPCOnlyObjects
+        ///     and Spawner) hide outside current vision, so check fowRenderers.isVisible.
+        ///   - objects without FOWRenderers (static containers, doors, exits, examines) remain
+        ///     clickable in any explored cell, so fall back to FOWSystem.IsExplored.
+        /// Prefer this over IsVisibleThroughFOW for static interactables — using IsVisible
+        /// would hide previously-explored containers from the scanner that a sighted player
+        /// can still walk back and click on.
+        /// </summary>
+        public static bool IsVisibleToSighted(GameObject go)
+        {
+            if (go == null) return false;
+            if (FOWSystem.instance == null) return true;
+            FOWRenderers fowRenderers = go.GetComponent<FOWRenderers>();
+            if (fowRenderers != null)
+                return fowRenderers.isVisible;
+            return FOWSystem.instance.IsExplored(go.transform.position);
+        }
+
+        /// <summary>
         /// Returns true once FOWSystem has had real time and at least one unpaused
         /// frame since the last LoadMap call. Callers that rely on IsVisibleThroughFOW
         /// should refuse to scan/filter while this is false to avoid the stale-buffer

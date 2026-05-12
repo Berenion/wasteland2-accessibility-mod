@@ -1130,7 +1130,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (interactable == null) continue;
                 if (!interactable.isVisible) continue;
                 if (interactable.isPC) continue;
-                if (!FOWHelper.IsVisibleThroughFOW(interactable.transform.position)) continue;
+                if (!FOWHelper.IsVisibleToSighted(interactable.gameObject)) continue;
                 if (FOWHelper.IsPerceptionGated(interactable)) continue;
 
                 if (IsOnCurrentTile(interactable.transform.position))

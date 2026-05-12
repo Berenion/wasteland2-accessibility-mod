@@ -328,7 +328,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (nexus == null || !nexus.isVisible) continue;
                 if (nexus.isPC) continue;
-                if (!FOWHelper.IsVisibleThroughFOW(nexus.transform.position)) continue;
+                if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) continue;
                 if (FOWHelper.IsPerceptionGated(nexus)) continue;
 
                 // Check if this nexus is a lootable container (unlocked or locked)
@@ -382,7 +382,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (exit == null || exit.gameObject == null) continue;
                 if (!exit.gameObject.activeInHierarchy) continue;
-                if (!FOWHelper.IsVisibleThroughFOW(exit.transform.position)) continue;
+                if (!FOWHelper.IsVisibleToSighted(exit.gameObject)) continue;
 
                 float distance = Vector3.Distance(origin, exit.transform.position);
                 if (distance > currentScanRange) continue;
@@ -412,7 +412,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (interactable == null || !interactable.isVisible) continue;
                 if (interactable.isPC) continue;
-                if (!FOWHelper.IsVisibleThroughFOW(interactable.transform.position)) continue;
+                if (!FOWHelper.IsVisibleToSighted(interactable.gameObject)) continue;
                 if (FOWHelper.IsPerceptionGated(interactable)) continue;
 
                 float distance = Vector3.Distance(origin, interactable.transform.position);

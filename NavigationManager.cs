@@ -302,7 +302,7 @@ namespace Wasteland2AccessibilityMod
                 if (nexus == null) continue;
                 if (!nexus.isVisible) continue;
                 if (nexus.transform == null) continue;
-                if (!FOWHelper.IsVisibleThroughFOW(nexus.transform.position)) continue;
+                if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) continue;
                 if (FOWHelper.IsPerceptionGated(nexus)) continue;
                 if (!MatchesCategory(nexus, currentCategory)) continue;
                 filteredInteractables.Add(nexus);
