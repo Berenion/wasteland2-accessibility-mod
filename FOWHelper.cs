@@ -52,23 +52,31 @@ namespace Wasteland2AccessibilityMod
         }
 
         /// <summary>
-        /// Returns true if a sighted player could see/click this GameObject right now.
-        /// Mirrors InputManager.CheckInstigateDrama:
-        ///   - objects with FOWRenderers (NPCs/Mobs — added at runtime by NPC.AddNPCOnlyObjects
-        ///     and Spawner) hide outside current vision, so check fowRenderers.isVisible.
-        ///   - objects without FOWRenderers (static containers, doors, exits, examines) remain
-        ///     clickable in any explored cell, so fall back to FOWSystem.IsExplored.
-        /// Prefer this over IsVisibleThroughFOW for static interactables — using IsVisible
-        /// would hide previously-explored containers from the scanner that a sighted player
-        /// can still walk back and click on.
+        /// Returns true if a sighted player could see/notice this GameObject right now.
+        /// Two branches, both ignore the cached FOWRenderers.isVisible field — Unity
+        /// doesn't run LateUpdate on inactive GameObjects, so any object that gets
+        /// SetActive(false) (NPCs via SleepManager.cs:134, doors/scenery via level-chunk
+        /// culling, etc.) keeps its last mIsVisible value, often the default `true`.
+        ///   1. Mobs (anything with a Mob component): require current vision via
+        ///      FOWSystem.IsVisible. Matches sighted: FOWRenderers disables their
+        ///      renderers entirely outside vision.
+        ///   2. Non-mobs (containers, doors, exits, examines, AZ1 Drama quest objects):
+        ///      visible iff FOWSystem.IsExplored. These render through the FOWEffect
+        ///      post-process at ~20% greyscale in explored fog — dim but technically
+        ///      perceivable, and this is what InputManager.CheckInstigateDrama uses for
+        ///      sighted click gating when FOWRenderers is absent. In unexplored territory
+        ///      sighted players see nothing (FOWEffect renders at unexploredColor =
+        ///      (0.05, 0.05, 0.05) — near-black).
         /// </summary>
         public static bool IsVisibleToSighted(GameObject go)
         {
             if (go == null) return false;
             if (FOWSystem.instance == null) return true;
-            FOWRenderers fowRenderers = go.GetComponent<FOWRenderers>();
-            if (fowRenderers != null)
-                return fowRenderers.isVisible;
+
+            Mob mob = go.GetComponent<Mob>();
+            if (mob != null)
+                return FOWSystem.instance.IsVisible(go.transform.position);
+
             return FOWSystem.instance.IsExplored(go.transform.position);
         }
 
