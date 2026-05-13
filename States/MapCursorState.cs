@@ -2055,11 +2055,15 @@ namespace Wasteland2AccessibilityMod.States
             float dz = Mathf.Abs(tp.z - cursorPosition.z);
             bool isVis = target.isVisible;
             bool fowOk = FOWHelper.IsVisibleThroughFOW(tp);
+            bool fowExplored = FOWSystem.instance != null && FOWSystem.instance.IsExplored(tp);
+            bool sightedOk = FOWHelper.IsVisibleToSighted(target.gameObject);
+            bool hasFowRenderer = target.GetComponent<FOWRenderers>() != null;
+            bool hasMob = target.GetComponent<Mob>() != null;
             bool percGated = FOWHelper.IsPerceptionGated(target);
             bool onTile = dx <= TILE_MATCH_RADIUS && dz <= TILE_MATCH_RADIUS;
             bool wallBlocked = IsBlockedByWall(tp);
             bool isDoor = IsDoor(target);
-            MelonLogger.Msg($"[TileTrace] {target.name}: tp={tp}, dx={dx:F2}, dz={dz:F2}, TILE_MATCH_RADIUS={TILE_MATCH_RADIUS}, isVisible={isVis}, fowOk={fowOk}, percGated={percGated}, onTile={onTile}, wallBlocked={wallBlocked}, isDoor={isDoor}, isPC={target.isPC}");
+            MelonLogger.Msg($"[TileTrace] {target.name}: tp={tp}, dx={dx:F2}, dz={dz:F2}, TILE_MATCH_RADIUS={TILE_MATCH_RADIUS}, isVisible={isVis}, fowVisible={fowOk}, fowExplored={fowExplored}, sightedOk={sightedOk}, hasFowRenderer={hasFowRenderer}, hasMob={hasMob}, percGated={percGated}, onTile={onTile}, wallBlocked={wallBlocked}, isDoor={isDoor}, isPC={target.isPC}");
         }
 
         private void AnnounceDistanceToSelected()
@@ -2071,26 +2075,18 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            // Compute tile distance from cursor to selected interactable
-            Vector3 targetWorldPos = selected.transform.position;
-            int targetGridX = Mathf.RoundToInt(targetWorldPos.x / TileCoordinateSystem.SquareSize);
-            int targetGridZ = Mathf.RoundToInt(targetWorldPos.z / TileCoordinateSystem.SquareSize);
-
-            // Try to get more accurate grid ID from a node lookup
-            CombatAStarNode targetNode = FindNodeAtPosition(targetWorldPos);
-            if (targetNode != null)
-            {
-                targetGridX = (int)targetNode.id.x;
-                targetGridZ = (int)targetNode.id.z;
-            }
-
-            int tileDistX = Mathf.Abs((int)cursorGridId.x - targetGridX);
-            int tileDistZ = Mathf.Abs((int)cursorGridId.z - targetGridZ);
-            int tileDist = Mathf.Max(tileDistX, tileDistZ);
+            // Use the same target (InstigatePoint) and the same distance math as
+            // NavigationManager's PageUp/Down cycling so both announcements agree.
+            // The previous code's FindNodeAtPosition fallback snapped aggressively
+            // to the nearest A* node even when it was several tiles off the
+            // object's actual position, producing answers like "2 tiles NE" when
+            // PageDown had just said "4 tiles north" for the same target.
+            Vector3 targetWorldPos = selected.InstigatePoint;
+            string distanceStr = TileCoordinateSystem.GetDistanceText(cursorPosition, targetWorldPos);
             string direction = DirectionHelper.GetDirectionDescription(cursorPosition, targetWorldPos);
 
             string name = GetInteractableName(selected);
-            string announcement = (name ?? "Object") + ", " + tileDist + (tileDist == 1 ? " tile " : " tiles ") + direction;
+            string announcement = (name ?? "Object") + ", " + distanceStr + ", " + direction;
             ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
