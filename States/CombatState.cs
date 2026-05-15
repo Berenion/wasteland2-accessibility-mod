@@ -3176,8 +3176,13 @@ namespace Wasteland2AccessibilityMod.States
             catch { return true; }
         }
 
-        // Mirrors CombatManager.UpdateDisplayQueue's filter so our list matches the on-screen tracker.
-        // PCs always count; NPCs must have engaged hostiles, not be waiting to join, and not be in doNothing AI.
+        // Filter for inclusion in the initiative list. Intentionally looser than CombatManager.UpdateDisplayQueue:
+        // that method gates on NPC.HasEnemiesInCombat(), which just returns the cached `hostilesInCombat` field.
+        // RefreshHostilesInCombat() only runs in NPC.StartCombat() and NPC.StartCombatTurn(), so mobs spawned
+        // mid-combat with a not-yet-hostile faction (e.g. infected super flies whose template.faction is flipped
+        // to Bad after a delay, mirroring AZ1_PCPodTransformation) cache hostilesInCombat=false until their first
+        // turn — which is exactly why they were missing from the tracker until they acted. Membership in cm.mobs
+        // is the real "in combat" signal, and IsMobRevealedToParty handles visibility.
         private bool IsActivelyInCombat(Mob mob)
         {
             if (mob == null) return false;
@@ -3186,7 +3191,6 @@ namespace Wasteland2AccessibilityMod.States
             var npc = mob as NPC;
             if (npc == null) return true;
             if (npc.waitToJoinCombat) return false;
-            if (!npc.HasEnemiesInCombat()) return false;
 
             var ai = mob.GetActiveAI() as AIBehaviour_NPCCombat;
             if (ai != null && ai.doNothing) return false;
