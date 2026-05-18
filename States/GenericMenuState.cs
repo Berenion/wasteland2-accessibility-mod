@@ -425,6 +425,15 @@ namespace Wasteland2AccessibilityMod.States
                     ? UITextExtractor.CleanText(cachedSkillUseMenu.titleLabel.text)
                     : "Select an Item To Use";
             }
+            else if (topScreen is PCDeathScreen pcDeathScreen)
+            {
+                string epitaph = pcDeathScreen.epitaphLabel != null
+                    ? UITextExtractor.CleanText(pcDeathScreen.epitaphLabel.text)
+                    : "";
+                menuName = string.IsNullOrEmpty(epitaph)
+                    ? "Character death. Press Escape or Enter to close."
+                    : $"Character death. {epitaph} Press Escape or Enter to close.";
+            }
             else
             {
                 // Insert spaces before capitals for readability (e.g., "PauseMenu" → "Pause Menu")
