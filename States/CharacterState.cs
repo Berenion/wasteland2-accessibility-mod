@@ -61,6 +61,7 @@ namespace Wasteland2AccessibilityMod.States
         private static FieldInfo attrEditorsField;
         private static FieldInfo addCharEntryListField;
         private static MethodInfo onDoneClickedMethod;
+        private static MethodInfo onBackClickedMethod;
         private static bool reflectionCached = false;
 
         public override bool IsActive
@@ -224,6 +225,7 @@ namespace Wasteland2AccessibilityMod.States
             panelTypeField = typeof(CharacterScreen).GetField("panelType", flags);
             currentPCField = typeof(CharacterScreen).GetField("currentPC", flags);
             onDoneClickedMethod = typeof(CharacterScreen).GetMethod("OnDoneClicked", flags);
+            onBackClickedMethod = typeof(CharacterScreen).GetMethod("OnBackClicked", flags);
 
             skillEditorsField = typeof(CHA_SkillPanel).GetField("skillEditors", flags);
 
@@ -406,6 +408,61 @@ namespace Wasteland2AccessibilityMod.States
                     BuildFlavorControls(screen);
                     break;
             }
+
+            AppendNavButtons(screen);
+        }
+
+        /// <summary>
+        /// Appends the game's existing Previous (back/cancel) and Next (confirm/done/play) buttons
+        /// to the end of controlList for every panel where they're visible. The user can arrow to
+        /// them and press Enter; HandleCommonInput routes Enter through OnBackClicked / OnDoneClicked.
+        /// </summary>
+        private void AppendNavButtons(CharacterScreen screen)
+        {
+            GameObject prev = GetPreviousNavObject(screen);
+            if (prev != null && !controlList.Contains(prev))
+                controlList.Add(prev);
+
+            GameObject next = GetNextNavObject(screen);
+            if (next != null && !controlList.Contains(next))
+                controlList.Add(next);
+        }
+
+        private GameObject GetPreviousNavObject(CharacterScreen screen)
+        {
+            if (screen.backButton != null && screen.backButton.gameObject.activeInHierarchy)
+                return screen.backButton.gameObject;
+            if (screen.cancelButton != null && screen.cancelButton.gameObject.activeInHierarchy)
+                return screen.cancelButton.gameObject;
+            return null;
+        }
+
+        private GameObject GetNextNavObject(CharacterScreen screen)
+        {
+            if (screen.confirmButton != null && screen.confirmButton.gameObject.activeInHierarchy)
+                return screen.confirmButton.gameObject;
+            if (screen.doneWithCharacterButton != null && screen.doneWithCharacterButton.gameObject.activeInHierarchy)
+                return screen.doneWithCharacterButton.gameObject;
+            if (screen.startPlayingButton != null && screen.startPlayingButton.gameObject.activeInHierarchy)
+                return screen.startPlayingButton.gameObject;
+            return null;
+        }
+
+        private bool IsPreviousNavObject(CharacterScreen screen, GameObject obj)
+        {
+            if (obj == null || screen == null) return false;
+            if (screen.backButton != null && obj == screen.backButton.gameObject) return true;
+            if (screen.cancelButton != null && obj == screen.cancelButton.gameObject) return true;
+            return false;
+        }
+
+        private bool IsNextNavObject(CharacterScreen screen, GameObject obj)
+        {
+            if (obj == null || screen == null) return false;
+            if (screen.confirmButton != null && obj == screen.confirmButton.gameObject) return true;
+            if (screen.doneWithCharacterButton != null && obj == screen.doneWithCharacterButton.gameObject) return true;
+            if (screen.startPlayingButton != null && obj == screen.startPlayingButton.gameObject) return true;
+            return false;
         }
 
         private void BuildUseDefaultPartyControls(CharacterScreen screen)
@@ -446,12 +503,6 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     controlList.Add(entry.gameObject);
                 }
-            }
-
-            // Add Start Playing button if visible
-            if (screen.startPlayingButton != null && screen.startPlayingButton.gameObject.activeInHierarchy)
-            {
-                controlList.Add(screen.startPlayingButton.gameObject);
             }
 
             MelonLogger.Msg($"[CharacterState] Party controls: {controlList.Count}");
@@ -761,6 +812,27 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (obj == null) return null;
 
+            // Previous / Next nav buttons: use the game's own label (it already says
+            // "Back" / "Main Menu" / "Next" / "Done" / "Play!" per panel)
+            var charScreen = CharacterScreen.instance;
+            if (charScreen != null)
+            {
+                if (IsPreviousNavObject(charScreen, obj))
+                {
+                    UILabel prevLbl = obj.GetComponentInChildren<UILabel>();
+                    string text = prevLbl != null ? UITextExtractor.CleanText(prevLbl.text) : "";
+                    if (string.IsNullOrEmpty(text)) text = "Previous";
+                    return $"{text}, button";
+                }
+                if (IsNextNavObject(charScreen, obj))
+                {
+                    UILabel nextLbl = obj.GetComponentInChildren<UILabel>();
+                    string text = nextLbl != null ? UITextExtractor.CleanText(nextLbl.text) : "";
+                    if (string.IsNullOrEmpty(text)) text = "Next";
+                    return $"{text}, button";
+                }
+            }
+
             // Check for specific component types
             var attrEditor = obj.GetComponent<CHA_AttributeEditor>();
             if (attrEditor != null)
@@ -1058,6 +1130,36 @@ namespace Wasteland2AccessibilityMod.States
                     MelonLogger.Msg("[CharacterState] OnDoneClicked called via N key");
                 }
                 return true;
+            }
+
+            // Enter on the Previous / Next nav buttons routes to the same handlers the
+            // game uses for Escape (Back) and the N shortcut (Next/Done/Play). We check
+            // first so panel-specific Enter handlers (editor-edit-mode, trait-toggle,
+            // entry-activate, etc.) still see Enter for non-nav controls.
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var focused = controlList[controlIndex];
+                    if (IsPreviousNavObject(screen, focused))
+                    {
+                        if (onBackClickedMethod != null)
+                        {
+                            onBackClickedMethod.Invoke(screen, null);
+                            MelonLogger.Msg("[CharacterState] OnBackClicked called via Previous button");
+                        }
+                        return true;
+                    }
+                    if (IsNextNavObject(screen, focused))
+                    {
+                        if (onDoneClickedMethod != null)
+                        {
+                            onDoneClickedMethod.Invoke(screen, new object[] { null });
+                            MelonLogger.Msg("[CharacterState] OnDoneClicked called via Next button");
+                        }
+                        return true;
+                    }
+                }
             }
 
             // Escape: let the game's native event system handle Back navigation.
