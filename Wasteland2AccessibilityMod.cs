@@ -92,6 +92,10 @@ namespace Wasteland2AccessibilityMod
             // Process accessibility input FIRST (before game's Update methods run)
             InputRouter.ProcessInput();
 
+            // Maintain auto-pause for inventory/loot/vendor screens (after input
+            // so a manual Space toggle this frame wins over the auto-pause check)
+            TacticalPauseManager.Tick();
+
             // Update the audio-aware announcement manager every frame
             AudioAwareAnnouncementManager.Instance.Update();
 
