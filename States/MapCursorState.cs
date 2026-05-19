@@ -2190,12 +2190,36 @@ namespace Wasteland2AccessibilityMod.States
             // Try to get a meaningful name from the object or its parents
             string objectName = GetMeaningfulName(hit.transform);
 
-            // If the raycast hit an object with an InteractableNexus that is
-            // perception-gated, don't reveal its name — return null so it's
-            // treated as generic terrain/obstruction instead.
+            // If the raycast hit an object whose InteractableNexus would be
+            // filtered out of FindInteractablesOnTile (perception-gated, hidden,
+            // outside sighted FOW), don't reveal its name — otherwise the
+            // obstruction path leaks names of objects the player hasn't
+            // discovered yet, and pressing X reports "Nothing to examine"
+            // because FindInteractablesOnTile filtered them out.
             var nexus = go.GetComponent<InteractableNexus>();
             if (nexus == null) nexus = go.GetComponentInParent<InteractableNexus>();
-            if (nexus != null && FOWHelper.IsPerceptionGated(nexus))
+            // Some prefabs put the nexus on a sibling of the visible mesh, so
+            // the parent walk misses it. Sweep registered interactables for
+            // any whose position lands at this hit's tile.
+            if (nexus == null)
+            {
+                Vector3 hitPos = hit.point;
+                foreach (var candidate in InteractableNexus.interactables)
+                {
+                    if (candidate == null) continue;
+                    Vector3 p = candidate.transform.position;
+                    if (Mathf.Abs(p.x - hitPos.x) <= TILE_MATCH_RADIUS &&
+                        Mathf.Abs(p.z - hitPos.z) <= TILE_MATCH_RADIUS)
+                    {
+                        nexus = candidate;
+                        break;
+                    }
+                }
+            }
+            if (nexus != null && !nexus.isPC &&
+                (!nexus.isVisible ||
+                 !FOWHelper.IsVisibleToSighted(nexus.gameObject) ||
+                 FOWHelper.IsPerceptionGated(nexus)))
                 return null;
 
             // Categorize by layer
