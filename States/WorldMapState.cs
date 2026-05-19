@@ -371,11 +371,18 @@ namespace Wasteland2AccessibilityMod.States
             Vector3 direction = DIRECTIONS[directionIndex];
             Vector3 newPosition = cursorPosition + direction * stepSize;
 
-            // Validate position on NavMesh
+            // Tight sample radius: with the old 15f, an off-navmesh destination
+            // could still "succeed" by snapping to the cursor's previous spot
+            // (exactly stepSize away), so blockers never reached the else branch.
             NavMeshHit hit;
-            if (NavMesh.SamplePosition(newPosition, out hit, 15f, 1))
+            if (NavMesh.SamplePosition(newPosition, out hit, 2f, 1))
             {
-                cursorPosition = hit.position;
+                // Preserve the intended X/Z and only borrow Y from the sample.
+                // Adopting hit.position wholesale shifts the cursor sideways
+                // each step (navmesh polygons aren't axis-aligned), and the
+                // perpendicular offset accumulates — walking "north" gradually
+                // drifts northwest from the party.
+                cursorPosition = new Vector3(newPosition.x, hit.position.y, newPosition.z);
 
                 if (cameraFollowsCursor)
                     SnapCameraToCursor();
