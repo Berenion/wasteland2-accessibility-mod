@@ -766,12 +766,43 @@ namespace Wasteland2AccessibilityMod.States
         private void SwitchTab(CharacterInfoMenu menu, int direction)
         {
             hasSuspendedState = false; // Don't restore when switching tabs
-            if (direction > 0)
-                menu.GoToNextPanel();
-            else
-                menu.GoToPreviousPanel();
-
+            CyclePanel(menu, lastPanel, direction);
             MelonLogger.Msg($"[CharacterInfoState] Switched tab, direction={direction}");
+        }
+
+        // Cycle order including Dossier. The game's own GoToNextPanel()/GoToPreviousPanel()
+        // skip Dossier entirely (INV_TabBar has no dossierLED — DC's tab bar only exposes
+        // Inventory, Log, Character, Attributes, Skills, Traits), so we cycle ourselves and
+        // call OnDossierClicked() directly when we land on it.
+        private static readonly CharacterInfoMenu.InfoPanel[] TabCycle =
+        {
+            CharacterInfoMenu.InfoPanel.Inventory,
+            CharacterInfoMenu.InfoPanel.Attributes,
+            CharacterInfoMenu.InfoPanel.Skills,
+            CharacterInfoMenu.InfoPanel.Traits,
+            CharacterInfoMenu.InfoPanel.Dossier,
+            CharacterInfoMenu.InfoPanel.Logbook,
+        };
+
+        internal static void CyclePanel(CharacterInfoMenu menu, CharacterInfoMenu.InfoPanel current, int direction)
+        {
+            int idx = Array.IndexOf(TabCycle, current);
+            if (idx < 0) idx = 0;
+            int next = (idx + direction + TabCycle.Length) % TabCycle.Length;
+            InvokePanelClick(menu, TabCycle[next]);
+        }
+
+        private static void InvokePanelClick(CharacterInfoMenu menu, CharacterInfoMenu.InfoPanel panel)
+        {
+            switch (panel)
+            {
+                case CharacterInfoMenu.InfoPanel.Inventory: menu.OnInventoryClicked(); break;
+                case CharacterInfoMenu.InfoPanel.Attributes: menu.OnAttributesClicked(); break;
+                case CharacterInfoMenu.InfoPanel.Skills: menu.OnSkillsClicked(); break;
+                case CharacterInfoMenu.InfoPanel.Traits: menu.OnTraitsClicked(); break;
+                case CharacterInfoMenu.InfoPanel.Dossier: menu.OnDossierClicked(); break;
+                case CharacterInfoMenu.InfoPanel.Logbook: menu.OnLogbookClicked(); break;
+            }
         }
 
         private bool HandlePartySwitch(CharacterInfoMenu menu)

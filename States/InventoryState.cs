@@ -891,10 +891,9 @@ namespace Wasteland2AccessibilityMod.States
             var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
             if (charInfoMenu == null) return;
 
-            if (direction > 0)
-                charInfoMenu.GoToNextPanel();
-            else
-                charInfoMenu.GoToPreviousPanel();
+            // Use the shared cycle that includes Dossier (the game's own GoToNextPanel
+            // skips it). We're on the inventory tab here, so start from Inventory.
+            CharacterInfoState.CyclePanel(charInfoMenu, CharacterInfoMenu.InfoPanel.Inventory, direction);
 
             MelonLogger.Msg($"[InventoryState] Switched tab, direction={direction}");
         }
