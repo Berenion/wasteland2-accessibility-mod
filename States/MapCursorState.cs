@@ -1267,6 +1267,16 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
 
+                // Orphaned PickupItem (post-reload corpse with no mob link) —
+                // drama.name is the raw prefab name "PickUpItem(Clone)", so name
+                // it by its loot. See NavigationManager.GetInteractableName.
+                var pickup = interactable.drama as PickupItem;
+                if (pickup != null)
+                {
+                    string lootName = NavigationManager.BuildPickupLootName(pickup);
+                    if (!string.IsNullOrEmpty(lootName)) return AppendState(lootName, interactable);
+                }
+
                 string dramaName = interactable.drama.name;
                 if (!string.IsNullOrEmpty(dramaName))
                 {

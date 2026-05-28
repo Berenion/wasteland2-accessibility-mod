@@ -552,6 +552,17 @@ namespace Wasteland2AccessibilityMod
                     if (mob.isDead) mobName += ", dead";
                     return mobName;
                 }
+
+                // Orphaned PickupItem (post-reload corpse with no mob link). Game
+                // strips the NPC reference unless the corpse was marked persistent,
+                // so we name it by its loot instead. items.displayName resets to
+                // the default "<@>Contents" on reload, so don't bother with it.
+                var pickup = nexus.drama as PickupItem;
+                if (pickup != null)
+                {
+                    string lootName = BuildPickupLootName(pickup);
+                    if (!string.IsNullOrEmpty(lootName)) return lootName;
+                }
             }
 
             // Try UILabel on object
@@ -563,6 +574,42 @@ namespace Wasteland2AccessibilityMod
 
             // Fall back to cleaned GameObject name
             return CleanGameObjectName(nexus.name);
+        }
+
+        internal static string BuildPickupLootName(PickupItem pickup)
+        {
+            if (pickup == null || pickup.items == null) return null;
+
+            int distinctShown = 0;
+            int extraStacks = 0;
+            var parts = new List<string>();
+            foreach (ItemInstance item in pickup.items)
+            {
+                if (item == null || item.template == null) continue;
+                string raw = item.template.displayName;
+                if (string.IsNullOrEmpty(raw)) continue;
+                string clean = UITextExtractor.CleanText(raw);
+                if (string.IsNullOrEmpty(clean)) continue;
+
+                if (distinctShown < 3)
+                {
+                    parts.Add(item.quantity > 1 ? $"{item.quantity} {clean}" : clean);
+                    distinctShown++;
+                }
+                else
+                {
+                    extraStacks++;
+                }
+            }
+
+            if (parts.Count == 0)
+            {
+                return pickup.items.Count > 0 ? "Loot pile" : "Empty loot pile";
+            }
+
+            string body = string.Join(", ", parts.ToArray());
+            if (extraStacks > 0) body += $", +{extraStacks} more";
+            return "Loot: " + body;
         }
 
         private static string CleanGameObjectName(string name)
