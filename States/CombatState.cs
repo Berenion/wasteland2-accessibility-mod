@@ -670,13 +670,16 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Semicolon: toggle camera follow
-            // (F is "Headshot/Precision Shot" in combat, so we avoid it)
-            if (Input.GetKeyDown(KeyCode.Semicolon))
+            // F: toggle camera follow (matches the binding in exploration / world map / map cursor).
+            // F is the game's "Headshot/Precision Shot" key, but our Tab target-actions menu
+            // already exposes precision shots, so we take F and suppress the game's binding.
+            if (Input.GetKeyDown(KeyCode.F))
             {
                 cameraFollowsCursor = !cameraFollowsCursor;
                 ScreenReaderManager.SpeakInterrupt(cameraFollowsCursor
                     ? "Camera follows cursor" : "Camera stationary");
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
                 return true;
             }
 

@@ -118,7 +118,7 @@ The MelonLoader log lives at `<game-install>\MelonLoader\Latest.log`.
 ## Target Framework
 
 - **.NET Framework 3.5** (Unity 4.x compatibility — same target Unity uses)
-- **MelonLoader 0.6.1+**
+- **MelonLoader 0.5.7 Open-Beta** — pinned. 0.6.x and newer crash with Wasteland 2 Director's Cut. The bundled `libs/MelonLoader.dll` is 0.5.7 to match.
 - **Harmony** (bundled with MelonLoader)
 
 ## Reference Material

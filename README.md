@@ -45,7 +45,7 @@ A screen-reader and keyboard accessibility mod for **Wasteland 2 Director's Cut*
 
 ## What it does
 
-- Reads game UI, dialogue, combat events, item info, and world objects through NVDA, JAWS, or Windows SAPI (via the [Tolk](https://github.com/dkager/tolk) library).
+- Reads game UI, dialogue, combat events, item info, and world objects through NVDA, JAWS, or Windows SAPI (via the Tolk library).
 - Replaces mouse-driven interaction with full keyboard navigation in every menu: main menu, character creation, inventory, loot, shops, conversations, the world map, combat, and modal dialogs.
 - Adds a **virtual grid cursor** in exploration and combat, so you can move tile-by-tile, hear what's on each tile, and order interactions without seeing the screen.
 - Adds a **world-map review cursor** with proximity alerts for POIs and radiation, water-cost path estimation, and POI cycling.
@@ -57,30 +57,35 @@ A screen-reader and keyboard accessibility mod for **Wasteland 2 Director's Cut*
 | Component | Version / source |
 |---|---|
 | Wasteland 2 Director's Cut | Steam or GOG |
-| MelonLoader | 0.6.1 or newer — <https://github.com/LavaGang/MelonLoader/releases> |
-| Tolk runtime DLLs | `Tolk.dll` and `nvdaControllerClient64.dll` in the game folder (shipped with the mod release) |
+| MelonLoader | **0.5.7 Open-Beta** — <https://github.com/LavaGang/MelonLoader/releases/tag/v0.5.7>. **Do not use 0.6.x or newer**; they crash with Wasteland 2 Director's Cut. |
+| Tolk runtime DLLs | `Tolk.dll` and `nvdaControllerClient64.dll` in the game folder. **Not shipped with the mod — you supply them.** |
 | Screen reader (optional) | NVDA, JAWS, or any SAPI voice. If none is running, Tolk falls back to SAPI. |
 
 The mod targets .NET Framework 3.5 (Unity 4.x). MelonLoader installs that runtime automatically.
 
 ## Installation
 
-1. **Install MelonLoader**
-   - Download the installer from <https://github.com/LavaGang/MelonLoader/releases>.
+1. **Install MelonLoader 0.5.7** (specifically — newer versions crash with this game)
+   - Download from <https://github.com/LavaGang/MelonLoader/releases/tag/v0.5.7>. Use `MelonLoader.Installer.exe` from that release, **not** the latest installer (the latest installer will pull a newer MelonLoader that crashes).
    - Run it, point it at your Wasteland 2 install folder (the folder that contains `WL2.exe`), and click **Install**.
    - On a normal Steam install, that folder is `...\steamapps\common\Wasteland 2 Director's Cut\Build\`.
-2. **Drop the mod files in place.** From the release archive:
-   - Copy `Wasteland2AccessibilityMod.dll` into `<game folder>\Mods\`. (MelonLoader creates the `Mods` folder on first launch.)
-   - Copy `Tolk.dll` and `nvdaControllerClient64.dll` into the **same folder as `WL2.exe`** (not into `Mods`).
-3. **Start your screen reader** before launching the game (recommended — Tolk can also attach to one started later, but starting first is the reliable path).
-4. **Launch the game.**
+   - If you already have a newer MelonLoader installed and the game crashes on launch, uninstall it (delete `version.dll`, `dobby.dll`, and the `MelonLoader` folder from the game directory) before installing 0.5.7.
+2. **Install the mod DLL.**
+   - Copy `Wasteland2AccessibilityMod.dll` from the release archive into `<game folder>\Mods\`. (MelonLoader creates the `Mods` folder on first launch.)
+3. **Supply the Tolk runtime DLLs.** These are not bundled with the mod — grab them yourself from a Tolk release:
+   - Copy **`Tolk.dll`** and **`nvdaControllerClient64.dll`** into the **same folder as `WL2.exe`** (not into `Mods`).
+   - JAWS users: also copy **`jfwapi64.dll`** from the same Tolk release.
+4. **Start your screen reader** before launching the game (recommended — Tolk can also attach to one started later, but starting first is the reliable path).
+5. **Launch the game.**
 
 ### Verifying the mod loaded
 
 Open `<game folder>\MelonLoader\Latest.log` after the game has started. You should see:
 
 ```
-[MelonLoader] - Wasteland 2 Accessibility Mod v2.0.0
+MelonLoader v0.5.7 Open-Beta
+...
+Melon Assembly loaded: '.\Mods\Wasteland2AccessibilityMod.dll'
 ...
 Wasteland 2 Accessibility Mod v2.0.0
 Screen reader detected: NVDA   (or JAWS, or "No screen reader detected (Tolk loaded, will use SAPI if available)")
@@ -170,7 +175,7 @@ Every keybinding the mod adds, organized by context. Most contexts are auto-dete
 
 ### Notation
 
-- Keys are written with their printed names: `Up`, `Down`, `PgUp`, `PgDn`, `Backspace`, `Home`, `End`, `\` (backslash), `]` (right bracket), `=` (equals), `'` (apostrophe), `;` (semicolon).
+- Keys are written with their printed names: `Up`, `Down`, `PgUp`, `PgDn`, `Backspace`, `Home`, `End`, `\` (backslash), `]` (right bracket), `=` (equals), `'` (apostrophe).
 - `Ctrl+X` means hold Ctrl while pressing X. `Shift+X` same idea.
 - `Numpad +/-` and the top-row `=` / `-` keys are interchangeable wherever value adjustment is mentioned.
 
@@ -178,7 +183,7 @@ Every keybinding the mod adds, organized by context. Most contexts are auto-dete
 
 | Key | Action |
 |---|---|
-| `F1`–`F7` | Select party member 1 through 7. Hold Shift or Ctrl while pressing to add to selection without clearing. Pressing the key for an already-selected ranger centers the camera on them. |
+| `F1`–`F7` | Select party member 1 through 7. (Exploration and world map additionally support Shift/Ctrl multi-select — see those sections.) |
 | `F10` | Toggle camera rotation lock. Locked = "up" is always north. Default: locked. |
 | `Space` | Toggle tactical pause. Auto-pauses while inventory / loot / vendor screens are open. |
 
@@ -269,6 +274,8 @@ Two cursor systems run in parallel during exploration: a **list cursor** that cy
 | `R` | Answer the radio. |
 | `I` | Open the character / inventory screen. |
 | `G` | Toggle party group mode (grouped / ungrouped). |
+| `Shift+F1`–`F7` or `Ctrl+F1`–`F7` | Add that ranger to the current selection (instead of replacing it). Use to build a multi-ranger group. |
+| `F1`–`F7` (already-selected leader) | Re-pressing the key for the current leader centers the camera on them. |
 | `Escape` | Open the pause menu. |
 
 #### Grid cursor (map cursor)
@@ -317,6 +324,7 @@ Context menu and selection lists (PC selection, target selection): `Up`/`Down` c
 | `I` | Open the character / inventory screen. |
 | `Escape` | Pause menu. |
 | `F1`–`F7` | Select party member. |
+| `Shift+F1`–`F7` or `Ctrl+F1`–`F7` | Add that ranger to the current selection (instead of replacing it). |
 
 ### Combat
 
@@ -332,13 +340,12 @@ Combat is turn-based. The cursor auto-jumps to the active actor when a new turn 
 | `]` | Move the current actor to the cursor (costs AP). |
 | `\` | Detailed tile announcement. |
 | `K` | Toggle tile announcement order. |
-| `;` (semicolon) | Toggle camera-follows-cursor. |
+| `F` | Toggle camera-follows-cursor. (Suppresses the game's "headshot/precision shot" binding — precision shots are available through the Tab target-actions menu instead.) |
 | `Shift+Home` | Jump cursor to the current actor. |
 | `Shift+End` | Distance from cursor to the current actor. |
 | `Home` | Jump cursor to the selected combatant (from PgUp/PgDn cycling). |
 | `End` | Distance from cursor to the selected combatant. |
 
-> `F` is the game's "headshot/precision shot" key in combat — the mod does **not** rebind it. Camera-follow toggle in combat is `;` for that reason.
 > `Space` is the game's "end turn" key in combat — the mod leaves it alone.
 
 #### Combat action menus
@@ -607,6 +614,7 @@ A few of the mod's keys overlap with Wasteland 2's own bindings. The mod **suppr
 
 - `T` (game: "center on character") — used by the combat initiative tracker. Only suppressed in combat.
 - `Tab` (game: "select next mob") — used for the actions menu in combat and the actions menu at the map cursor.
+- `F` (game: "headshot / precision shot" in combat, unbound elsewhere) — camera-follow toggle in every cursor context, including combat. Precision shots are available through the Tab target-actions menu.
 - `Space` (game: "end turn" in combat, "toggle group mode" in exploration) — `Space` is tactical pause in exploration. In combat, the mod leaves Space alone for End Turn.
 - `]` (game: unbound by default) — "move to cursor" in exploration / combat / world map.
 
