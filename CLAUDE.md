@@ -37,7 +37,7 @@ The mod has two cooperating pipelines: a **state-based input router** that owns 
 
 States inherit from `Core/AccessibilityStateBase` (which implements `IAccessibilityState`) for default lifecycle logging — its `OnActivated` / `OnDeactivated` emit `[ClassName] Activated` / `[ClassName] Deactivated`. Subclasses can override and either call `base.OnActivated()` to keep the default log line or skip it when they emit a richer one (e.g. `CombatState` logs `combat started`/`combat ended` instead).
 
-Priorities are intentional and load-bearing — see the gotchas below. The actual values live in each `States/*.cs` file (search `Priority =>`); examples include `ScannerState` 80, `DialogState` 70, `MainMenuState` 60, `KeypadState` 58, `GenericMenuState` 55, the 50-54 character-creation/info/conversation/inventory/shop cluster, `CombatState` 45, `MapCursorState` 30, `WorldMapState` 20, `ExplorationState` 10. The 50-54 cluster is spread because `List<T>.Sort` is not stable; the states are mutually exclusive in practice via `IsActive` but identical priorities could reorder between runs.
+Priorities are intentional and load-bearing — see the gotchas below. The actual values live in each `States/*.cs` file (search `Priority =>`); examples include `DialogState` 70, `MainMenuState` 60, `KeypadState` 58, `GenericMenuState` 55, the 50-54 character-creation/info/conversation/inventory/shop cluster, `CombatState` 45, `MapCursorState` 30, `WorldMapState` 20, `ExplorationState` 10. The 50-54 cluster is spread because `List<T>.Sort` is not stable; the states are mutually exclusive in practice via `IsActive` but identical priorities could reorder between runs.
 
 ### Harmony Patches
 

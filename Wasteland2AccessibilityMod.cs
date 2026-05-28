@@ -35,7 +35,6 @@ namespace Wasteland2AccessibilityMod
             MelonLogger.Msg("  F10 - Toggle camera lock");
             MelonLogger.Msg("  M - Toggle map cursor mode");
             MelonLogger.Msg("  G - Toggle group mode");
-            MelonLogger.Msg("  S - Environment scan");
             MelonLogger.Msg("  T - Initiative/turn order (in combat)");
             MelonLogger.Msg("===========================================");
 
@@ -72,9 +71,6 @@ namespace Wasteland2AccessibilityMod
             // Phase 3: Map cursor and world map
             InputRouter.Register(new MapCursorState());    // Priority 30 - virtual map cursor (M to toggle)
             InputRouter.Register(new WorldMapState());     // Priority 20 - world map review cursor and navigation
-
-            // Phase 4: Scanner
-            InputRouter.Register(new ScannerState());      // Priority 80 - environment scanning (S to scan)
 
             MelonLogger.Msg("[Core] Input router initialized with all states (including MainMenu)");
         }
