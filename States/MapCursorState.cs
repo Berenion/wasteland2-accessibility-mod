@@ -5,6 +5,7 @@ using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
 using Wasteland2AccessibilityMod.Helpers;
+using Wasteland2AccessibilityMod.Patches;
 
 namespace Wasteland2AccessibilityMod.States
 {
@@ -1315,6 +1316,8 @@ namespace Wasteland2AccessibilityMod.States
             var interactables = FindInteractablesOnTile();
             var mobs = FindMobsOnTile();
 
+            DumpTileExamineDiagnostics(interactables, mobs);
+
             // Check interactables for examinable objects
             foreach (var nexus in interactables)
             {
@@ -1356,7 +1359,19 @@ namespace Wasteland2AccessibilityMod.States
 
                     if (MonoBehaviourSingleton<InputManager>.HasInstance())
                     {
+                        // The game's description-object path (ExamineDescriptionObject ->
+                        // DescriptionsDrama) only produces text when the object's name maps
+                        // to a handler; otherwise it falls to DEFAULTCASE, whose EXAMINE
+                        // branch yields nothing. Description emission is synchronous with the
+                        // call, so compare the announced-description count before and after to
+                        // tell whether anything was actually described.
+                        int before = HUD_Controller_QueueTextDescription_Patch.AnnouncedCount;
                         MonoBehaviourSingleton<InputManager>.GetInstance().CheckExamineDrama(nexus.transform);
+                        if (HUD_Controller_QueueTextDescription_Patch.AnnouncedCount == before)
+                        {
+                            MelonLogger.Msg($"[MapCursorState] No description produced for: {name}");
+                            ScreenReaderManager.Speak("No description available");
+                        }
                     }
                     return;
                 }
@@ -1386,6 +1401,103 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             ScreenReaderManager.SpeakInterrupt("Nothing to examine");
+        }
+
+        // Diagnostic dump of every InteractableNexus and Mob on the current tile,
+        // plus any unfiltered InteractableNexus.interactables within tile range,
+        // so we can see why ExamineObjectOnTile lands on the wrong target.
+        private void DumpTileExamineDiagnostics(List<InteractableNexus> onTileInteractables, List<Mob> onTileMobs)
+        {
+            try
+            {
+                MelonLogger.Msg($"[ExamineDiag] === ExamineObjectOnTile dump: cursor=({cursorGridId.x},{cursorGridId.z}) ===");
+                MelonLogger.Msg($"[ExamineDiag] On-tile interactables: {onTileInteractables.Count}");
+                for (int i = 0; i < onTileInteractables.Count; i++)
+                {
+                    DescribeNexus($"[ExamineDiag]   [int {i}]", onTileInteractables[i]);
+                }
+
+                MelonLogger.Msg($"[ExamineDiag] On-tile mobs: {onTileMobs.Count}");
+                for (int i = 0; i < onTileMobs.Count; i++)
+                {
+                    DescribeMob($"[ExamineDiag]   [mob {i}]", onTileMobs[i]);
+                }
+
+                // List every InteractableNexus whose position resolves to the
+                // cursor tile, even if filtered out by FindInteractablesOnTile.
+                // Tells us if the pod person's own nexus is being suppressed.
+                int unfilteredCount = 0;
+                foreach (var nexus in InteractableNexus.interactables)
+                {
+                    if (nexus == null) continue;
+                    if (!IsOnCurrentTile(nexus.transform.position)) continue;
+                    if (onTileInteractables.Contains(nexus)) continue;
+                    unfilteredCount++;
+                    string filterReason = WhyNexusFiltered(nexus);
+                    DescribeNexus($"[ExamineDiag]   [filtered {unfilteredCount - 1}] (reason: {filterReason})", nexus);
+                }
+                if (unfilteredCount == 0)
+                {
+                    MelonLogger.Msg($"[ExamineDiag] No additional (filtered) nexuses on tile.");
+                }
+                MelonLogger.Msg($"[ExamineDiag] === end dump ===");
+            }
+            catch (System.Exception ex)
+            {
+                MelonLogger.Error($"[ExamineDiag] dump failed: {ex.Message}");
+            }
+        }
+
+        private static void DescribeNexus(string prefix, InteractableNexus nexus)
+        {
+            if (nexus == null) { MelonLogger.Msg($"{prefix} <null>"); return; }
+            string goName = nexus.gameObject != null ? nexus.gameObject.name : "<no go>";
+            string dramaType = nexus.drama != null ? nexus.drama.GetType().Name : "null";
+            string skob = "null";
+            if (nexus.skobExamine != null)
+            {
+                var s = nexus.skobExamine;
+                skob = $"diff={s.difficulty}, perceived={s.perceived}, hidden={s.hidden}, sameGo={s.gameObject == nexus.gameObject}";
+            }
+            string parentDrama = "none";
+            if (nexus.transform != null)
+            {
+                var pDrama = nexus.transform.GetComponentInParent<Drama>();
+                if (pDrama != null)
+                    parentDrama = $"{pDrama.GetType().Name} on '{pDrama.gameObject.name}' (sameGo={pDrama.gameObject == nexus.gameObject})";
+            }
+            Vector3 pos = nexus.transform != null ? nexus.transform.position : Vector3.zero;
+            MelonLogger.Msg($"{prefix} go='{goName}' pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) drama={dramaType} skob=[{skob}] parentDrama={parentDrama} isPC={nexus.isPC} isVisible={nexus.isVisible}");
+        }
+
+        private static void DescribeMob(string prefix, Mob mob)
+        {
+            if (mob == null) { MelonLogger.Msg($"{prefix} <null>"); return; }
+            string goName = mob.gameObject != null ? mob.gameObject.name : "<no go>";
+            string displayName = (mob.template != null) ? mob.template.displayName : "<no template>";
+            var drama = mob.GetComponent<Drama>();
+            string dramaType = drama != null ? drama.GetType().Name : "null";
+            bool hasExamine = false;
+            if (drama != null)
+            {
+                try { hasExamine = drama.HasSkillHandler("examine") && !drama.IgnoreExamineHandler(); }
+                catch { hasExamine = false; }
+            }
+            var skob = mob.GetComponent<SkillObject_Examine>();
+            string skobStr = (skob != null) ? $"diff={skob.difficulty}, perceived={skob.perceived}, hidden={skob.hidden}" : "null";
+            Vector3 pos = mob.transform != null ? mob.transform.position : Vector3.zero;
+            MelonLogger.Msg($"{prefix} go='{goName}' display='{displayName}' pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) type={mob.GetType().Name} drama={dramaType} hasExamine={hasExamine} skob=[{skobStr}] dead={mob.isDead} hidden={mob.isHidden}");
+        }
+
+        private string WhyNexusFiltered(InteractableNexus nexus)
+        {
+            if (nexus == null) return "null";
+            if (!nexus.isVisible) return "!isVisible";
+            if (nexus.isPC) return "isPC";
+            if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) return "!sightedVisible";
+            if (FOWHelper.IsPerceptionGated(nexus)) return "perceptionGated";
+            if (!IsDoor(nexus) && IsBlockedByWall(nexus.transform.position)) return "wallBlocked";
+            return "passed-filters?";
         }
 
         // --- Context Menu ---

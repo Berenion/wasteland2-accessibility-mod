@@ -15,6 +15,16 @@ namespace Wasteland2AccessibilityMod.Patches
 
         public static List<string> CombatLog => combatLog;
 
+        // Monotonic count of description lines actually announced. Used by
+        // MapCursorState to detect when an examine produced no description text
+        // (the game's ExamineDescriptionObject path falls through to DEFAULTCASE,
+        // which yields nothing for EXAMINE) so it can say "No description available"
+        // instead of leaving the user with silence. Emission is synchronous with
+        // the examine call (Drama.descriptionText -> Action_DescriptionText), so a
+        // before/after comparison around the call is reliable.
+        private static int announcedCount;
+        public static int AnnouncedCount => announcedCount;
+
         public static void ClearLog()
         {
             combatLog.Clear();
@@ -46,6 +56,8 @@ namespace Wasteland2AccessibilityMod.Patches
                     : $"{prefix}: {cleanedText}";
 
                 MelonLogger.Msg($"Description text ({textType}): {cleanedText}");
+
+                announcedCount++;
 
                 // Store in combat log for review
                 combatLog.Add(announcement);
