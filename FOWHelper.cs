@@ -33,14 +33,15 @@ namespace Wasteland2AccessibilityMod
         private static HashSet<InteractableNexus> knownTeleporters = new HashSet<InteractableNexus>();
 
         // FOW readiness tracking. Whenever Game.cs calls FOWSystem.LoadMap (save
-        // restore, world-map transition, etc.), mBuffer1.r is written to 255 for
-        // every explored cell (FOWSystem.cs:851). IsVisible reads
-        // mBuffer1.r || mBuffer0.r, so every explored cell reads as visible until
-        // UpdateBuffer runs. UpdateBuffer is gated by Time.time, which tactical
-        // pause freezes — so if the player pauses before FOW converges, the stale
-        // state persists indefinitely. FOWSystem_LoadMap_Patch calls
-        // NotifyFOWMapLoaded to mark the window; Tick clears it once we've had
-        // enough real time + at least one unpaused frame.
+        // restore, world-map transition, etc.), every explored cell is written
+        // as Color32(255, 255, 0, 0) into mBuffer1 (FOWSystem.cs:851) — i.e.
+        // both R=255 and G=255. IsVisible reads mBuffer1.r || mBuffer0.r, so
+        // every explored cell reads as visible until UpdateBuffer runs.
+        // UpdateBuffer is gated by Time.time, which tactical pause freezes — so
+        // if the player pauses before FOW converges, the stale state persists
+        // indefinitely. FOWSystem_LoadMap_Patch calls NotifyFOWMapLoaded to
+        // mark the window; Tick clears it once we've had enough real time +
+        // at least one unpaused frame.
         private const float LoadMapGraceSeconds = 1.0f;
         private static float lastLoadMapRealtime = float.NegativeInfinity;
         private static bool sawUnpausedFrameSinceLoadMap = true;

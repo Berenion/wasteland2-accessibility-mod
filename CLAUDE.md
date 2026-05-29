@@ -124,6 +124,9 @@ The MelonLoader log lives at `<game-install>\MelonLoader\Latest.log`.
 ## Reference Material
 
 - **Decompiled Wasteland 2 source index** — tabulates every class, method, field, enum, property, and delegate in the game's `Assembly-CSharp.dll`. The index file is machine-local; on this developer's machine it lives at `..\Decompiled Code Index.txt` relative to the repo. Search by class with `=== ClassName ===`. Always check the index before guessing a method signature.
+- **Game-system technical writeups** — machine-local, alongside the decompiled source. Validated against the actual code; read before re-investigating known subsystems.
+  - `..\Visibility System Technical Details.md` — FOW, perception, combat line-of-sight (`FOWSystem`, `FOWRenderers`, `FOWRevealer*`, `PerceptionSphere`, `SkillObject_Examine`, `Mob.TargetVisible`).
+  - `..\Combat System Technical Details.md` — combat mechanics.
 - **`llm-docs/`** — structural reference written for LLM assistants. See `llm-docs/CLAUDE.md` for the index.
 
 ## Extending the Mod
