@@ -29,6 +29,9 @@ namespace Wasteland2AccessibilityMod.States
         private bool cursorInitialized = false;
         private bool loggedNoParty = false;
 
+        // World-space Y of the cursor before the last move, for "up/down N meters" feedback.
+        private float previousCursorY;
+
         // Movement settings
         private const float MOVE_REPEAT_DELAY = 0.25f;
         private float lastMoveTime = 0f;
@@ -449,6 +452,13 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // H: toggle elevation announcements
+            if (Input.GetKeyDown(KeyCode.H))
+            {
+                ModConfig.ToggleConveyElevation();
+                return true;
+            }
+
             // F to toggle camera follow
             if (Input.GetKeyDown(KeyCode.F))
             {
@@ -656,6 +666,7 @@ namespace Wasteland2AccessibilityMod.States
         private void MoveInDirection(int directionIndex, int tilesToMove)
         {
             Vector3 direction = CardinalDirections.Vectors[directionIndex];
+            previousCursorY = cursorPosition.y;
 
             // Single-step preserves the original free off-grid behavior so the
             // user can still inspect tiles outside the walkable grid.
@@ -680,7 +691,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
 
                 if (cameraFollowsCursor) SnapCameraToCursor();
-                AnnounceCurrentTile(detailed: false);
+                AnnounceCurrentTile(detailed: false, reportHeightChange: true);
                 return;
             }
 
@@ -730,7 +741,7 @@ namespace Wasteland2AccessibilityMod.States
             string prefix = actualSteps + (actualSteps == 1 ? " tile" : " tiles");
             if (blockReason != null)
                 prefix += ", " + blockReason;
-            AnnounceCurrentTile(detailed: false, prefix: prefix);
+            AnnounceCurrentTile(detailed: false, prefix: prefix, reportHeightChange: true);
         }
 
         /// <summary>
@@ -785,7 +796,7 @@ namespace Wasteland2AccessibilityMod.States
 
         // --- Announcements ---
 
-        private void AnnounceCurrentTile(bool detailed, string prefix = null)
+        private void AnnounceCurrentTile(bool detailed, string prefix = null, bool reportHeightChange = false)
         {
             CombatAStarNode node = GetNodeAtGridId(cursorGridId);
 
@@ -903,6 +914,28 @@ namespace Wasteland2AccessibilityMod.States
                         string direction = DirectionHelper.GetDirectionDescription(pc.transform.position, cursorPosition);
                         parts.Add(tileDist + (tileDist == 1 ? " tile " : " tiles ") + direction + " from party");
                     }
+                }
+            }
+
+            // Elevation (opt-in). Helps locate ramps and edges: "up/down N meters" tracks
+            // the change as the cursor sweeps, and the party-relative line gives absolute
+            // height. No combat bonus applies during exploration, so this is raw meters.
+            if (ModConfig.ConveyElevation)
+            {
+                if (reportHeightChange)
+                {
+                    string heightChange = ElevationHelper.DescribeChange(previousCursorY, cursorPosition.y);
+                    if (heightChange != null)
+                        parts.Add(heightChange);
+                }
+
+                PC partyLeader = GetPartyLeader();
+                if (partyLeader != null)
+                {
+                    string relative = ElevationHelper.DescribeRelativeRaw(
+                        cursorPosition.y, partyLeader.transform.position.y, "party");
+                    if (relative != null)
+                        parts.Add(relative);
                 }
             }
 

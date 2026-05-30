@@ -8,10 +8,12 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Entry<bool> useClockPositionsEntry;
         private static MelonPreferences_Entry<bool> objectNamesFirstEntry;
         private static MelonPreferences_Entry<bool> useTileDistancesEntry;
+        private static MelonPreferences_Entry<bool> conveyElevationEntry;
 
         public static bool UseClockPositions { get; private set; } = false;
         public static bool ObjectNamesFirst { get; private set; } = false;
         public static bool UseTileDistances { get; private set; } = true;
+        public static bool ConveyElevation { get; private set; } = true;
 
         public static void Initialize()
         {
@@ -41,10 +43,17 @@ namespace Wasteland2AccessibilityMod
                 "If true, reports distances in grid tiles (1 tile = 1.6 meters) when a combat grid is available in the current scene. If false, always reports meters."
             );
 
+            conveyElevationEntry = configCategory.CreateEntry(
+                "ConveyElevation",
+                true,
+                "Convey Elevation",
+                "If true, announces terrain height changes and height relative to the party as the exploration cursor moves (for finding ramps and edges). Combat always announces elevation regardless of this setting."
+            );
+
             // Load saved preferences
             LoadConfig();
 
-            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}");
+            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}");
         }
 
         public static void LoadConfig()
@@ -52,6 +61,7 @@ namespace Wasteland2AccessibilityMod
             UseClockPositions = useClockPositionsEntry.Value;
             ObjectNamesFirst = objectNamesFirstEntry.Value;
             UseTileDistances = useTileDistancesEntry.Value;
+            ConveyElevation = conveyElevationEntry.Value;
         }
 
         public static void ToggleTileDistances()
@@ -84,6 +94,17 @@ namespace Wasteland2AccessibilityMod
             string mode = ObjectNamesFirst ? "object names first" : "coordinates first";
             MelonLogger.Msg($"Tile announcement order changed to: {mode}");
             ScreenReaderManager.SpeakInterrupt($"Using {mode}");
+        }
+
+        public static void ToggleConveyElevation()
+        {
+            ConveyElevation = !ConveyElevation;
+            conveyElevationEntry.Value = ConveyElevation;
+            configCategory.SaveToFile();
+
+            string mode = ConveyElevation ? "on" : "off";
+            MelonLogger.Msg($"Convey elevation changed to: {mode}");
+            ScreenReaderManager.SpeakInterrupt($"Elevation announcements {mode}");
         }
     }
 }

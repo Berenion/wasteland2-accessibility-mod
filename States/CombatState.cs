@@ -33,6 +33,9 @@ namespace Wasteland2AccessibilityMod.States
         private bool cursorInitialized = false;
         private Mob lastTrackedActor = null;
 
+        // World-space Y of the cursor before the last move, for "up/down N meters" feedback.
+        private float previousCursorY;
+
         // Movement settings
         private const float MOVE_REPEAT_DELAY = 0.25f;
         private float lastMoveTime = 0f;
@@ -859,6 +862,40 @@ namespace Wasteland2AccessibilityMod.States
         private void MoveCursor(int directionIndex, int tilesToMove)
         {
             Vector3 direction = CardinalDirections.Vectors[directionIndex];
+            previousCursorY = cursorPosition.y;
+
+            // Single-step moves onto the target tile even when it has no walkable
+            // combat node (terrain, cover, wall, or outside the combat area), so the
+            // user can inspect a blocked tile with the cursor — the same free off-grid
+            // behavior the exploration cursor has. Multi-tile / Ctrl moves still stop
+            // before the first non-walkable tile so the cursor never flies through walls.
+            if (tilesToMove <= 1)
+            {
+                Vector3 stepGridId = new Vector3(
+                    cursorGridId.x + direction.x,
+                    cursorGridId.y,
+                    cursorGridId.z + direction.z);
+
+                CombatAStarNode stepNode = GetNodeAtGridId(stepGridId);
+                if (stepNode != null)
+                {
+                    cursorGridId = stepNode.id;
+                    cursorPosition = stepNode.position;
+                }
+                else
+                {
+                    cursorGridId = stepGridId;
+                    cursorPosition = new Vector3(
+                        stepGridId.x * TileCoordinateSystem.SquareSize,
+                        cursorPosition.y,
+                        stepGridId.z * TileCoordinateSystem.SquareSize);
+                }
+
+                if (cameraFollowsCursor) SnapCameraToCursor();
+                AnnounceTile(detailed: false, reportHeightChange: true);
+                return;
+            }
+
             Vector3 currentGridId = cursorGridId;
             Vector3 currentPosition = cursorPosition;
             int actualSteps = 0;
@@ -880,20 +917,12 @@ namespace Wasteland2AccessibilityMod.States
                     continue;
                 }
 
-                // No combat node — determine why
-                CombatAStarNode fullMapNode = GetNodeInFullMap(newGridId);
-                if (fullMapNode != null)
-                {
-                    blockReason = "edge of combat area";
-                }
-                else
-                {
-                    Vector3 blockedWorldPos = new Vector3(
-                        newGridId.x * TileCoordinateSystem.SquareSize,
-                        currentPosition.y,
-                        newGridId.z * TileCoordinateSystem.SquareSize);
-                    blockReason = IdentifyObstruction(blockedWorldPos);
-                }
+                // No combat node — describe what's there (terrain/wall or outside combat)
+                Vector3 blockedWorldPos = new Vector3(
+                    newGridId.x * TileCoordinateSystem.SquareSize,
+                    currentPosition.y,
+                    newGridId.z * TileCoordinateSystem.SquareSize);
+                blockReason = DescribeOffGridTile(newGridId, blockedWorldPos);
                 break;
             }
 
@@ -916,7 +945,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (blockReason != null)
                     prefix += ", " + blockReason;
             }
-            AnnounceTile(detailed: false, prefix: prefix);
+            AnnounceTile(detailed: false, prefix: prefix, reportHeightChange: true);
         }
 
         private CombatAStarNode GetNodeAtGridId(Vector3 gridId)
@@ -983,6 +1012,19 @@ namespace Wasteland2AccessibilityMod.States
         }
 
         // --- Obstruction Detection ---
+
+        /// <summary>
+        /// Describes a tile that has no walkable combat node: either it's still real
+        /// terrain that simply lies outside the combat area, or a physical obstruction
+        /// (wall, cover, terrain). Used for both blocked multi-tile moves and the
+        /// off-grid tile the single-step cursor can now land on.
+        /// </summary>
+        private string DescribeOffGridTile(Vector3 gridId, Vector3 worldPos)
+        {
+            if (GetNodeInFullMap(gridId) != null)
+                return "edge of combat area";
+            return IdentifyObstruction(worldPos);
+        }
 
         /// <summary>
         /// Raycasts to identify what is blocking a grid position where no
@@ -1090,7 +1132,7 @@ namespace Wasteland2AccessibilityMod.States
 
         // --- Tile Announcements ---
 
-        private void AnnounceTile(bool detailed, string prefix = null)
+        private void AnnounceTile(bool detailed, string prefix = null, bool reportHeightChange = false)
         {
             CombatAStarNode node = GetNodeAtGridId(cursorGridId);
             var parts = new List<string>();
@@ -1111,9 +1153,17 @@ namespace Wasteland2AccessibilityMod.States
                 mobParts.Add(FormatMobForTile(mob));
             }
 
-            // Add coords and occupants in configured order
-            if (ModConfig.ObjectNamesFirst && mobParts.Count > 0)
+            // Off-grid tile (no walkable combat node) — describe the terrain/obstruction
+            // so the user knows what the cursor is sitting on after a single-step move.
+            string obstruction = null;
+            if (node == null)
+                obstruction = DescribeOffGridTile(cursorGridId, cursorPosition);
+
+            // Add coords, occupants, and terrain in configured order
+            if (ModConfig.ObjectNamesFirst && (mobParts.Count > 0 || !string.IsNullOrEmpty(obstruction)))
             {
+                if (!string.IsNullOrEmpty(obstruction))
+                    parts.Add(obstruction);
                 parts.AddRange(mobParts);
                 parts.Add(coords);
             }
@@ -1121,6 +1171,8 @@ namespace Wasteland2AccessibilityMod.States
             {
                 parts.Add(coords);
                 parts.AddRange(mobParts);
+                if (!string.IsNullOrEmpty(obstruction))
+                    parts.Add(obstruction);
             }
 
             // Note: node.occupant is not used — it can be stale after mobs move.
@@ -1157,6 +1209,26 @@ namespace Wasteland2AccessibilityMod.States
                         actor.currentSquare.position, cursorPosition);
                     parts.Add(tileDist + (tileDist == 1 ? " tile " : " tiles ") + direction);
                 }
+            }
+
+            // Elevation. Always announced in combat (height drives the +25/-15 hit bonus).
+            // "up/down N meters" tracks ramps and edges as the cursor sweeps; the tactical
+            // line reports the advantage of attacking from this tile against the active
+            // character's current level.
+            if (reportHeightChange)
+            {
+                string heightChange = ElevationHelper.DescribeChange(previousCursorY, cursorPosition.y);
+                if (heightChange != null)
+                    parts.Add(heightChange);
+            }
+            if (actor != null)
+            {
+                float actorY = actor.currentSquare != null
+                    ? actor.currentSquare.position.y
+                    : actor.transform.position.y;
+                string tactical = ElevationHelper.DescribeTactical(cursorPosition.y, actorY);
+                if (tactical != null)
+                    parts.Add(tactical);
             }
 
             // Detailed mode: movement AP cost and attack range info
@@ -2978,6 +3050,13 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     string distStr = TileCoordinateSystem.GetDistanceText(actor.transform.position, target.transform.position);
                     targetInfoLines.Add("Distance: " + distStr);
+
+                    // Height advantage — the exact +25/-15 hit bonus the active character
+                    // gets firing at this target (Mob.GetChanceToHitEnvironmentBonus).
+                    string tactical = ElevationHelper.DescribeTactical(
+                        actor.transform.position.y, target.transform.position.y);
+                    if (tactical != null)
+                        targetInfoLines.Add(tactical);
                 }
 
                 // Status effects

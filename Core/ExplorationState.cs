@@ -109,6 +109,13 @@ namespace Wasteland2AccessibilityMod.Core
                 return true;
             }
 
+            // Toggle elevation announcements (H)
+            if (Input.GetKeyDown(KeyCode.H))
+            {
+                ModConfig.ToggleConveyElevation();
+                return true;
+            }
+
             // Announce party scrap (')
             if (Input.GetKeyDown(KeyCode.Quote))
             {
