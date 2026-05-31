@@ -90,7 +90,7 @@ namespace Wasteland2AccessibilityMod.Helpers
 
                 if (isSkill)
                 {
-                    string cost = BuildSkillNextLevelCost(characteristicName);
+                    string cost = BuildSkillNextLevelCost(characteristicName, skillEditor);
                     if (!string.IsNullOrEmpty(cost))
                         lines.Add(cost);
 
@@ -198,6 +198,18 @@ namespace Wasteland2AccessibilityMod.Helpers
                     var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(statName);
                     if (skill == null) return "";
                     raw = descPanelBuildSkillUnlockMethod.Invoke(panel, new object[] { skill, nextLevel }) as string;
+
+                    // The game's BuildSkillUnlockString prefixes a "<Skill> Level N" header whose
+                    // level it recomputes from the party leader (GetFirstSelectedPC), ignoring the
+                    // level we pass in — so for any non-leader ranger that header shows the wrong
+                    // level (e.g. "Level 1" while this ranger is actually at level 4). Strip the
+                    // "[b]...[/b]" header here; the delta lines after it are computed from the level
+                    // we passed and stay correct. We supply the right level via our own label below.
+                    if (!string.IsNullOrEmpty(raw))
+                    {
+                        int headerEnd = raw.IndexOf("[/b]");
+                        if (headerEnd >= 0) raw = raw.Substring(headerEnd + "[/b]".Length);
+                    }
                 }
 
                 if (string.IsNullOrEmpty(raw)) return "";
@@ -205,7 +217,10 @@ namespace Wasteland2AccessibilityMod.Helpers
                 clean = clean.Replace("\r\n", "\n").Replace("\n", ", ");
                 while (clean.Contains(", , ")) clean = clean.Replace(", , ", ", ");
                 clean = clean.Trim(',', ' ');
-                return string.IsNullOrEmpty(clean) ? "" : "Next level: " + clean;
+                if (string.IsNullOrEmpty(clean)) return "";
+                // Skills carry the level in our label (the game header was stripped above); attributes
+                // keep the game's own "<Attribute> Level N" header, which it builds correctly.
+                return (isSkill ? $"Next level {nextLevel}: " : "Next level: ") + clean;
             }
             catch (Exception ex)
             {
@@ -317,13 +332,20 @@ namespace Wasteland2AccessibilityMod.Helpers
         /// <summary>
         /// Returns "Level N cost: K skill points" with an affordability hint for the next skill level.
         /// </summary>
-        private static string BuildSkillNextLevelCost(string skillName)
+        private static string BuildSkillNextLevelCost(string skillName, CHA_SkillEditor skillEditor)
         {
             try
             {
-                var pc = MonoBehaviourSingleton<Game>.HasInstance()
-                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
-                    : null;
+                // Use the ranger actually being inspected (the skill editor's owner), not the party
+                // leader. GetFirstSelectedPC would report the leader's level, cost, and available
+                // points — wrong whenever you're viewing another party member.
+                PC pc = null;
+                var pcStats = skillEditor != null ? GetSkillEditorPcStats(skillEditor) : null;
+                if (pcStats != null) pc = pcStats.GetPC();
+                if (pc == null)
+                    pc = MonoBehaviourSingleton<Game>.HasInstance()
+                        ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                        : null;
                 if (pc == null || pc.pcTemplate == null) return "";
 
                 int nextLevel = pc.pcTemplate.GetSkillLevel(skillName) + 1;
