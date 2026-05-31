@@ -889,7 +889,7 @@ namespace Wasteland2AccessibilityMod.States
                     parts.Add(obstruction);
             }
 
-            // Line of sight from the selected character to this tile (opt-in, toggled with L).
+            // Line of sight from the selected character to this tile (opt-in, toggled with V).
             if (ModConfig.AnnounceLineOfSight)
             {
                 string los = GetLineOfSightDescription();
