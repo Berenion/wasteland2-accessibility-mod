@@ -39,6 +39,7 @@ A screen-reader and keyboard accessibility mod for **Wasteland 2 Director's Cut*
   - [Vendor / shop](#vendor--shop)
   - [Character creation](#character-creation)
   - [Character info (in-game)](#character-info-in-game)
+- [Original game hotkeys still available](#original-game-hotkeys-still-available)
 - [Notes on key conflicts](#notes-on-key-conflicts)
 - [Credits](#credits)
 - [License](#license)
@@ -122,7 +123,7 @@ The mod creates `<game folder>\UserData\Wasteland2Accessibility.cfg` on first ru
 | `ObjectNamesFirst` | `false` | When `true`, tile announcements lead with the object name; when `false`, they lead with the tile coordinate. Toggle in-game with `K`. |
 | `UseTileDistances` | `true` | When `true` and a combat grid is available, distances are reported in tiles (1 tile ≈ 1.6 m). When `false`, always in meters. |
 | `ConveyElevation` | `true` | When `true`, the exploration cursor announces terrain height changes and height relative to the party (for finding ramps and edges). Toggle in-game with `H`. |
-| `AnnounceLineOfSight` | `false` | When `true`, the tile cursor also says whether the tile is within line of sight of the selected/active character. In exploration it reflects perception range plus occlusion; in combat it's a clear line of fire. Toggle in-game with `V`. |
+| `AnnounceLineOfSight` | `false` | When `true`, the tile cursor also says whether the tile is within line of sight of the selected/active character. In exploration it reflects perception range plus occlusion; in combat it's a clear line of fire. Toggle in-game with `Y`. |
 
 You can edit the file directly or use the in-game toggles. Changes save automatically.
 
@@ -299,7 +300,7 @@ Two cursor systems run in parallel during exploration: a **list cursor** that cy
 | `F` | Toggle camera-follows-cursor. |
 | `K` | Toggle tile announcement order. |
 | `H` | Toggle elevation announcements (height changes and height relative to the party). |
-| `V` | Toggle line-of-sight announcements (whether the tile is within sight of the selected ranger). |
+| `Y` | Toggle line-of-sight announcements (whether the tile is within sight of the selected ranger). |
 | `Escape` | Cancel an active free-aim / item-use mode. (With no active mode, opens the pause menu via exploration.) |
 
 Context menu and selection lists (PC selection, target selection): `Up`/`Down` cycle, `Enter` confirms, `Escape` cancels.
@@ -344,7 +345,7 @@ Combat is turn-based. The cursor auto-jumps to the active actor when a new turn 
 | `]` | Move the current actor to the cursor (costs AP). |
 | `\` | Detailed tile announcement. |
 | `K` | Toggle tile announcement order. |
-| `V` | Toggle line-of-sight announcements (whether the active character has a clear line of fire to the tile). |
+| `Y` | Toggle line-of-sight announcements (whether the active character has a clear line of fire to the tile). |
 | `F` | Toggle camera-follows-cursor. (Suppresses the game's "headshot/precision shot" binding — precision shots are available through the Tab target-actions menu instead.) |
 | `Shift+Home` | Jump cursor to the current actor. |
 | `Shift+End` | Distance from cursor to the current actor. |
@@ -612,6 +613,46 @@ Inside a logbook detail view:
 | `Home` / `End` | First / last line. |
 | `Tab` | Announce position. |
 | `Escape` or `Left` | Back to the entry list. |
+
+## Original game hotkeys still available
+
+The mod only intercepts a key in the contexts where it needs it; every other Wasteland 2 default binding passes straight through to the game. The ones below are *not* blocked or rebound by the mod, so they keep their vanilla behavior. (These are the game's defaults — if you've remapped them in the game's own Controls options, use your own bindings.)
+
+**Work everywhere (exploration and combat):**
+
+| Key | Game action |
+|---|---|
+| `C` | Open the character / inventory screen (the mod also maps this to `I`). |
+| `U` | Select the entire party. |
+| `M` | Open the map / world map. |
+| `Z` | Highlight all interactables / enemies. |
+| `N` | Toggle "show attack range". |
+| `B` | Change fire mode. |
+| `1`–`9` | Trigger the on-screen item hotkey slots. |
+| `F9` / `F11` | Quick save / quick load. |
+| `;` (semicolon) | Crouch. |
+| `,` (comma) | Radio scan. |
+| `.` (period) | Radio acknowledge. |
+
+**Combat only** (the mod uses these keys in exploration, but leaves them to the game during combat):
+
+| Key | Game action |
+|---|---|
+| `Space` | End turn. |
+| `V` | Ambush (overwatch). |
+| `G` | Show the movement grid. |
+| `X` | Swap weapons. |
+| `R` | Reload. |
+| `'` (apostrophe) | Stand. |
+
+**Exploration only** (the mod uses these keys in combat, but leaves them to the game during exploration):
+
+| Key | Game action |
+|---|---|
+| `T` | Center the camera on the active character. |
+| `L` | Open the logbook. |
+
+**Camera keys:** `W` `A` `S` `D` still pan the camera, and `Q` / `E` rotate it — but rotation only takes effect when the camera-rotation lock is **off** (toggle with `F10`; the lock is on by default so "up" stays north).
 
 ## Notes on key conflicts
 

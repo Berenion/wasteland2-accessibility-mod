@@ -459,10 +459,10 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // V: toggle line-of-sight announcements for the selected character.
+            // Y: toggle line-of-sight announcements for the selected character.
             // (Not L — combat binds L to the combat log, and this toggle shares a key
             // across both cursors.)
-            if (Input.GetKeyDown(KeyCode.V))
+            if (Input.GetKeyDown(KeyCode.Y))
             {
                 ModConfig.ToggleLineOfSight();
                 return true;

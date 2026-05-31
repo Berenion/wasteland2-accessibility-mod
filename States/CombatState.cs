@@ -673,9 +673,11 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // V: toggle line-of-sight announcements for the active character.
-            // (L is the combat log; this toggle shares the V key with the exploration cursor.)
-            if (Input.GetKeyDown(KeyCode.V))
+            // Y: toggle line-of-sight announcements for the active character.
+            // (L is the combat log; this toggle shares the Y key with the exploration cursor.)
+            // Y is unbound in the base game and unused elsewhere in the mod, so it avoids the
+            // game's V = "Ambush" combat command.
+            if (Input.GetKeyDown(KeyCode.Y))
             {
                 ModConfig.ToggleLineOfSight();
                 InputSuppressor.ShouldSuppressGameInput = true;
