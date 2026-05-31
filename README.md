@@ -114,13 +114,15 @@ The full hotkey reference is in the [Controls and hotkeys](#controls-and-hotkeys
 
 ## Configuration
 
-The mod creates `<game folder>\UserData\Wasteland2Accessibility.cfg` on first run. Three settings live there:
+The mod creates `<game folder>\UserData\Wasteland2Accessibility.cfg` on first run. These settings live there:
 
 | Setting | Default | What it does |
 |---|---|---|
 | `UseClockPositions` | `false` | When `true`, directions are spoken as clock positions ("3 o'clock") instead of compass names ("east"). Toggle in-game with `=`. |
 | `ObjectNamesFirst` | `false` | When `true`, tile announcements lead with the object name; when `false`, they lead with the tile coordinate. Toggle in-game with `K`. |
 | `UseTileDistances` | `true` | When `true` and a combat grid is available, distances are reported in tiles (1 tile ≈ 1.6 m). When `false`, always in meters. |
+| `ConveyElevation` | `true` | When `true`, the exploration cursor announces terrain height changes and height relative to the party (for finding ramps and edges). Toggle in-game with `H`. |
+| `AnnounceLineOfSight` | `false` | When `true`, the tile cursor also says whether the tile is within line of sight of the selected/active character. In exploration it reflects perception range plus occlusion; in combat it's a clear line of fire. Toggle in-game with `V`. |
 
 You can edit the file directly or use the in-game toggles. Changes save automatically.
 
@@ -296,6 +298,8 @@ Two cursor systems run in parallel during exploration: a **list cursor** that cy
 | `End` | Distance and direction to the selected interactable. |
 | `F` | Toggle camera-follows-cursor. |
 | `K` | Toggle tile announcement order. |
+| `H` | Toggle elevation announcements (height changes and height relative to the party). |
+| `V` | Toggle line-of-sight announcements (whether the tile is within sight of the selected ranger). |
 | `Escape` | Cancel an active free-aim / item-use mode. (With no active mode, opens the pause menu via exploration.) |
 
 Context menu and selection lists (PC selection, target selection): `Up`/`Down` cycle, `Enter` confirms, `Escape` cancels.
@@ -340,6 +344,7 @@ Combat is turn-based. The cursor auto-jumps to the active actor when a new turn 
 | `]` | Move the current actor to the cursor (costs AP). |
 | `\` | Detailed tile announcement. |
 | `K` | Toggle tile announcement order. |
+| `V` | Toggle line-of-sight announcements (whether the active character has a clear line of fire to the tile). |
 | `F` | Toggle camera-follows-cursor. (Suppresses the game's "headshot/precision shot" binding — precision shots are available through the Tab target-actions menu instead.) |
 | `Shift+Home` | Jump cursor to the current actor. |
 | `Shift+End` | Distance from cursor to the current actor. |

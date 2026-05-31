@@ -673,6 +673,16 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // V: toggle line-of-sight announcements for the active character.
+            // (L is the combat log; this toggle shares the V key with the exploration cursor.)
+            if (Input.GetKeyDown(KeyCode.V))
+            {
+                ModConfig.ToggleLineOfSight();
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressButtonEvents = true;
+                return true;
+            }
+
             // F: toggle camera follow (matches the binding in exploration / world map / map cursor).
             // F is the game's "Headshot/Precision Shot" key, but our Tab target-actions menu
             // already exposes precision shots, so we take F and suppress the game's binding.
@@ -1175,6 +1185,14 @@ namespace Wasteland2AccessibilityMod.States
                     parts.Add(obstruction);
             }
 
+            // Line of sight from the active character to this tile (opt-in, toggled with V).
+            if (ModConfig.AnnounceLineOfSight)
+            {
+                string los = GetLineOfSightDescription(GetCurrentActor());
+                if (!string.IsNullOrEmpty(los))
+                    parts.Add(los);
+            }
+
             // Note: node.occupant is not used — it can be stale after mobs move.
             // FindMobsOnTile() above uses actual mob positions, which is always fresh.
 
@@ -1307,6 +1325,59 @@ namespace Wasteland2AccessibilityMod.States
 
             if (coverDirs.Count == 0) return null;
             return "Cover: " + string.Join(", ", coverDirs.ToArray());
+        }
+
+        // "in sight" / "out of sight" for the active character, or null when there's
+        // no actor. Unlike the exploration cursor (which passes useFOWRevealer:true to
+        // bound the answer by perception range), combat reports a clear line of fire to
+        // the tile against the combat occlusion mask 886016. Weapon range is reported
+        // separately in the detailed scan. See HasCombatLineOfSight.
+        private string GetLineOfSightDescription(Mob actor)
+        {
+            if (actor == null) return null;
+
+            try
+            {
+                return HasCombatLineOfSight(actor) ? "in sight" : "out of sight";
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        // Mirrors the game's own targeting LOS, including corner-leaning. A plain
+        // center-to-center raycast (Mob.IsPositionVisible) reports "blocked" for targets
+        // you could actually hit by edging around cover, which would mislead the user.
+        // The game models this in Mob.TargetVisible -> CombatAStarNode.SquareVisible: a
+        // shooter may lean out from any corner of their square to reach the target
+        // square's center or any of its corners. We replicate that here.
+        private bool HasCombatLineOfSight(Mob actor)
+        {
+            // A targetable character on the tile -> defer to the game's exact shot LOS,
+            // which already does the direct ray plus the corner-lean fallback.
+            Mob mobOnTile = FindAliveMobOnTile();
+            if (mobOnTile != null && mobOnTile != actor)
+                return actor.TargetVisible(mobOnTile);
+
+            // Empty tile: direct center-to-center ray first.
+            if (actor.IsPositionVisible(cursorPosition))
+                return true;
+
+            // Blocked: try leaning around cover against the cursor tile's square.
+            if (!MonoBehaviourSingleton<CombatAStar>.HasInstance())
+                return false;
+
+            var combatAStar = MonoBehaviourSingleton<CombatAStar>.GetInstance();
+            CombatAStarNode sourceNode = actor.currentSquare
+                ?? combatAStar.GetNode(actor.transform.position, null);
+            CombatAStarNode targetNode = GetNodeAtGridId(cursorGridId)
+                ?? combatAStar.GetNode(cursorPosition, null);
+            if (sourceNode == null || targetNode == null)
+                return false;
+
+            return sourceNode.SquareVisible(actor, targetNode,
+                actor.targetCenter.transform.localPosition.y);
         }
 
         private string GetMovementCostInfo(CombatAStarNode targetNode, Mob actor)

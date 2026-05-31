@@ -459,6 +459,15 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // V: toggle line-of-sight announcements for the selected character.
+            // (Not L — combat binds L to the combat log, and this toggle shares a key
+            // across both cursors.)
+            if (Input.GetKeyDown(KeyCode.V))
+            {
+                ModConfig.ToggleLineOfSight();
+                return true;
+            }
+
             // F to toggle camera follow
             if (Input.GetKeyDown(KeyCode.F))
             {
@@ -880,6 +889,14 @@ namespace Wasteland2AccessibilityMod.States
                     parts.Add(obstruction);
             }
 
+            // Line of sight from the selected character to this tile (opt-in, toggled with L).
+            if (ModConfig.AnnounceLineOfSight)
+            {
+                string los = GetLineOfSightDescription();
+                if (!string.IsNullOrEmpty(los))
+                    parts.Add(los);
+            }
+
             if (node != null)
             {
                 // Linked node info (doors/ladders)
@@ -956,6 +973,30 @@ namespace Wasteland2AccessibilityMod.States
 
             if (coverDirs.Count == 0) return "No cover";
             return "Cover: " + string.Join(", ", coverDirs.ToArray());
+        }
+
+        // "in sight" / "out of sight" for the selected character, or null when
+        // there's no selected PC. Uses Mob.IsPositionVisible with useFOWRevealer:
+        // a clear physics raycast (combat occlusion mask 886016) from the PC's
+        // targetCenter to the cursor tile, capped at the PC's perception range
+        // (fowRevealRange). So a tile reads "out of sight" if a wall blocks it OR
+        // it's beyond what that character could perceive — matching what "this
+        // ranger can see this spot" means in-game. See Mob.IsPositionVisible.
+        private string GetLineOfSightDescription()
+        {
+            PC pc = GetPartyLeader();
+            if (pc == null) return null;
+
+            try
+            {
+                return pc.IsPositionVisible(cursorPosition, useFOWRevealer: true)
+                    ? "in sight"
+                    : "out of sight";
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         // --- Object Finding ---

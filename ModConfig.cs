@@ -9,11 +9,13 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Entry<bool> objectNamesFirstEntry;
         private static MelonPreferences_Entry<bool> useTileDistancesEntry;
         private static MelonPreferences_Entry<bool> conveyElevationEntry;
+        private static MelonPreferences_Entry<bool> announceLineOfSightEntry;
 
         public static bool UseClockPositions { get; private set; } = false;
         public static bool ObjectNamesFirst { get; private set; } = false;
         public static bool UseTileDistances { get; private set; } = true;
         public static bool ConveyElevation { get; private set; } = true;
+        public static bool AnnounceLineOfSight { get; private set; } = false;
 
         public static void Initialize()
         {
@@ -50,10 +52,17 @@ namespace Wasteland2AccessibilityMod
                 "If true, announces terrain height changes and height relative to the party as the exploration cursor moves (for finding ramps and edges). Combat always announces elevation regardless of this setting."
             );
 
+            announceLineOfSightEntry = configCategory.CreateEntry(
+                "AnnounceLineOfSight",
+                false,
+                "Announce Line Of Sight",
+                "If true, the exploration tile cursor also announces whether the tile is within line of sight of the selected character (clear physics LOS within that character's perception range)."
+            );
+
             // Load saved preferences
             LoadConfig();
 
-            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}");
+            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}");
         }
 
         public static void LoadConfig()
@@ -62,6 +71,7 @@ namespace Wasteland2AccessibilityMod
             ObjectNamesFirst = objectNamesFirstEntry.Value;
             UseTileDistances = useTileDistancesEntry.Value;
             ConveyElevation = conveyElevationEntry.Value;
+            AnnounceLineOfSight = announceLineOfSightEntry.Value;
         }
 
         public static void ToggleTileDistances()
@@ -105,6 +115,17 @@ namespace Wasteland2AccessibilityMod
             string mode = ConveyElevation ? "on" : "off";
             MelonLogger.Msg($"Convey elevation changed to: {mode}");
             ScreenReaderManager.SpeakInterrupt($"Elevation announcements {mode}");
+        }
+
+        public static void ToggleLineOfSight()
+        {
+            AnnounceLineOfSight = !AnnounceLineOfSight;
+            announceLineOfSightEntry.Value = AnnounceLineOfSight;
+            configCategory.SaveToFile();
+
+            string mode = AnnounceLineOfSight ? "on" : "off";
+            MelonLogger.Msg($"Line of sight announcements changed to: {mode}");
+            ScreenReaderManager.SpeakInterrupt($"Line of sight announcements {mode}");
         }
     }
 }
