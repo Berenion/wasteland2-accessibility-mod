@@ -1,0 +1,1986 @@
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using MelonLoader;
+using UnityEngine;
+using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Helpers;
+
+namespace Wasteland2AccessibilityMod.States
+{
+    /// <summary>
+    /// Full keyboard navigation and screen reader support for the character creation / squad creation screen.
+    /// Handles all 8 panel types: UseDefaultParty, Party, AddCharacter, Attributes, Skills, Traits, Dossier, Flavor.
+    /// Priority 50 - same as Inventory/Conversation.
+    /// </summary>
+    public class CharacterState : AccessibilityStateBase
+    {
+        public override string Name => "Character";
+        public override int Priority => 53;
+
+        // Navigation state
+        private List<GameObject> controlList = new List<GameObject>();
+        private int controlIndex = -1;
+        private CharacterScreen.EditorPanel lastPanelType = (CharacterScreen.EditorPanel)(-1);
+        private bool skillsFocused = false;
+        private bool isEditingTextField = false;
+        private bool isEditingValue = false;
+
+        // Derived stats browsing mode
+        private int derivedStatsIndex = -1;
+
+        /// <summary>
+        /// When true, the derived stats browser is open.
+        /// </summary>
+        internal static bool derivedStatsBrowsing = false;
+
+        // Info browser — for I-key stat / trait descriptions (browsable line list)
+        private enum InfoMode { None, StatDescription, TraitDescription }
+        private InfoMode infoMode = InfoMode.None;
+        private List<string> infoLines = new List<string>();
+        private int infoIndex = -1;
+
+        /// <summary>
+        /// When true, UIInput.ProcessEvent is blocked by Harmony patch.
+        /// Set true when CharacterState is active and not editing a text field.
+        /// </summary>
+        internal static bool blockUIInput = false;
+
+        // Announcement tracking
+        private string lastAnnouncedText = null;
+        private int lastAnnouncedIndex = -1;
+        private float activationTime = 0f;
+        private bool initialAnnouncementDone = false;
+        private const float ANNOUNCEMENT_DELAY = 0.3f;
+
+        // Reflection caches (CharacterScreen-specific fields)
+        private static FieldInfo panelTypeField;
+        private static FieldInfo currentPCField;
+        private static FieldInfo skillEditorsField;
+        private static FieldInfo traitEditorsField;
+        private static FieldInfo attrEditorsField;
+        private static FieldInfo addCharEntryListField;
+        private static MethodInfo onDoneClickedMethod;
+        private static MethodInfo onBackClickedMethod;
+        private static bool reflectionCached = false;
+
+        public override bool IsActive
+        {
+            get
+            {
+                var charScreen = CharacterScreen.instance;
+                if (charScreen == null || !charScreen.gameObject.activeInHierarchy)
+                    return false;
+
+                // Not active if inventory panel is showing (InventoryState handles that)
+                var chaInvPanel = charScreen.GetComponentInChildren<CHA_InventoryPanel>();
+                if (chaInvPanel != null && chaInvPanel.gameObject.activeInHierarchy)
+                    return false;
+
+                return true;
+            }
+        }
+
+        public override bool HandleInput()
+        {
+            var charScreen = CharacterScreen.instance;
+            if (charScreen == null) return false;
+
+            // Suppress NGUI's native arrow key navigation (UIButtonKeys grid linking)
+            // so our handler controls all navigation exclusively
+            InputSuppressor.ShouldSuppressUINavigation = true;
+
+            // If user has entered editing mode on a text field, pass keys through
+            // except Escape (cancel) and Enter (confirm) which exit editing mode
+            if (isEditingTextField)
+            {
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    isEditingTextField = false;
+                    blockUIInput = true;
+                    if (UIInput.selection != null)
+                        UIInput.selection.isSelected = false;
+                    MelonLogger.Msg("[CharacterState] Exited editing (Escape)");
+                    ScreenReaderManager.SpeakInterrupt("Cancelled editing");
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    isEditingTextField = false;
+                    blockUIInput = true;
+                    string value = UIInput.selection != null ? UIInput.selection.value : "";
+                    MelonLogger.Msg($"[CharacterState] Exited editing (Enter), value='{value}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}");
+                    if (UIInput.selection != null)
+                        UIInput.selection.isSelected = false;
+                    ScreenReaderManager.SpeakInterrupt(!string.IsNullOrEmpty(value) ? $"Confirmed, {value}" : "Confirmed");
+                    return true;
+                }
+                // Let all other keys pass through to the text field
+                return false;
+            }
+
+            // Cache reflection if needed
+            if (!reflectionCached) CacheReflection();
+
+            // Detect panel changes
+            var currentPanelType = GetCurrentPanelType(charScreen);
+            if (currentPanelType != lastPanelType)
+            {
+                OnPanelChanged(charScreen, currentPanelType);
+            }
+
+            // Force initial announcement after delay (queued, don't interrupt panel announcement)
+            if (!initialAnnouncementDone && Time.time - activationTime >= ANNOUNCEMENT_DELAY)
+            {
+                initialAnnouncementDone = true;
+                AnnounceCurrentControl(interrupt: false);
+            }
+
+            // Derived stats browsing mode intercepts all input
+            if (derivedStatsBrowsing)
+                return HandleDerivedStatsInput(charScreen);
+
+            // Info browser (I-key descriptions) intercepts all input
+            if (infoMode != InfoMode.None)
+                return HandleInfoInput(charScreen);
+
+            // Route input based on panel type
+            switch (lastPanelType)
+            {
+                case CharacterScreen.EditorPanel.UseDefaultParty:
+                    return HandleUseDefaultPartyInput(charScreen);
+                case CharacterScreen.EditorPanel.Party:
+                    return HandlePartyInput(charScreen);
+                case CharacterScreen.EditorPanel.AddCharacter:
+                    return HandleAddCharacterInput(charScreen);
+                case CharacterScreen.EditorPanel.Attributes:
+                    return skillsFocused ? HandleSkillsInput(charScreen) : HandleAttributesInput(charScreen);
+                case CharacterScreen.EditorPanel.Skills:
+                    return HandleSkillsInput(charScreen);
+                case CharacterScreen.EditorPanel.Traits:
+                    return HandleTraitsInput(charScreen);
+                case CharacterScreen.EditorPanel.Dossier:
+                    return HandleDossierInput(charScreen);
+                case CharacterScreen.EditorPanel.Flavor:
+                    return HandleFlavorInput(charScreen);
+                default:
+                    return HandleGenericInput(charScreen);
+            }
+        }
+
+        public override void OnActivated()
+        {
+            blockUIInput = true;
+            lastAnnouncedText = null;
+            lastAnnouncedIndex = -1;
+            lastPanelType = (CharacterScreen.EditorPanel)(-1);
+            controlList.Clear();
+            controlIndex = -1;
+            skillsFocused = false;
+            isEditingValue = false;
+            derivedStatsBrowsing = false;
+            derivedStatsIndex = -1;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
+            activationTime = Time.time;
+            initialAnnouncementDone = false;
+
+            if (!reflectionCached) CacheReflection();
+
+            var charScreen = CharacterScreen.instance;
+            if (charScreen != null)
+            {
+                var panelType = GetCurrentPanelType(charScreen);
+                OnPanelChanged(charScreen, panelType);
+            }
+
+            base.OnActivated();
+        }
+
+        public override void OnDeactivated()
+        {
+            blockUIInput = false;
+            isEditingTextField = false;
+            isEditingValue = false;
+            derivedStatsBrowsing = false;
+            derivedStatsIndex = -1;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
+            lastAnnouncedText = null;
+            lastAnnouncedIndex = -1;
+            controlList.Clear();
+            controlIndex = -1;
+            skillsFocused = false;
+            base.OnDeactivated();
+        }
+
+        // ========== Reflection ==========
+
+        private void CacheReflection()
+        {
+            var flags = BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public;
+
+            panelTypeField = typeof(CharacterScreen).GetField("panelType", flags);
+            currentPCField = typeof(CharacterScreen).GetField("currentPC", flags);
+            onDoneClickedMethod = typeof(CharacterScreen).GetMethod("OnDoneClicked", flags);
+            onBackClickedMethod = typeof(CharacterScreen).GetMethod("OnBackClicked", flags);
+
+            skillEditorsField = typeof(CHA_SkillPanel).GetField("skillEditors", flags);
+
+            traitEditorsField = typeof(CHA_TraitsPanel).GetField("traitEditors", flags);
+
+            attrEditorsField = typeof(CHA_AttributePanel).GetField("attributeEditors", flags);
+
+            addCharEntryListField = typeof(CHA_AddCharacterPanel).GetField("entryList", flags);
+
+            // Editor-level reflection is cached in CharacterAnnouncementHelper
+            CharacterAnnouncementHelper.EnsureReflectionCached();
+
+            reflectionCached = true;
+            MelonLogger.Msg("[CharacterState] Reflection cached");
+        }
+
+        private CharacterScreen.EditorPanel GetCurrentPanelType(CharacterScreen screen)
+        {
+            if (panelTypeField != null)
+            {
+                return (CharacterScreen.EditorPanel)panelTypeField.GetValue(screen);
+            }
+
+            // Fallback: detect from active panels
+            if (screen.attributePanel != null && screen.attributePanel.gameObject.activeInHierarchy)
+                return CharacterScreen.EditorPanel.Attributes;
+            if (screen.skillPanel != null && screen.skillPanel.gameObject.activeInHierarchy)
+                return CharacterScreen.EditorPanel.Skills;
+            if (screen.traitsPanel != null && screen.traitsPanel.gameObject.activeInHierarchy)
+                return CharacterScreen.EditorPanel.Traits;
+            if (screen.dossierPanel != null && screen.dossierPanel.gameObject.activeInHierarchy)
+                return CharacterScreen.EditorPanel.Dossier;
+            if (screen.flavorPanel != null && screen.flavorPanel.gameObject.activeInHierarchy)
+                return CharacterScreen.EditorPanel.Flavor;
+            if (screen.addCharacterPanel != null && screen.addCharacterPanel.gameObject.activeInHierarchy)
+                return CharacterScreen.EditorPanel.AddCharacter;
+            if (screen.partyPanel != null && screen.partyPanel.gameObject.activeInHierarchy)
+                return CharacterScreen.EditorPanel.Party;
+            if (screen.usePremadePartyPanel != null && screen.usePremadePartyPanel.gameObject.activeInHierarchy)
+                return CharacterScreen.EditorPanel.UseDefaultParty;
+
+            return CharacterScreen.EditorPanel.Party;
+        }
+
+        private PC GetCurrentPC(CharacterScreen screen)
+        {
+            if (currentPCField != null)
+                return currentPCField.GetValue(screen) as PC;
+            return null;
+        }
+
+        // ========== Panel Change Detection ==========
+
+        private void OnPanelChanged(CharacterScreen screen, CharacterScreen.EditorPanel newPanel)
+        {
+            lastPanelType = newPanel;
+            skillsFocused = false;
+            isEditingTextField = false;
+            isEditingValue = false;
+            derivedStatsBrowsing = false;
+            derivedStatsIndex = -1;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
+            blockUIInput = true;
+            controlList.Clear();
+            controlIndex = -1;
+
+            BuildControlList(screen, newPanel);
+
+            string panelName = GetPanelDisplayName(newPanel);
+            string announcement = $"Character screen, {panelName}";
+
+            // Add context hints per panel
+            switch (newPanel)
+            {
+                case CharacterScreen.EditorPanel.UseDefaultParty:
+                    announcement += ". Up and Down to choose, Enter to select";
+                    break;
+                case CharacterScreen.EditorPanel.Party:
+                    announcement += $". {GetPartyCount(screen)} rangers. Up and Down to navigate, Enter to edit, Delete to remove, I for details";
+                    break;
+                case CharacterScreen.EditorPanel.Attributes:
+                    announcement += ". F to switch to skills, P for points remaining, I for description, D for derived stats";
+                    break;
+                case CharacterScreen.EditorPanel.Skills:
+                    announcement += ". F to switch to attributes, Left and Right for categories, P for points remaining, I for description, D for derived stats";
+                    break;
+                case CharacterScreen.EditorPanel.Traits:
+                    announcement += ". Enter to toggle, I for description";
+                    break;
+            }
+
+            // Queue after tutorial if one appeared with this panel change, otherwise interrupt
+            var tutPopup = UnityEngine.Object.FindObjectOfType<TutorialPopupMenu>();
+            if (tutPopup != null && tutPopup.gameObject.activeInHierarchy)
+                ScreenReaderManager.Speak(announcement);
+            else
+                ScreenReaderManager.SpeakInterrupt(announcement);
+            MelonLogger.Msg($"[CharacterState] Panel changed to: {newPanel} ({controlList.Count} controls)");
+
+            // Select first control
+            if (controlList.Count > 0)
+            {
+                controlIndex = 0;
+                SelectControl(controlList[0]);
+            }
+
+            // Reset announcement tracking
+            initialAnnouncementDone = false;
+            activationTime = Time.time;
+        }
+
+        private string GetPanelDisplayName(CharacterScreen.EditorPanel panel)
+        {
+            switch (panel)
+            {
+                case CharacterScreen.EditorPanel.UseDefaultParty: return "Use default party";
+                case CharacterScreen.EditorPanel.Party: return "Party";
+                case CharacterScreen.EditorPanel.AddCharacter: return "Add character";
+                case CharacterScreen.EditorPanel.Attributes: return "Attributes";
+                case CharacterScreen.EditorPanel.Skills: return "Skills";
+                case CharacterScreen.EditorPanel.Traits: return "Traits";
+                case CharacterScreen.EditorPanel.Dossier: return "Dossier";
+                case CharacterScreen.EditorPanel.Flavor: return "Customization";
+                default: return "Unknown";
+            }
+        }
+
+        private int GetPartyCount(CharacterScreen screen)
+        {
+            if (screen.partyPanel == null) return 0;
+            int count = 0;
+            foreach (var entry in screen.partyPanel.partyEntries)
+            {
+                if (entry != null && entry.gameObject.activeInHierarchy)
+                {
+                    // Check if the entry has a character (not an empty slot)
+                    var infoContainer = entry.infoContainer;
+                    if (infoContainer != null && infoContainer.activeInHierarchy)
+                        count++;
+                }
+            }
+            return count;
+        }
+
+        // ========== Control List Building ==========
+
+        private void BuildControlList(CharacterScreen screen, CharacterScreen.EditorPanel panel)
+        {
+            controlList.Clear();
+
+            switch (panel)
+            {
+                case CharacterScreen.EditorPanel.UseDefaultParty:
+                    BuildUseDefaultPartyControls(screen);
+                    break;
+                case CharacterScreen.EditorPanel.Party:
+                    BuildPartyControls(screen);
+                    break;
+                case CharacterScreen.EditorPanel.AddCharacter:
+                    BuildAddCharacterControls(screen);
+                    break;
+                case CharacterScreen.EditorPanel.Attributes:
+                    if (skillsFocused)
+                        BuildSkillControls(screen);
+                    else
+                        BuildAttributeControls(screen);
+                    break;
+                case CharacterScreen.EditorPanel.Skills:
+                    BuildSkillControls(screen);
+                    break;
+                case CharacterScreen.EditorPanel.Traits:
+                    BuildTraitControls(screen);
+                    break;
+                case CharacterScreen.EditorPanel.Dossier:
+                    BuildDossierControls(screen);
+                    break;
+                case CharacterScreen.EditorPanel.Flavor:
+                    BuildFlavorControls(screen);
+                    break;
+            }
+
+            AppendNavButtons(screen);
+        }
+
+        /// <summary>
+        /// Appends the game's existing Previous (back/cancel) and Next (confirm/done/play) buttons
+        /// to the end of controlList for every panel where they're visible. The user can arrow to
+        /// them and press Enter; HandleCommonInput routes Enter through OnBackClicked / OnDoneClicked.
+        /// </summary>
+        private void AppendNavButtons(CharacterScreen screen)
+        {
+            GameObject prev = GetPreviousNavObject(screen);
+            if (prev != null && !controlList.Contains(prev))
+                controlList.Add(prev);
+
+            GameObject next = GetNextNavObject(screen);
+            if (next != null && !controlList.Contains(next))
+                controlList.Add(next);
+        }
+
+        private GameObject GetPreviousNavObject(CharacterScreen screen)
+        {
+            if (screen.backButton != null && screen.backButton.gameObject.activeInHierarchy)
+                return screen.backButton.gameObject;
+            if (screen.cancelButton != null && screen.cancelButton.gameObject.activeInHierarchy)
+                return screen.cancelButton.gameObject;
+            return null;
+        }
+
+        private GameObject GetNextNavObject(CharacterScreen screen)
+        {
+            if (screen.confirmButton != null && screen.confirmButton.gameObject.activeInHierarchy)
+                return screen.confirmButton.gameObject;
+            if (screen.doneWithCharacterButton != null && screen.doneWithCharacterButton.gameObject.activeInHierarchy)
+                return screen.doneWithCharacterButton.gameObject;
+            if (screen.startPlayingButton != null && screen.startPlayingButton.gameObject.activeInHierarchy)
+                return screen.startPlayingButton.gameObject;
+            return null;
+        }
+
+        private bool IsPreviousNavObject(CharacterScreen screen, GameObject obj)
+        {
+            if (obj == null || screen == null) return false;
+            if (screen.backButton != null && obj == screen.backButton.gameObject) return true;
+            if (screen.cancelButton != null && obj == screen.cancelButton.gameObject) return true;
+            return false;
+        }
+
+        private bool IsNextNavObject(CharacterScreen screen, GameObject obj)
+        {
+            if (obj == null || screen == null) return false;
+            if (screen.confirmButton != null && obj == screen.confirmButton.gameObject) return true;
+            if (screen.doneWithCharacterButton != null && obj == screen.doneWithCharacterButton.gameObject) return true;
+            if (screen.startPlayingButton != null && obj == screen.startPlayingButton.gameObject) return true;
+            return false;
+        }
+
+        private void BuildUseDefaultPartyControls(CharacterScreen screen)
+        {
+            // This panel has 2 main buttons: Use Default and Create Custom
+            if (screen.usePremadePartyPanel == null) return;
+
+            var seenNames = new HashSet<string>();
+            var buttons = screen.usePremadePartyPanel.GetComponentsInChildren<UIButton>(false);
+            foreach (var btn in buttons)
+            {
+                if (btn == null || !btn.gameObject.activeInHierarchy) continue;
+
+                // Skip duplicate buttons (nested UIButton components on children)
+                if (seenNames.Contains(btn.name)) continue;
+                seenNames.Add(btn.name);
+
+                // Only include buttons that have meaningful labels
+                UILabel label = btn.GetComponentInChildren<UILabel>();
+                if (label == null) continue;
+
+                string text = UITextExtractor.CleanText(label.text);
+                if (string.IsNullOrEmpty(text) || text.Length <= 2) continue;
+
+                controlList.Add(btn.gameObject);
+            }
+
+            MelonLogger.Msg($"[CharacterState] UseDefaultParty controls: {controlList.Count}");
+        }
+
+        private void BuildPartyControls(CharacterScreen screen)
+        {
+            if (screen.partyPanel == null) return;
+
+            foreach (var entry in screen.partyPanel.partyEntries)
+            {
+                if (entry != null && entry.gameObject.activeInHierarchy)
+                {
+                    controlList.Add(entry.gameObject);
+                }
+            }
+
+            MelonLogger.Msg($"[CharacterState] Party controls: {controlList.Count}");
+        }
+
+        private void BuildAddCharacterControls(CharacterScreen screen)
+        {
+            if (screen.addCharacterPanel == null) return;
+
+            // Get entries from reflection (private entryList)
+            if (addCharEntryListField != null)
+            {
+                var entries = addCharEntryListField.GetValue(screen.addCharacterPanel) as System.Collections.IList;
+                if (entries != null)
+                {
+                    foreach (var entry in entries)
+                    {
+                        var component = entry as CHA_PremadeCharacterEntry;
+                        if (component != null && component.gameObject.activeInHierarchy)
+                        {
+                            controlList.Add(component.gameObject);
+                        }
+                    }
+                }
+            }
+
+            // Fallback: scan the entry container UIGrid
+            if (controlList.Count == 0 && screen.addCharacterPanel.entryContainer != null)
+            {
+                var grid = screen.addCharacterPanel.entryContainer;
+                for (int i = 0; i < grid.transform.childCount; i++)
+                {
+                    var child = grid.transform.GetChild(i);
+                    if (child != null && child.gameObject.activeInHierarchy)
+                    {
+                        var premadeEntry = child.GetComponent<CHA_PremadeCharacterEntry>();
+                        if (premadeEntry != null)
+                        {
+                            controlList.Add(child.gameObject);
+                        }
+                    }
+                }
+            }
+
+            MelonLogger.Msg($"[CharacterState] AddCharacter controls: {controlList.Count}");
+        }
+
+        private void BuildAttributeControls(CharacterScreen screen)
+        {
+            if (screen.attributePanel == null || screen.attributePanel.attributeGrid == null) return;
+
+            var grid = screen.attributePanel.attributeGrid;
+            List<Transform> children = new List<Transform>();
+            for (int i = 0; i < grid.transform.childCount; i++)
+            {
+                var child = grid.transform.GetChild(i);
+                if (child != null && child.gameObject.activeInHierarchy)
+                {
+                    children.Add(child);
+                }
+            }
+
+            // Sort by name to match UIGrid order
+            children.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.Ordinal));
+
+            foreach (var child in children)
+            {
+                controlList.Add(child.gameObject);
+            }
+
+            MelonLogger.Msg($"[CharacterState] Attribute controls: {controlList.Count}");
+        }
+
+        private void BuildSkillControls(CharacterScreen screen)
+        {
+            if (screen.skillPanel == null) return;
+
+            // Get the active grid based on current category
+            UIGrid activeGrid = GetActiveSkillGrid(screen);
+            if (activeGrid == null) return;
+
+            List<Transform> children = new List<Transform>();
+            for (int i = 0; i < activeGrid.transform.childCount; i++)
+            {
+                var child = activeGrid.transform.GetChild(i);
+                if (child == null || !child.gameObject.activeInHierarchy)
+                    continue;
+
+                // Skip disabled skill editors (e.g. Combat Shooting, Southwestern Folklore)
+                // These are DLC skills that can't be learned through normal level-up
+                var skillEditor = child.GetComponent<CHA_SkillEditor>();
+                if (skillEditor != null && !skillEditor.enabled)
+                    continue;
+
+                children.Add(child);
+            }
+
+            children.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.Ordinal));
+
+            foreach (var child in children)
+            {
+                controlList.Add(child.gameObject);
+            }
+
+            MelonLogger.Msg($"[CharacterState] Skill controls: {controlList.Count}");
+        }
+
+        private UIGrid GetActiveSkillGrid(CharacterScreen screen)
+        {
+            // Check which grid is active
+            if (screen.skillPanel.combatGrid != null && screen.skillPanel.combatGrid.gameObject.activeInHierarchy)
+                return screen.skillPanel.combatGrid;
+            if (screen.skillPanel.knowledgeGrid != null && screen.skillPanel.knowledgeGrid.gameObject.activeInHierarchy)
+                return screen.skillPanel.knowledgeGrid;
+            if (screen.skillPanel.generalGrid != null && screen.skillPanel.generalGrid.gameObject.activeInHierarchy)
+                return screen.skillPanel.generalGrid;
+
+            // Default to combat
+            return screen.skillPanel.combatGrid;
+        }
+
+        private string GetActiveSkillCategory(CharacterScreen screen)
+        {
+            if (screen.skillPanel.combatGrid != null && screen.skillPanel.combatGrid.gameObject.activeInHierarchy)
+                return "Combat";
+            if (screen.skillPanel.knowledgeGrid != null && screen.skillPanel.knowledgeGrid.gameObject.activeInHierarchy)
+                return "Knowledge";
+            if (screen.skillPanel.generalGrid != null && screen.skillPanel.generalGrid.gameObject.activeInHierarchy)
+                return "General";
+            return "Combat";
+        }
+
+        private void BuildTraitControls(CharacterScreen screen)
+        {
+            if (screen.traitsPanel == null) return;
+
+            // Get trait editors from reflection
+            if (traitEditorsField != null)
+            {
+                var editors = traitEditorsField.GetValue(screen.traitsPanel) as System.Collections.IList;
+                if (editors != null)
+                {
+                    foreach (var editor in editors)
+                    {
+                        var component = editor as CHA_TraitEditor;
+                        if (component != null && component.gameObject.activeInHierarchy)
+                        {
+                            controlList.Add(component.gameObject);
+                        }
+                    }
+                }
+            }
+
+            // Fallback: scan traitGrid
+            if (controlList.Count == 0 && screen.traitsPanel.traitGrid != null)
+            {
+                var grid = screen.traitsPanel.traitGrid;
+                for (int i = 0; i < grid.transform.childCount; i++)
+                {
+                    var child = grid.transform.GetChild(i);
+                    if (child != null && child.gameObject.activeInHierarchy)
+                    {
+                        controlList.Add(child.gameObject);
+                    }
+                }
+            }
+
+            MelonLogger.Msg($"[CharacterState] Trait controls: {controlList.Count}");
+        }
+
+        private void BuildDossierControls(CharacterScreen screen)
+        {
+            if (screen.dossierPanel == null) return;
+
+            var genderPanel = screen.dossierPanel;
+            // Use the flavor panel from the gender panel (NOT screen.flavorPanel which may be different)
+            var flavor = genderPanel.flavorPanel;
+
+            // Gender buttons - find by name recursively
+            var maleBtn = FindChildRecursive(genderPanel.transform, "MaleButton");
+            var femaleBtn = FindChildRecursive(genderPanel.transform, "FemaleButton");
+            if (maleBtn != null) controlList.Add(maleBtn.gameObject);
+            if (femaleBtn != null) controlList.Add(femaleBtn.gameObject);
+
+            // Flavor panel inputs - add in logical order
+            if (flavor != null)
+            {
+                MelonLogger.Msg($"[CharacterState] FlavorPanel found: {flavor.name}, active={flavor.gameObject.activeInHierarchy}");
+                if (flavor.nameInput != null)
+                {
+                    MelonLogger.Msg($"[CharacterState]   nameInput: {flavor.nameInput.name}, active={flavor.nameInput.gameObject.activeInHierarchy}");
+                    controlList.Add(flavor.nameInput.gameObject);
+                }
+                if (flavor.ageInput != null)
+                {
+                    MelonLogger.Msg($"[CharacterState]   ageInput: {flavor.ageInput.name}, active={flavor.ageInput.gameObject.activeInHierarchy}");
+                    controlList.Add(flavor.ageInput.gameObject);
+                }
+                if (flavor.ethnicityList != null)
+                    controlList.Add(flavor.ethnicityList.gameObject);
+                if (flavor.religionList != null)
+                    controlList.Add(flavor.religionList.gameObject);
+                if (flavor.smokesList != null)
+                    controlList.Add(flavor.smokesList.gameObject);
+                if (flavor.biographyInput != null)
+                    controlList.Add(flavor.biographyInput.gameObject);
+            }
+            else
+            {
+                MelonLogger.Msg("[CharacterState] FlavorPanel is null on dossierPanel!");
+            }
+
+            // Portrait and Appearance buttons - find unique labeled buttons not already added
+            var seenObjects = new HashSet<GameObject>(controlList);
+            var seenNames = new HashSet<string>();
+            var allButtons = genderPanel.GetComponentsInChildren<UIButton>(false);
+            foreach (var btn in allButtons)
+            {
+                if (btn == null || !btn.gameObject.activeInHierarchy) continue;
+                if (seenObjects.Contains(btn.gameObject)) continue;
+                if (seenNames.Contains(btn.name)) continue;
+                seenNames.Add(btn.name);
+
+                // Skip gender buttons and container objects
+                if (btn.name.Contains("Male") || btn.name.Contains("Female")) continue;
+                if (btn.name.Contains("Container")) continue;
+
+                UILabel btnLabel = btn.GetComponentInChildren<UILabel>();
+                if (btnLabel == null) continue;
+                string text = UITextExtractor.CleanText(btnLabel.text);
+                if (string.IsNullOrEmpty(text) || text.Length <= 2) continue;
+
+                controlList.Add(btn.gameObject);
+            }
+
+            MelonLogger.Msg($"[CharacterState] Dossier controls: {controlList.Count}");
+        }
+
+        private Transform FindChildRecursive(Transform parent, string name)
+        {
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                var child = parent.GetChild(i);
+                if (child.name == name && child.gameObject.activeInHierarchy)
+                    return child;
+                var found = FindChildRecursive(child, name);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private void BuildFlavorControls(CharacterScreen screen)
+        {
+            // Flavor panel is similar to Dossier but standalone
+            BuildDossierControls(screen);
+        }
+
+        // ========== Navigation ==========
+
+        private void NavigateList(int direction)
+        {
+            if (controlList.Count == 0) return;
+
+            int newIndex = controlIndex + direction;
+
+            // Wrap around
+            if (newIndex < 0) newIndex = controlList.Count - 1;
+            if (newIndex >= controlList.Count) newIndex = 0;
+
+            if (newIndex != controlIndex)
+            {
+                controlIndex = newIndex;
+                SelectControl(controlList[controlIndex]);
+                AnnounceCurrentControl();
+            }
+        }
+
+        /// <summary>
+        /// Sets UICamera.selectedObject and ensures UIInput fields don't auto-enter editing mode.
+        /// Users must press Enter to start editing text fields - prevents keyboard traps.
+        /// </summary>
+        private void SelectControl(GameObject obj)
+        {
+            UICamera.selectedObject = obj;
+        }
+
+        private void AnnounceCurrentControl(bool interrupt = true)
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+
+            var obj = controlList[controlIndex];
+            if (obj == null) return;
+
+            string announcement = GetControlAnnouncement(obj);
+            if (!string.IsNullOrEmpty(announcement) && (announcement != lastAnnouncedText || controlIndex != lastAnnouncedIndex))
+            {
+                lastAnnouncedText = announcement;
+                lastAnnouncedIndex = controlIndex;
+                if (interrupt) ScreenReaderManager.SpeakInterrupt(announcement); else ScreenReaderManager.Speak(announcement);
+                MelonLogger.Msg($"[CharacterState] Announce [{controlIndex}]: {announcement}");
+            }
+        }
+
+        // ========== Control Announcements ==========
+
+        private string GetControlAnnouncement(GameObject obj)
+        {
+            if (obj == null) return null;
+
+            // Previous / Next nav buttons: use the game's own label (it already says
+            // "Back" / "Main Menu" / "Next" / "Done" / "Play!" per panel)
+            var charScreen = CharacterScreen.instance;
+            if (charScreen != null)
+            {
+                if (IsPreviousNavObject(charScreen, obj))
+                {
+                    UILabel prevLbl = obj.GetComponentInChildren<UILabel>();
+                    string text = prevLbl != null ? UITextExtractor.CleanText(prevLbl.text) : "";
+                    if (string.IsNullOrEmpty(text)) text = "Previous";
+                    return $"{text}, button";
+                }
+                if (IsNextNavObject(charScreen, obj))
+                {
+                    UILabel nextLbl = obj.GetComponentInChildren<UILabel>();
+                    string text = nextLbl != null ? UITextExtractor.CleanText(nextLbl.text) : "";
+                    if (string.IsNullOrEmpty(text)) text = "Next";
+                    return $"{text}, button";
+                }
+            }
+
+            // Check for specific component types
+            var attrEditor = obj.GetComponent<CHA_AttributeEditor>();
+            if (attrEditor != null)
+                return GetAttributeEditorAnnouncement(attrEditor);
+
+            var skillEditor = obj.GetComponent<CHA_SkillEditor>();
+            if (skillEditor != null)
+                return GetSkillEditorAnnouncement(skillEditor);
+
+            var traitEditor = obj.GetComponent<CHA_TraitEditor>();
+            if (traitEditor != null)
+                return GetTraitEditorAnnouncement(traitEditor);
+
+            var partyEntry = obj.GetComponent<CHA_PartyEntry>();
+            if (partyEntry != null)
+                return GetPartyEntryAnnouncement(partyEntry);
+
+            var premadeEntry = obj.GetComponent<CHA_PremadeCharacterEntry>();
+            if (premadeEntry != null)
+                return GetPremadeEntryAnnouncement(premadeEntry);
+
+            // Check for UIInput
+            var input = obj.GetComponent<UIInput>();
+            if (input != null)
+            {
+                string label = GetInputFieldLabel(obj, input);
+                string value = !string.IsNullOrEmpty(input.value) ? input.value : "empty";
+                return $"{label}, {value}, text field";
+            }
+
+            // Check for UIPopupList
+            var popupList = obj.GetComponent<UIPopupList>();
+            if (popupList != null)
+            {
+                string label = FindLabelText(obj);
+                string value = UITextExtractor.CleanText(popupList.value);
+                return $"{label}, {value}, dropdown";
+            }
+
+            // Generic button
+            var button = obj.GetComponent<UIButton>();
+            if (button != null)
+            {
+                UILabel btnLabel = obj.GetComponentInChildren<UILabel>();
+                string text = btnLabel != null ? UITextExtractor.CleanText(btnLabel.text) : "";
+
+                // Handle gender buttons with selected state
+                if (string.IsNullOrEmpty(text))
+                {
+                    if (obj.name.Contains("Male") && !obj.name.Contains("Female"))
+                    {
+                        bool selected = CharacterScreen.instance != null &&
+                            CharacterScreen.instance.dossierPanel != null &&
+                            CharacterScreen.instance.dossierPanel.gender == Gender.Masculine;
+                        return selected ? "Male, selected, button" : "Male, button";
+                    }
+                    if (obj.name.Contains("Female"))
+                    {
+                        bool selected = CharacterScreen.instance != null &&
+                            CharacterScreen.instance.dossierPanel != null &&
+                            CharacterScreen.instance.dossierPanel.gender == Gender.Feminine;
+                        return selected ? "Female, selected, button" : "Female, button";
+                    }
+                    // Clean up generic button names: remove "Button" suffix
+                    text = obj.name.Replace("Button", "").Replace("button", "").Trim();
+                    if (string.IsNullOrEmpty(text)) text = obj.name;
+                }
+                return $"{text}, button";
+            }
+
+            // Last resort: label text
+            UILabel anyLabel = obj.GetComponentInChildren<UILabel>();
+            if (anyLabel != null)
+            {
+                return UITextExtractor.CleanText(anyLabel.text);
+            }
+
+            return obj.name;
+        }
+
+        private string GetAttributeEditorAnnouncement(CHA_AttributeEditor editor)
+        {
+            return CharacterAnnouncementHelper.GetAttributeEditorAnnouncement(editor);
+        }
+
+        private string GetSkillEditorAnnouncement(CHA_SkillEditor editor)
+        {
+            return CharacterAnnouncementHelper.GetSkillEditorAnnouncement(editor);
+        }
+
+        private string GetTraitEditorAnnouncement(CHA_TraitEditor editor)
+        {
+            return CharacterAnnouncementHelper.GetTraitEditorAnnouncement(editor);
+        }
+
+        private string GetPartyEntryAnnouncement(CHA_PartyEntry entry)
+        {
+            try
+            {
+                // Check if the slot has a character
+                bool hasCharacter = entry.infoContainer != null && entry.infoContainer.activeInHierarchy;
+
+                if (!hasCharacter)
+                {
+                    return "Empty slot, press Enter to add a ranger";
+                }
+
+                var parts = new System.Collections.Generic.List<string>();
+
+                // Name
+                string name = entry.nameLabel != null ? UITextExtractor.CleanText(entry.nameLabel.text) : "";
+                if (string.IsNullOrEmpty(name)) name = "Unknown";
+
+                // Role/specialization
+                string role = entry.specializationLabel != null ? UITextExtractor.CleanText(entry.specializationLabel.text) : "";
+                if (!string.IsNullOrEmpty(role))
+                    parts.Add($"{name}, {role}");
+                else
+                    parts.Add(name);
+
+                // Attributes - newline-separated parallel labels
+                string attrAnnouncement = BuildPairedLabelText(entry.attributeNameLabel, entry.attributeValueLabel);
+                if (!string.IsNullOrEmpty(attrAnnouncement))
+                    parts.Add(attrAnnouncement);
+
+                // Skills - newline-separated parallel labels, only non-zero
+                string skillAnnouncement = BuildPairedLabelText(entry.skillNameLabel, entry.skillValueLabel);
+                if (!string.IsNullOrEmpty(skillAnnouncement))
+                    parts.Add("Skills: " + skillAnnouncement);
+
+                // Quirk/trait
+                if (entry.traitLabel != null && !string.IsNullOrEmpty(entry.traitLabel.text))
+                {
+                    string trait = UITextExtractor.CleanText(entry.traitLabel.text);
+                    if (!string.IsNullOrEmpty(trait))
+                        parts.Add(trait);
+                }
+
+                parts.Add("Enter to edit, Delete to remove");
+
+                return string.Join(". ", parts.ToArray());
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterState] Error announcing party entry: {ex.Message}");
+                return "Party slot";
+            }
+        }
+
+        private string BuildPairedLabelText(UILabel nameLabel, UILabel valueLabel)
+        {
+            if (nameLabel == null || valueLabel == null) return "";
+            string namesText = nameLabel.text;
+            string valuesText = valueLabel.text;
+            if (string.IsNullOrEmpty(namesText) || string.IsNullOrEmpty(valuesText)) return "";
+
+            string[] names = namesText.Split('\n');
+            string[] values = valuesText.Split('\n');
+
+            var pairs = new System.Collections.Generic.List<string>();
+            int count = Math.Min(names.Length, values.Length);
+            for (int i = 0; i < count; i++)
+            {
+                string n = UITextExtractor.CleanText(names[i]).Trim();
+                string v = UITextExtractor.CleanText(values[i]).Trim();
+                if (string.IsNullOrEmpty(n) || string.IsNullOrEmpty(v)) continue;
+                // Skip skills with 0 value
+                if (v == "0") continue;
+                pairs.Add($"{n} {v}");
+            }
+
+            return string.Join(", ", pairs.ToArray());
+        }
+
+        private string GetPremadeEntryAnnouncement(CHA_PremadeCharacterEntry entry)
+        {
+            try
+            {
+                string name = entry.nameLabel != null ? UITextExtractor.CleanText(entry.nameLabel.text) : "Unknown";
+                string spec = entry.specializationLabel != null ? UITextExtractor.CleanText(entry.specializationLabel.text) : "";
+
+                string result = name;
+                if (!string.IsNullOrEmpty(spec))
+                    result += $", {spec}";
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterState] Error announcing premade entry: {ex.Message}");
+                return "Character entry";
+            }
+        }
+
+        /// <summary>
+        /// Gets a descriptive label for a UIInput field by checking against known flavor panel references.
+        /// Falls back to FindLabelText for unknown inputs.
+        /// </summary>
+        private string GetInputFieldLabel(GameObject obj, UIInput input)
+        {
+            var charScreen = CharacterScreen.instance;
+            if (charScreen != null && charScreen.dossierPanel != null)
+            {
+                var flavor = charScreen.dossierPanel.flavorPanel;
+                if (flavor != null)
+                {
+                    if (flavor.nameInput == input) return "Name";
+                    if (flavor.ageInput == input) return "Age";
+                    if (flavor.biographyInput == input) return "Biography";
+                }
+            }
+            return FindLabelText(obj);
+        }
+
+        private string FindLabelText(GameObject obj)
+        {
+            // Look for a UILabel as sibling or parent that acts as a label for this control
+            UILabel label = obj.GetComponentInChildren<UILabel>();
+            if (label != null)
+                return UITextExtractor.CleanText(label.text);
+
+            // Check parent
+            if (obj.transform.parent != null)
+            {
+                label = obj.transform.parent.GetComponentInChildren<UILabel>();
+                if (label != null)
+                    return UITextExtractor.CleanText(label.text);
+            }
+
+            return obj.name;
+        }
+
+        // ========== Stat Description Helper ==========
+
+        private void AnnounceCurrentStatDescription()
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+            OpenInfoBrowser(InfoMode.StatDescription, statObj: controlList[controlIndex]);
+        }
+
+        // ========== Value Adjustment Helpers ==========
+
+        private void AdjustCurrentAttribute(int direction)
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+            var editor = controlList[controlIndex].GetComponent<CHA_AttributeEditor>();
+            if (editor == null) return;
+            CharacterAnnouncementHelper.AdjustAttribute(editor, direction, () => AnnounceCurrentControl());
+        }
+
+        private void AdjustCurrentSkill(int direction)
+        {
+            if (controlIndex < 0 || controlIndex >= controlList.Count) return;
+            var editor = controlList[controlIndex].GetComponent<CHA_SkillEditor>();
+            if (editor == null) return;
+            CharacterAnnouncementHelper.AdjustSkill(editor, direction, () => AnnounceCurrentControl());
+        }
+
+        // ========== Panel-Specific Input Handlers ==========
+
+        private bool HandleCommonInput(CharacterScreen screen)
+        {
+            // Tab to announce current panel + context
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                string panelName = GetPanelDisplayName(lastPanelType);
+                string context = "";
+                if (skillsFocused)
+                    context = " (Skills sub-area, F to switch back)";
+                ScreenReaderManager.SpeakInterrupt($"{panelName}{context}, {controlIndex + 1} of {controlList.Count}");
+                return true;
+            }
+
+            // D to open derived stats browser (on panels that have them) or announce character summary
+            if (Input.GetKeyDown(KeyCode.D))
+            {
+                if (lastPanelType == CharacterScreen.EditorPanel.Attributes ||
+                    lastPanelType == CharacterScreen.EditorPanel.Skills)
+                {
+                    OpenDerivedStatsBrowser(screen);
+                }
+                else
+                {
+                    AnnounceCharacterSummary(screen);
+                }
+                return true;
+            }
+
+            // N for next/done
+            if (Input.GetKeyDown(KeyCode.N))
+            {
+                if (onDoneClickedMethod != null)
+                {
+                    onDoneClickedMethod.Invoke(screen, new object[] { null });
+                    MelonLogger.Msg("[CharacterState] OnDoneClicked called via N key");
+                }
+                return true;
+            }
+
+            // Enter on the Previous / Next nav buttons routes to the same handlers the
+            // game uses for Escape (Back) and the N shortcut (Next/Done/Play). We check
+            // first so panel-specific Enter handlers (editor-edit-mode, trait-toggle,
+            // entry-activate, etc.) still see Enter for non-nav controls.
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var focused = controlList[controlIndex];
+                    if (IsPreviousNavObject(screen, focused))
+                    {
+                        if (onBackClickedMethod != null)
+                        {
+                            onBackClickedMethod.Invoke(screen, null);
+                            MelonLogger.Msg("[CharacterState] OnBackClicked called via Previous button");
+                        }
+                        return true;
+                    }
+                    if (IsNextNavObject(screen, focused))
+                    {
+                        if (onDoneClickedMethod != null)
+                        {
+                            onDoneClickedMethod.Invoke(screen, new object[] { null });
+                            MelonLogger.Msg("[CharacterState] OnDoneClicked called via Next button");
+                        }
+                        return true;
+                    }
+                }
+            }
+
+            // Escape: let the game's native event system handle Back navigation.
+            // We must NOT call OnBackClicked() ourselves - the game already dispatches
+            // the "Back" button event to CharacterScreen.OnButtonDown, which calls
+            // OnBackClicked(). Calling it twice causes modals to be created and
+            // immediately destroyed (PopupMenu.OnButtonDown("Back") calls Close()
+            // on the newly-created modal before it's ready for input).
+
+            return false;
+        }
+
+        private bool HandleUseDefaultPartyInput(CharacterScreen screen)
+        {
+            if (HandleCommonInput(screen)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    controlList[controlIndex].SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    MelonLogger.Msg("[CharacterState] Activated button in UseDefaultParty");
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HandlePartyInput(CharacterScreen screen)
+        {
+            if (HandleCommonInput(screen)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var obj = controlList[controlIndex];
+
+                    // Check if it's a party entry
+                    var partyEntry = obj.GetComponent<CHA_PartyEntry>();
+                    if (partyEntry != null)
+                    {
+                        // OnPartyEntryClicked is private, use reflection
+                        var method = typeof(CHA_PartyPanel).GetMethod("OnPartyEntryClicked",
+                            BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (method != null)
+                        {
+                            method.Invoke(screen.partyPanel, new object[] { obj });
+                        }
+                        else
+                        {
+                            // Fallback: send click
+                            obj.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                        }
+                        MelonLogger.Msg("[CharacterState] Party entry clicked");
+                    }
+                    else
+                    {
+                        // It's a button (Start Playing, etc.)
+                        obj.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    }
+                }
+                return true;
+            }
+
+            // I to re-announce current character details
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var partyEntry = controlList[controlIndex].GetComponent<CHA_PartyEntry>();
+                    if (partyEntry != null)
+                    {
+                        string announcement = GetPartyEntryAnnouncement(partyEntry);
+                        ScreenReaderManager.SpeakInterrupt(announcement);
+                    }
+                }
+                return true;
+            }
+
+            // Delete to remove character
+            if (Input.GetKeyDown(KeyCode.Delete))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var partyEntry = controlList[controlIndex].GetComponent<CHA_PartyEntry>();
+                    if (partyEntry != null && partyEntry.infoContainer != null && partyEntry.infoContainer.activeInHierarchy)
+                    {
+                        screen.partyPanel.OnDeleteCharacterClicked(partyEntry.deleteButton != null ? partyEntry.deleteButton.gameObject : controlList[controlIndex]);
+                        MelonLogger.Msg("[CharacterState] Delete character requested");
+                    }
+                    else
+                    {
+                        ScreenReaderManager.SpeakInterrupt("Empty slot");
+                    }
+                }
+                return true;
+            }
+
+            // S to start playing (shortcut)
+            if (Input.GetKeyDown(KeyCode.S))
+            {
+                if (screen.startPlayingButton != null && screen.startPlayingButton.gameObject.activeInHierarchy && screen.startPlayingButton.isEnabled)
+                {
+                    screen.startPlayingButton.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    MelonLogger.Msg("[CharacterState] Start playing via S key");
+                }
+                else
+                {
+                    ScreenReaderManager.SpeakInterrupt("Not enough rangers to start");
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HandleAddCharacterInput(CharacterScreen screen)
+        {
+            if (HandleCommonInput(screen)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+
+                // Also trigger selection callback for preview
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var entry = controlList[controlIndex].GetComponent<CHA_PremadeCharacterEntry>();
+                    if (entry != null && entry.selectCallback != null)
+                    {
+                        entry.selectCallback(entry);
+                    }
+                }
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var entry = controlList[controlIndex].GetComponent<CHA_PremadeCharacterEntry>();
+                    if (entry != null)
+                    {
+                        entry.OnAddClicked(null);
+                        MelonLogger.Msg("[CharacterState] Added premade character");
+                    }
+                }
+                return true;
+            }
+
+            // R to read biography
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                if (screen.addCharacterPanel.biographyLabel != null)
+                {
+                    string bio = UITextExtractor.CleanText(screen.addCharacterPanel.biographyLabel.text);
+                    if (!string.IsNullOrEmpty(bio))
+                        ScreenReaderManager.SpeakInterrupt(bio);
+                    else
+                        ScreenReaderManager.SpeakInterrupt("No biography available");
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HandleAttributesInput(CharacterScreen screen)
+        {
+            // Edit mode: +/- and Left/Right adjust, Enter exits, all arrows blocked
+            if (isEditingValue)
+            {
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Escape))
+                {
+                    isEditingValue = false;
+                    ScreenReaderManager.SpeakInterrupt("Done editing");
+                    AnnounceCurrentControl(interrupt: false);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+                {
+                    AdjustCurrentAttribute(-1);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals))
+                {
+                    AdjustCurrentAttribute(1);
+                    return true;
+                }
+                // I for description in edit mode
+                if (Input.GetKeyDown(KeyCode.I))
+                {
+                    AnnounceCurrentStatDescription();
+                    return true;
+                }
+                // Block all other arrow keys while editing
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+                    return true;
+                return false;
+            }
+
+            if (HandleCommonInput(screen)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+                return true;
+            }
+
+            // +/- to adjust value directly
+            if (Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals))
+            {
+                AdjustCurrentAttribute(1);
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+            {
+                AdjustCurrentAttribute(-1);
+                return true;
+            }
+
+            // Enter to start editing (left/right adjustment mode)
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var editor = controlList[controlIndex].GetComponent<CHA_AttributeEditor>();
+                    if (editor != null)
+                    {
+                        isEditingValue = true;
+                        string name = editor.nameLabel != null ? UITextExtractor.CleanText(editor.nameLabel.text) : editor.attribute;
+                        ScreenReaderManager.SpeakInterrupt($"Editing {name}. Left and Right to adjust, Enter to confirm");
+                    }
+                }
+                return true;
+            }
+
+            // Block Left/Right in normal mode
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+                return true;
+
+            // I for description
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                AnnounceCurrentStatDescription();
+                return true;
+            }
+
+            // F to toggle to skills
+            if (Input.GetKeyDown(KeyCode.F))
+            {
+                isEditingValue = false;
+                skillsFocused = true;
+                BuildControlList(screen, lastPanelType);
+                if (controlList.Count > 0)
+                {
+                    controlIndex = 0;
+                    SelectControl(controlList[0]);
+                }
+
+                string category = GetActiveSkillCategory(screen);
+                ScreenReaderManager.SpeakInterrupt($"Skills, {category} category. Left and Right to switch");
+                AnnounceCurrentControl(interrupt: false);
+                return true;
+            }
+
+            // P for points remaining
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                AnnounceAttributePointsRemaining(screen);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HandleSkillsInput(CharacterScreen screen)
+        {
+            // Edit mode: +/- and Left/Right adjust, Enter exits, all arrows blocked
+            if (isEditingValue)
+            {
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Escape))
+                {
+                    isEditingValue = false;
+                    ScreenReaderManager.SpeakInterrupt("Done editing");
+                    AnnounceCurrentControl(interrupt: false);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+                {
+                    AdjustCurrentSkill(-1);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals))
+                {
+                    AdjustCurrentSkill(1);
+                    return true;
+                }
+                // I for description in edit mode
+                if (Input.GetKeyDown(KeyCode.I))
+                {
+                    AnnounceCurrentStatDescription();
+                    return true;
+                }
+                // Block all other arrow keys while editing
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+                    return true;
+                return false;
+            }
+
+            if (HandleCommonInput(screen)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+                return true;
+            }
+
+            // +/- to adjust value directly
+            if (Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Equals))
+            {
+                AdjustCurrentSkill(1);
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.Minus))
+            {
+                AdjustCurrentSkill(-1);
+                return true;
+            }
+
+            // Enter to start editing (left/right adjustment mode)
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var editor = controlList[controlIndex].GetComponent<CHA_SkillEditor>();
+                    if (editor != null)
+                    {
+                        isEditingValue = true;
+                        string name = editor.nameLabel != null ? UITextExtractor.CleanText(editor.nameLabel.text) : editor.skillName;
+                        ScreenReaderManager.SpeakInterrupt($"Editing {name}. Left and Right to adjust, Enter to confirm");
+                    }
+                }
+                return true;
+            }
+
+            // Left/Right to switch skill category
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                isEditingValue = false;
+                SwitchSkillCategory(screen, Input.GetKeyDown(KeyCode.RightArrow) ? 1 : -1);
+                return true;
+            }
+
+            // I for description
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                AnnounceCurrentStatDescription();
+                return true;
+            }
+
+            // F to toggle back to attributes (only if we're in the attributes panel with skills focused)
+            if (Input.GetKeyDown(KeyCode.F) && lastPanelType == CharacterScreen.EditorPanel.Attributes)
+            {
+                isEditingValue = false;
+                skillsFocused = false;
+                BuildControlList(screen, lastPanelType);
+                if (controlList.Count > 0)
+                {
+                    controlIndex = 0;
+                    SelectControl(controlList[0]);
+                }
+                ScreenReaderManager.SpeakInterrupt("Attributes");
+                AnnounceCurrentControl(interrupt: false);
+                return true;
+            }
+
+            // P for points remaining
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                AnnounceSkillPointsRemaining(screen);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HandleTraitsInput(CharacterScreen screen)
+        {
+            if (HandleCommonInput(screen)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+                return true;
+            }
+
+            // Enter or Space to toggle trait
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Space))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var editor = controlList[controlIndex].GetComponent<CHA_TraitEditor>();
+                    if (editor != null && editor.checkbox != null)
+                        CharacterAnnouncementHelper.ToggleTrait(editor);
+                }
+                return true;
+            }
+
+            // I: open browsable perk description
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var editor = controlList[controlIndex].GetComponent<CHA_TraitEditor>();
+                    if (editor != null)
+                    {
+                        Trait trait = CharacterAnnouncementHelper.GetTraitFromEditor(editor);
+                        if (trait != null)
+                            OpenInfoBrowser(InfoMode.TraitDescription, trait: trait);
+                        else
+                            ScreenReaderManager.SpeakInterrupt("No description available");
+                    }
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HandleDossierInput(CharacterScreen screen)
+        {
+            if (HandleCommonInput(screen)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+                return true;
+            }
+
+            // Left/Right for gender or dropdown cycling
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var obj = controlList[controlIndex];
+
+                    // Check for popup list
+                    var popupList = obj.GetComponent<UIPopupList>();
+                    if (popupList != null && popupList.items != null && popupList.items.Count > 0)
+                    {
+                        int dir = Input.GetKeyDown(KeyCode.RightArrow) ? 1 : -1;
+                        int idx = popupList.items.IndexOf(popupList.value);
+                        int newIdx = (idx + dir + popupList.items.Count) % popupList.items.Count;
+                        popupList.value = popupList.items[newIdx];
+                        string val = UITextExtractor.CleanText(popupList.value);
+                        ScreenReaderManager.SpeakInterrupt(val);
+                        return true;
+                    }
+
+                    // Check for gender buttons
+                    var button = obj.GetComponent<UIButton>();
+                    if (button != null)
+                    {
+                        // Click the button to toggle
+                        obj.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                        AnnounceCurrentControl();
+                        return true;
+                    }
+                }
+                return true;
+            }
+
+            // Enter to activate/focus
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    var obj = controlList[controlIndex];
+                    var input = obj.GetComponent<UIInput>();
+                    if (input != null)
+                    {
+                        isEditingTextField = true;
+                        blockUIInput = false;
+                        input.isSelected = true;
+                        string label = GetInputFieldLabel(obj, input);
+                        MelonLogger.Msg($"[CharacterState] Entered editing mode: label='{label}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}, isSelected={input.isSelected}, blockUIInput={blockUIInput}");
+                        ScreenReaderManager.SpeakInterrupt($"Editing {label}. Press Enter to confirm or Escape to cancel.");
+                    }
+                    else
+                    {
+                        obj.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                    }
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool HandleFlavorInput(CharacterScreen screen)
+        {
+            return HandleDossierInput(screen);
+        }
+
+        private bool HandleGenericInput(CharacterScreen screen)
+        {
+            if (HandleCommonInput(screen)) return true;
+
+            if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                int dir = Input.GetKeyDown(KeyCode.UpArrow) ? -1 : 1;
+                NavigateList(dir);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                if (controlIndex >= 0 && controlIndex < controlList.Count)
+                {
+                    controlList[controlIndex].SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        // ========== Skill Category Switching ==========
+
+        private void SwitchSkillCategory(CharacterScreen screen, int direction)
+        {
+            if (screen.skillPanel == null) return;
+
+            // Determine current category
+            int current = 0;
+            if (screen.skillPanel.combatGrid != null && screen.skillPanel.combatGrid.gameObject.activeInHierarchy)
+                current = 0;
+            else if (screen.skillPanel.knowledgeGrid != null && screen.skillPanel.knowledgeGrid.gameObject.activeInHierarchy)
+                current = 1;
+            else if (screen.skillPanel.generalGrid != null && screen.skillPanel.generalGrid.gameObject.activeInHierarchy)
+                current = 2;
+
+            int newCategory = (current + direction + 3) % 3;
+
+            // Call the public category switch methods directly
+            switch (newCategory)
+            {
+                case 0:
+                    screen.skillPanel.OnCombatSkillsClicked();
+                    break;
+                case 1:
+                    screen.skillPanel.OnKnowledgeSkillsClicked();
+                    break;
+                case 2:
+                    screen.skillPanel.OnGeneralSkillsClicked();
+                    break;
+            }
+
+            // Rebuild control list for new category
+            BuildControlList(screen, lastPanelType);
+            if (controlList.Count > 0)
+            {
+                controlIndex = 0;
+                SelectControl(controlList[0]);
+            }
+
+            string[] categories = { "Combat", "Knowledge", "General" };
+            ScreenReaderManager.SpeakInterrupt($"{categories[newCategory]} skills");
+
+            // Brief delay then announce first control
+            initialAnnouncementDone = false;
+            activationTime = Time.time;
+        }
+
+        // ========== Points Remaining ==========
+
+        private void AnnounceAttributePointsRemaining(CharacterScreen screen)
+        {
+            if (screen.attributePanel == null) return;
+
+            try
+            {
+                int points = screen.attributePanel.GetPointsRemaining();
+                string title = screen.attributePanel.pointsRemainingTitleLabel != null
+                    ? UITextExtractor.CleanText(screen.attributePanel.pointsRemainingTitleLabel.text)
+                    : "Attribute points remaining";
+                ScreenReaderManager.SpeakInterrupt($"{points} {title}");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterState] Error getting attribute points: {ex.Message}");
+            }
+        }
+
+        private void AnnounceSkillPointsRemaining(CharacterScreen screen)
+        {
+            if (screen.skillPanel == null) return;
+
+            try
+            {
+                int points = screen.skillPanel.GetPointsRemaining();
+                string title = screen.skillPanel.pointsRemainingTitleLabel != null
+                    ? UITextExtractor.CleanText(screen.skillPanel.pointsRemainingTitleLabel.text)
+                    : "Skill points remaining";
+                ScreenReaderManager.SpeakInterrupt($"{points} {title}");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterState] Error getting skill points: {ex.Message}");
+            }
+        }
+
+        // ========== Derived Stats Browser ==========
+
+        private void OpenDerivedStatsBrowser(CharacterScreen screen)
+        {
+            derivedStatsBrowsing = true;
+            derivedStatsIndex = 0;
+            ScreenReaderManager.SpeakInterrupt("Derived stats. Up and Down to navigate, I for description, Escape to close");
+            AnnounceDerivedStat(screen, interrupt: false);
+            MelonLogger.Msg("[CharacterState] Derived stats browser opened");
+        }
+
+        private void CloseDerivedStatsBrowser()
+        {
+            derivedStatsBrowsing = false;
+            derivedStatsIndex = -1;
+            EventManager.ignoreNextBack = true; // Game's native mechanism to suppress the next Back event
+            ScreenReaderManager.SpeakInterrupt("Derived stats closed");
+            // Re-announce current control so user knows where they are
+            lastAnnouncedText = null;
+            AnnounceCurrentControl(interrupt: false);
+            MelonLogger.Msg("[CharacterState] Derived stats browser closed");
+        }
+
+        private bool HandleDerivedStatsInput(CharacterScreen screen)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CloseDerivedStatsBrowser();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                derivedStatsIndex--;
+                if (derivedStatsIndex < 0) derivedStatsIndex = CharacterAnnouncementHelper.DerivedStatNames.Length - 1;
+                AnnounceDerivedStat(screen);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                derivedStatsIndex++;
+                if (derivedStatsIndex >= CharacterAnnouncementHelper.DerivedStatNames.Length) derivedStatsIndex = 0;
+                AnnounceDerivedStat(screen);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.I))
+            {
+                AnnounceDerivedStatDescription(screen);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                derivedStatsIndex = 0;
+                AnnounceDerivedStat(screen);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                derivedStatsIndex = CharacterAnnouncementHelper.DerivedStatNames.Length - 1;
+                AnnounceDerivedStat(screen);
+                return true;
+            }
+
+            // Block all other keys while in derived stats mode
+            return true;
+        }
+
+        private void AnnounceDerivedStat(CharacterScreen screen, bool interrupt = true)
+        {
+            PC pc = GetCurrentPC(screen);
+            CharacterAnnouncementHelper.AnnounceDerivedStat(pc, derivedStatsIndex, interrupt);
+        }
+
+        private void AnnounceDerivedStatDescription(CharacterScreen screen)
+        {
+            PC pc = GetCurrentPC(screen);
+            CharacterAnnouncementHelper.AnnounceDerivedStatDescription(pc, derivedStatsIndex);
+        }
+
+        // ========== Character Summary ==========
+
+        private void AnnounceCharacterSummary(CharacterScreen screen)
+        {
+            PC pc = GetCurrentPC(screen);
+            if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
+            CharacterAnnouncementHelper.AnnounceCharacterSummary(pc);
+        }
+
+        // ========== Info Browser (I-key descriptions) ==========
+
+        private void OpenInfoBrowser(InfoMode mode, GameObject statObj = null, Trait trait = null)
+        {
+            switch (mode)
+            {
+                case InfoMode.StatDescription:
+                    infoLines = CharacterAnnouncementHelper.BuildStatDescriptionLines(statObj);
+                    break;
+                case InfoMode.TraitDescription:
+                    infoLines = CharacterAnnouncementHelper.BuildTraitDescriptionLines(trait);
+                    break;
+                default:
+                    infoLines = new List<string>();
+                    break;
+            }
+
+            if (infoLines == null || infoLines.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No description available");
+                return;
+            }
+
+            infoMode = mode;
+            infoIndex = 0;
+            string title = mode == InfoMode.TraitDescription ? "Perk details" : "Details";
+            ScreenReaderManager.SpeakInterrupt(
+                $"{title}, {infoLines.Count} items. Up and Down to navigate, Escape to close");
+            AnnounceInfoLine(interrupt: false);
+            MelonLogger.Msg($"[CharacterState] Info browser opened: {mode}, {infoLines.Count} lines");
+        }
+
+        private void CloseInfoBrowser()
+        {
+            var prev = infoMode;
+            infoMode = InfoMode.None;
+            infoIndex = -1;
+            infoLines.Clear();
+            EventManager.ignoreNextBack = true;
+            string title = prev == InfoMode.TraitDescription ? "Perk details" : "Details";
+            ScreenReaderManager.SpeakInterrupt(title + " closed");
+            lastAnnouncedText = null;
+            AnnounceCurrentControl(interrupt: false);
+            MelonLogger.Msg($"[CharacterState] Info browser closed: {prev}");
+        }
+
+        private void AnnounceInfoLine(bool interrupt = true)
+        {
+            if (infoIndex < 0 || infoIndex >= infoLines.Count) return;
+            string line = infoLines[infoIndex];
+            string msg = $"{line}, {infoIndex + 1} of {infoLines.Count}";
+            if (interrupt) ScreenReaderManager.SpeakInterrupt(msg);
+            else ScreenReaderManager.Speak(msg);
+        }
+
+        private bool HandleInfoInput(CharacterScreen screen)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                CloseInfoBrowser();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                infoIndex--;
+                if (infoIndex < 0) infoIndex = infoLines.Count - 1;
+                AnnounceInfoLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                infoIndex++;
+                if (infoIndex >= infoLines.Count) infoIndex = 0;
+                AnnounceInfoLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                infoIndex = 0;
+                AnnounceInfoLine();
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                infoIndex = infoLines.Count - 1;
+                AnnounceInfoLine();
+                return true;
+            }
+
+            return true; // Block all other keys
+        }
+    }
+}

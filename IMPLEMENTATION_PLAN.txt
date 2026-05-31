@@ -1,0 +1,602 @@
+================================================================================
+WASTELAND 2 ACCESSIBILITY MOD - IMPLEMENTATION PLAN v2.0
+================================================================================
+
+OVERVIEW
+--------
+This mod provides screen reader accessibility support for Wasteland 2 Director's
+Cut. It uses MelonLoader for mod loading and Harmony for runtime patching of
+game methods. The mod implements a unified input routing system with priority-
+based state management for different game contexts.
+The melonloader log for debugging purposes can be found at "D:\SteamLibrary\steamapps\common\Wasteland 2 Director's Cut\Build\MelonLoader\Latest.log"
+
+================================================================================
+TECHNICAL FOUNDATION
+================================================================================
+
+Framework Requirements:
+- .NET Framework 3.5 (Unity 4.x compatibility)
+- MelonLoader 0.6.1+
+- Harmony (included with MelonLoader)
+- Tolk library for screen reader communication
+
+Build Command:
+  dotnet build -c Release
+
+Output: bin\Release\net35\Wasteland2AccessibilityMod.dll
+Installation: Copy DLL to [Game Directory]\Mods\
+
+Game Engine Details:
+- Unity 4.x with NGUI UI system
+- Assembly-CSharp.dll contains all game code
+- Key singletons: InputManager, GUIManager, Game, CombatManager
+
+================================================================================
+ARCHITECTURE: STATE + PATCH PATTERN
+================================================================================
+
+The mod uses a "State + Patch" pattern where:
+- IAccessibilityState implementations handle input and navigation logic
+- Harmony patches hook into game methods for announcements and data access
+
+Core Components (in Core/ folder):
+
+1. IAccessibilityState Interface
+   - Name: string - Display name for logging
+   - Priority: int - Higher values processed first
+   - IsActive: bool - Whether this state should handle input
+   - HandleInput(): bool - Process input, return true if consumed
+   - OnActivated(): void - Called when state becomes active
+   - OnDeactivated(): void - Called when state becomes inactive
+
+2. InputRouter
+   - Static class managing all registered states
+   - ProcessInput() called each frame in OnUpdate() (before Unity Update)
+   - States sorted by priority (descending)
+   - Only ONE state handles input per frame (first active state that consumes)
+   - Tracks state transitions and calls OnActivated/OnDeactivated
+
+3. InputSuppressor
+   - Harmony PREFIX patches on:
+     * InputManager.Update() - blocks game input processing
+     * UICamera.ProcessOthers() - blocks NGUI arrow key navigation
+   - Static flags set by states:
+     * ShouldSuppressGameInput - blocks InputManager
+     * ShouldSuppressUINavigation - blocks UICamera
+   - Flags reset each frame by InputRouter
+
+4. CameraLock
+   - Harmony POSTFIX on CameraControllerSpline.Update()
+   - Forces camera to face North (rotation = 0)
+   - Toggle with F10 key
+   - Helps blind players maintain spatial orientation
+
+================================================================================
+STATE PRIORITY ORDER
+================================================================================
+
+Priority | State            | Phase | Purpose
+---------|------------------|-------|------------------------------------------
+80       | ScannerState     | 4     | Environment scanning (S key)
+70       | DialogState      | 2     | Modal dialogs (Yes/No, tutorials)
+60       | MainMenuState    | 2     | Main menu keyboard navigation
+55       | GenericMenuState | 2     | Popup menus (Options, Load/Save, etc.)
+50       | ConversationState| 2     | NPC dialogue options
+50       | InventoryState   | 2     | Inventory/equipment navigation
+50       | CharacterState   | 2     | Character screen panels
+30       | MapCursorState   | 3     | Virtual map cursor exploration
+10       | ExplorationState | 1     | Interactable cycling in gameplay
+
+Note: When multiple states have same priority, first registered wins.
+States with higher priority are checked first for IsActive.
+
+================================================================================
+PHASE 1: CORE ARCHITECTURE (COMPLETE)
+================================================================================
+
+Files:
+- Core/IAccessibilityState.cs
+- Core/InputRouter.cs
+- Core/InputSuppressor.cs
+- Core/CameraLock.cs
+- Core/ExplorationState.cs
+
+ExplorationState (Priority 10):
+- Active when: GameState == Gameplay, no menus open, not in combat setup
+- Features:
+  * [ and ] keys cycle through nearby interactables
+  * PageUp/PageDown cycle through interactable categories
+  * Announces interactable name, type, distance, direction
+  * \ key repeats last announcement
+  * ' key announces party scrap count
+  * = key toggles direction format (compass vs clock)
+- Uses InteractableNexus.interactables for object list
+- Calculates distance/direction from selected PC to target
+
+Key Game APIs Used:
+- InputManager.selectedInteractable - current target
+- InteractableNexus.interactables - all interactables in scene
+- GUIManager.IsAnyMenuActive() - menu detection
+- CombatManager.inCombat - combat state
+
+================================================================================
+PHASE 2: MENU/DIALOG STATES (COMPLETE)
+================================================================================
+
+Files:
+- States/DialogState.cs
+- States/ConversationState.cs
+- States/InventoryState.cs
+- States/CharacterState.cs
+
+--------------------------------------------------------------------------------
+DialogState (Priority 70)
+--------------------------------------------------------------------------------
+Purpose: Handle modal dialogs that appear over other screens
+
+Active when:
+- ModalMessageMenu is active in hierarchy, OR
+- TutorialScreen.popup is active
+
+Input handling:
+- Left/Right or Up/Down: Navigate between buttons
+- Enter: Activate selected button
+
+Features:
+- Detects ModalMessageMenu (Yes/No dialogs, confirmations)
+- Detects TUT_TutorialPopup (tutorial messages)
+- Announces dialog title, message, and current button
+- Tracks button count ("1 of 2")
+- Uses SendMessage("OnClick") to activate buttons (methods are protected)
+
+Key Game APIs:
+- ModalMessageMenu: titleLabel, messageLabel, yesButton, noButton, yesLabel, noLabel
+- TutorialScreen.popup: titleLabel, messageLabel, okayButtonLabel, OnOkayClicked()
+
+--------------------------------------------------------------------------------
+ConversationState (Priority 50)
+--------------------------------------------------------------------------------
+Purpose: Keyboard navigation for NPC dialogue response options
+
+Active when:
+- Drama.isConversationOn == true
+- Drama.isCutsceneOn == false
+- DramaGUI.waitState == WaitState.ForInput
+- ConversationHUD has buttons available
+
+Input handling:
+- Up/Down: Navigate options
+- Enter: Select current option
+- Home: Jump to first option
+- End: Jump to last option
+
+Features:
+- Uses reflection to access ConversationHUD.buttonList (private field)
+- Reads ButtonInfo structure for each option:
+  * keywordLabel - topic keyword
+  * sayRangerText - full response text player will say
+  * keywordInfo - skill requirements, availability
+- Announces: "1 of 3: [response text], [skill] level X"
+- Detects "Goodbye" option and adds "ends conversation"
+- Detects unavailable skill checks
+- Static IsManagingNavigation flag suppresses duplicate patch announcements
+
+Key Game APIs:
+- ConversationHUD.buttonList (List<ButtonInfo>, private, line 89)
+- ConversationHUD.OnTopicPressed(GameObject) - programmatic selection
+- Drama.isConversationOn, Drama.isCutsceneOn
+- DramaGUI.WaitState enum, DramaGUI.waitState
+
+--------------------------------------------------------------------------------
+InventoryState (Priority 50)
+--------------------------------------------------------------------------------
+Purpose: Announce items during inventory navigation
+
+Active when:
+- CharacterScreen is active, OR
+- PopupInventoryMenu (loot containers) is active
+
+Input handling:
+- Arrow keys: Let game handle (UIButtonKeys), track selection changes
+- Tab: Announce detailed item info
+- R: Read item description
+
+Features:
+- Monitors UICamera.selectedObject for changes
+- Detects INV_DragDropItem components (inventory items)
+- Detects INV_EquipmentSlot components (equipment slots)
+- Announces: item name, quantity, type, equipped status
+- Tab provides: weight, price, tier
+- R provides: full item description text
+
+Key Game APIs:
+- INV_DragDropItem.GetItem() -> ItemInstance
+- INV_EquipmentSlot.equipmentSlot (EquipmentSlot enum)
+- INV_EquipmentSlot.GetCurrentItem(create: false)
+- ItemTemplate: displayName, description, weight, price, tier, GetTypeString()
+- Language.Localize() for localized text
+
+--------------------------------------------------------------------------------
+CharacterState (Priority 50)
+--------------------------------------------------------------------------------
+Purpose: Navigate character creation/editing panels
+
+Active when:
+- CharacterScreen.instance is active
+- CHA_InventoryPanel is NOT active (InventoryState handles that)
+
+Input handling:
+- Arrow keys: Let game handle, track selection
+- Tab: Announce current panel name
+- C: Announce character summary
+
+Features:
+- Detects current panel type (Attributes, Skills, Traits, etc.)
+- Announces skill/attribute/trait editors when focused
+- Character summary includes: name, health state, HP, AP (in combat)
+
+Key Game APIs:
+- CharacterScreen.instance (static)
+- CharacterScreen.EditorPanel enum
+- CHA_SkillEditor, CHA_AttributeEditor, CHA_TraitEditor components
+- PC.pcTemplate.displayName, PC.healthState, PC.curHP
+- PCStats.GetActionPoints()
+
+--------------------------------------------------------------------------------
+MainMenuState (Priority 60)
+--------------------------------------------------------------------------------
+Purpose: Keyboard navigation and announcements for the game's main menu
+
+Active when:
+- GUIManager.IsMainMenuOpen() returns true
+
+Input handling:
+- Up/Down: Navigate buttons (handled by game's UIButtonKeys)
+- Enter: Activate selected button
+
+Features:
+- Announces button labels when selection changes
+- Detects unavailable buttons (Continue/Load when no saves exist)
+- Announces "unavailable" for disabled buttons
+- Uses SendMessage("OnClick") to activate buttons
+- Announces menu title on activation
+
+Key Game APIs:
+- GUIManager.IsMainMenuOpen() - check if main menu is active
+- GUIManager.GetMainMenu() - get MainMenu instance
+- MainMenu.continueButton, loadButton, newGameButton, optionsButton
+- MainMenu.creditsButton, exitButton, switchUserButton, dlcButton
+- MainMenu.continueLabel, loadLabel, etc. - button labels
+- UICamera.selectedObject - current selection
+- UIButton.isEnabled - button availability
+
+--------------------------------------------------------------------------------
+GenericMenuState (Priority 55)
+--------------------------------------------------------------------------------
+Purpose: Keyboard navigation for all popup menus (Options, Load/Save, etc.)
+
+Active when:
+- Any menu is active (GUIManager.IsAnyMenuActive())
+- Main menu is NOT active (handled by MainMenuState)
+- Not in conversation (handled by ConversationState)
+
+Input handling:
+- Up/Down/Left/Right: Navigate via UIButtonKeys links
+- Tab: Navigate to next element
+- Enter: Activate selected element (click button, toggle checkbox, open dropdown)
+- Escape: Close current menu
+
+Features:
+- Uses NGUI's UIButtonKeys navigation system
+- Auto-selects first element if nothing selected
+- Announces control type (button, checkbox, slider, dropdown)
+- Announces checkbox state (checked/unchecked)
+- Announces slider value as percentage
+- Announces dropdown current value
+
+Key Game APIs:
+- GUIScreen - base class for all menus
+- GUIScreen.isTopMenu - check if screen is on top
+- GUIScreen.Close() - close the screen
+- UIButtonKeys.selectOnUp/Down/Left/Right - navigation links
+- UIToggle.value - checkbox state
+- UISlider.value - slider value (0-1)
+- UIPopupList.value - dropdown current selection
+
+================================================================================
+PHASE 3: MAP CURSOR (COMPLETE)
+================================================================================
+
+Files:
+- States/MapCursorState.cs
+
+--------------------------------------------------------------------------------
+MapCursorState (Priority 30)
+--------------------------------------------------------------------------------
+Purpose: Virtual cursor for exploring the game world without visual feedback
+
+Active when:
+- cursorActive flag is true (toggled by M key)
+- Not in menus (GUIManager.IsAnyMenuActive() == false)
+- Not in conversation (Drama.isConversationOn == false)
+- Not in combat (CombatManager.inCombat == false)
+
+Input handling:
+- M: Toggle cursor mode on/off
+- Arrow keys: Move cursor (camera-relative directions)
+- Space: Detailed scan of current position
+- Enter: Select nearest interactable
+- Home: Return cursor to party position
+- F: Toggle camera following cursor
+
+Features:
+- Tracks virtual position in world space (Vector3 cursorPosition)
+- Initializes at selected PC position when activated
+- Moves in steps of 2 units per key press
+- Supports key repeat with 0.15 second delay
+- Snaps to ground level via raycast
+- Clamps to level bounds
+- Optional camera follow (smooth snap to cursor position)
+- Scans 3-meter radius for objects
+
+Announcements:
+- Nearest interactable name and distance
+- Count of additional nearby objects
+- Enemy count (NPCs with Faction.Bad)
+- NPC count (non-hostile NPCs)
+- Distance and direction from party (on detailed scan)
+
+Key Game APIs:
+- InteractableNexus.interactables - list of all interactables
+- Physics.Raycast() - ground detection
+- CameraControllerSpline.Snap() - camera movement
+- LevelInfo.bounds.Clamp() - keep cursor in level
+- Faction enum - determine NPC hostility
+
+================================================================================
+PHASE 4: SCANNER (COMPLETE)
+================================================================================
+
+Files:
+- States/ScannerState.cs
+
+--------------------------------------------------------------------------------
+ScannerState (Priority 80)
+--------------------------------------------------------------------------------
+Purpose: Quick environment scanning with categorized object announcements
+
+Active when:
+- scanInProgress flag is true (after S key pressed)
+- Not in menus (GUIManager.IsAnyMenuActive() == false)
+- Not in conversation (Drama.isConversationOn == false)
+
+Input handling:
+- S: Start scan (when not scanning) / Exit scan mode (when scanning)
+- Up/Down or Left/Right: Cycle through categories
+- Enter: Select closest object in current category
+- R: Cycle scan range (Short 10m / Medium 25m / Long 50m)
+- Escape: Exit scan mode
+
+Categories:
+1. Enemies - Hostile mobs (Faction.Bad)
+2. NPCs - Friendly NPCs
+3. Loot - InventoryContainer objects
+4. Exits - SceneLoad triggers
+5. Interactables - Other InteractableNexus objects
+
+Features:
+- Three range settings: Short (10m), Medium (25m), Long (50m)
+- Announces count per category on scan
+- Lists up to 5 closest objects with distance and direction
+- Select option snaps camera to object and sets as selected interactable
+- Objects sorted by distance within each category
+- Skips already-categorized objects to avoid duplicates
+
+Scan Process:
+1. Press S to initiate scan from party leader position
+2. Scans for all object types within current range
+3. Announces summary: "Scan complete, X enemies, Y NPCs, Z loot..."
+4. Enter scan navigation mode
+5. Use arrows to browse categories, Enter to select, S/Escape to exit
+
+Key Game APIs:
+- InteractableNexus.interactables - all interactables
+- InventoryContainer - loot containers
+- SceneLoad - area transitions
+- Faction enum - NPC hostility check
+- NPC.npcTemplate.faction - NPC faction
+
+================================================================================
+HARMONY PATCHES
+================================================================================
+
+Existing patches that complement the state system:
+
+ConversationPatches.cs:
+- ConversationHUD.AddText - announces NPC dialogue
+- ConversationHUD.AddButton - announces new options (GUARDED)
+- ConversationHUD.OnTopicPressed - announces selection (GUARDED)
+- ConversationHUD.OnTopicMouseOver - announces hover (GUARDED)
+- ConversationHUD.OnConversationStart/End - conversation lifecycle
+- Guards check ConversationState.IsManagingNavigation to avoid duplicates
+
+UIFocusPatches.cs:
+- UICamera.SetSelection - general UI focus changes
+- UICamera.Notify - OnSelect events
+
+UIDialogPatches.cs:
+- ModalMessageMenu.SetMessage - dialog content announcement
+
+InventoryPatches.cs:
+- Item formatting utilities for announcements
+
+CharacterCreationPatches.cs:
+- Character creation specific hooks
+
+TutorialPatches.cs:
+- Tutorial popup announcements
+
+================================================================================
+SCREEN READER INTEGRATION
+================================================================================
+
+ScreenReaderManager.cs:
+- Wraps Tolk library for NVDA/JAWS/SAPI support
+- Speak(text, interrupt) - main announcement method
+- Initialize() - detect available screen readers
+- Shutdown() - cleanup
+
+AudioAwareAnnouncementManager.cs:
+- Delays TTS when game voiceover is playing
+- Prevents TTS from overlapping voiced dialogue
+
+VoiceoverHelper.cs:
+- Detects when game audio is playing voiced content
+- SpeakWithVoiceoverDelay() - queues speech for after voiceover
+
+UITextExtractor.cs:
+- CleanText() - removes NGUI formatting codes
+- Strips color tags, bold markers, etc.
+
+================================================================================
+KEY GAME CLASSES REFERENCE
+================================================================================
+
+Singletons (MonoBehaviourSingleton<T>):
+- InputManager - input state, selected interactable
+- GUIManager - screen stack, menu state
+- Game - party, PCs, game state
+- CombatManager - combat state
+- ConversationHUD - dialogue UI
+- TutorialScreen - tutorial popups
+
+UI Classes:
+- UICamera - NGUI camera, selection management
+- UIButton, UILabel, UISprite - NGUI widgets
+- UIButtonKeys - keyboard navigation links
+
+Character Classes:
+- PC : Mob : Targetable - player character
+- PCTemplate : MobTemplate - character template
+- PCStats : MobStats - character statistics
+- PCInventory - character inventory
+
+Inventory Classes:
+- ItemTemplate - item definition
+- ItemInstance - item instance with quantity
+- INV_DragDropItem - UI representation of item
+- INV_EquipmentSlot - equipment slot UI
+- EquipmentSlot enum - slot types
+
+Conversation Classes:
+- ConversationHUD - dialogue UI manager
+- ConversationHUD.ButtonInfo - dialogue option data
+- KeywordInfo - dialogue keyword with skill requirements
+- Drama - conversation state manager
+- DramaGUI - dialogue GUI state
+
+================================================================================
+FILE STRUCTURE
+================================================================================
+
+Wasteland2AccessibilityMod/
+├── Wasteland2AccessibilityMod.cs    # Main mod entry point
+├── Core/
+│   ├── IAccessibilityState.cs       # State interface
+│   ├── InputRouter.cs               # State manager
+│   ├── InputSuppressor.cs           # Input blocking patches
+│   ├── CameraLock.cs                # North-lock camera
+│   └── ExplorationState.cs          # Phase 1 state
+├── States/
+│   ├── DialogState.cs               # Phase 2 - modal dialogs
+│   ├── MainMenuState.cs             # Phase 2 - main menu navigation
+│   ├── GenericMenuState.cs          # Phase 2 - popup menus (Options, Load/Save)
+│   ├── ConversationState.cs         # Phase 2 - dialogue navigation
+│   ├── InventoryState.cs            # Phase 2 - inventory
+│   └── CharacterState.cs            # Phase 2 - character screen
+├── Patches/
+│   ├── ConversationPatches.cs       # Dialogue hooks
+│   ├── UIFocusPatches.cs            # UI selection hooks
+│   ├── UIDialogPatches.cs           # Dialog hooks
+│   ├── InventoryPatches.cs          # Inventory hooks
+│   └── [other patches]
+├── ScreenReaderManager.cs           # Tolk wrapper
+├── AudioAwareAnnouncementManager.cs # Voiceover-aware TTS
+├── VoiceoverHelper.cs               # Voiceover detection
+├── UITextExtractor.cs               # Text cleaning
+├── ModConfig.cs                     # Configuration
+└── Tolk.cs                          # Screen reader library wrapper
+
+================================================================================
+KEYBOARD CONTROLS SUMMARY
+================================================================================
+
+Global:
+- F10: Toggle camera lock (North = Up)
+- \: Repeat last announcement
+- M: Toggle map cursor mode
+- S: Environment scan
+
+Exploration (gameplay, no menus):
+- [ ]: Cycle interactables
+- PageUp/PageDown: Cycle categories
+- =: Toggle direction format
+- ': Announce party scrap
+
+Dialog (modal popups):
+- Left/Right or Up/Down: Navigate buttons
+- Enter: Activate button
+
+Conversation (NPC dialogue):
+- Up/Down: Navigate options
+- Enter: Select option
+- Home/End: Jump to first/last
+
+Inventory:
+- Arrow keys: Navigate (game handles)
+- Tab: Item details
+- R: Item description
+
+Character Screen:
+- Arrow keys: Navigate (game handles)
+- Tab: Current panel info
+- C: Character summary
+
+Map Cursor (M to toggle):
+- Arrow keys: Move cursor (camera-relative)
+- Space: Detailed scan
+- Enter: Select nearest object
+- Home: Return to party
+- F: Toggle camera follow
+
+Scanner (S to activate):
+- Up/Down: Browse categories
+- Enter: Select closest in category
+- R: Change range (10/25/50 meters)
+- S or Escape: Exit scan mode
+
+================================================================================
+FUTURE CONSIDERATIONS
+================================================================================
+
+1. Combat Mode State
+   - Announce turn order
+   - Navigate available actions
+   - Target selection assistance
+
+2. World Map State
+   - Location navigation
+   - Travel options
+
+3. Customization
+   - Configurable keybindings
+   - Verbosity settings
+   - Announcement filtering
+
+4. Localization
+   - Support for non-English game text
+   - Screen reader language matching
+
+================================================================================
+END OF DOCUMENT
+================================================================================
