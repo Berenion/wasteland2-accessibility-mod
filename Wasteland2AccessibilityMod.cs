@@ -2,7 +2,7 @@ using MelonLoader;
 using Wasteland2AccessibilityMod.Core;
 using Wasteland2AccessibilityMod.States;
 
-[assembly: MelonInfo(typeof(Wasteland2AccessibilityMod.AccessibilityMod), "Wasteland 2 Accessibility Mod", "2.0.0", "AccessibilityModTeam")]
+[assembly: MelonInfo(typeof(Wasteland2AccessibilityMod.AccessibilityMod), "Wasteland 2 Accessibility Mod", "0.7.0", "AccessibilityModTeam")]
 [assembly: MelonGame("inXile Entertainment", "Wasteland 2 Director's Cut")]
 
 namespace Wasteland2AccessibilityMod
@@ -16,7 +16,7 @@ namespace Wasteland2AccessibilityMod
         public override void OnInitializeMelon()
         {
             MelonLogger.Msg("===========================================");
-            MelonLogger.Msg("Wasteland 2 Accessibility Mod v2.0.0");
+            MelonLogger.Msg("Wasteland 2 Accessibility Mod v0.7.0 (beta)");
             MelonLogger.Msg("===========================================");
             MelonLogger.Msg("Features:");
             MelonLogger.Msg("  - Screen reader support for UI navigation");
