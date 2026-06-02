@@ -49,3 +49,7 @@ Thumbs.db
 !*.md
 !*.cs
 !*.csproj
+
+# Internal LLM-assistant guidance — not shipped
+CLAUDE.md
+llm-docs/
