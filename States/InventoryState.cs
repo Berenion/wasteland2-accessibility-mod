@@ -1127,410 +1127,48 @@ namespace Wasteland2AccessibilityMod.States
 
         private void BuildInfoLines(ItemInstance item, PC pc)
         {
-            // Name
-            string name = UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty));
-            infoLines.Add($"Name: {name}");
-
-            // Type — for weapons use the skill name ("Assault Rifle"), otherwise fall back to GetTypeString
-            string typeStr = null;
-            if (item is ItemInstance_Weapon)
-                typeStr = InventoryFormatting.GetWeaponSkillDisplayName(item.template as ItemTemplate_Weapon);
-            if (string.IsNullOrEmpty(typeStr))
-                typeStr = item.template.GetTypeString();
-            if (!string.IsNullOrEmpty(typeStr))
-            {
-                infoLines.Add($"Type: {typeStr}");
-            }
-
-            // Quantity
-            if (item.quantity > 1)
-            {
-                infoLines.Add($"Quantity: {item.quantity}");
-            }
-
-            // Equipment slot if equipped
+            // "Equipped in: X" — only when the focused element is an equipment slot.
+            string equippedSlotName = null;
             if (currentZone == NavigationZone.Equipment && currentIndex >= 0 && currentIndex < currentList.Count)
             {
-                var slot = currentList[currentIndex] as INV_EquipmentSlot;
-                if (slot != null)
-                {
-                    infoLines.Add($"Equipped in: {GetSlotName(slot.equipmentSlot)}");
-                }
+                var focusedSlot = currentList[currentIndex] as INV_EquipmentSlot;
+                if (focusedSlot != null)
+                    equippedSlotName = GetSlotName(focusedSlot.equipmentSlot);
             }
 
-            // Weapon stats — use instance getters so weapon-mod bonuses are reflected
-            if (item is ItemInstance_Weapon weapon && weapon.template is ItemTemplate_Weapon wt)
-            {
-                int minDmg = weapon.GetMinDamage();
-                int maxDmg = weapon.GetMaxDamage();
-                if (minDmg > 0 || maxDmg > 0)
-                {
-                    infoLines.Add(minDmg == maxDmg
-                        ? $"Damage: {maxDmg}"
-                        : $"Damage: {minDmg} to {maxDmg}");
-                }
+            // Comparison vs the equipped item — suppressed when the focused item is itself
+            // equipped (Equipment zone), matching the prior behaviour.
+            ItemInstance comparisonEquipped = currentZone != NavigationZone.Equipment
+                ? GetEquippedComparisonItem(item, pc)
+                : null;
 
-                // Ranged-specific: loaded ammo, reserve ammo, caliber, range brackets, firing modes
-                if (weapon is ItemInstance_WeaponRanged rangedInst && wt is ItemTemplate_WeaponRanged)
-                {
-                    int clip = rangedInst.GetClipSize();
-                    if (clip > 0)
-                        infoLines.Add($"Ammo loaded: {rangedInst.GetAmmoCount()} of {clip}");
+            var lines = InventoryFormatting.BuildItemInfoLines(
+                item, pc, ResolveActiveInfoBox(),
+                equippedSlotName: equippedSlotName,
+                comparisonEquipped: comparisonEquipped,
+                valueLinesOverride: null);
 
-                    string reserveLine = InventoryFormatting.BuildReserveAmmoLine(rangedInst, pc);
-                    if (!string.IsNullOrEmpty(reserveLine))
-                        infoLines.Add(reserveLine);
-
-                    string caliber = InventoryFormatting.GetWeaponCaliberDisplay(wt);
-                    if (!string.IsNullOrEmpty(caliber))
-                        infoLines.Add($"Uses: {caliber}");
-
-                    foreach (string line in InventoryFormatting.BuildRangeBracketLines(rangedInst, pc))
-                        infoLines.Add(line);
-
-                    foreach (string line in InventoryFormatting.BuildFiringModeLines(rangedInst))
-                        infoLines.Add(line);
-                }
-                else
-                {
-                    // Melee / thrown / RPG: raw max range only
-                    int range = weapon.GetAttackRange();
-                    if (range > 0)
-                        infoLines.Add($"Range: {range}");
-                }
-
-                // PC-aware accuracy & crit (matches the on-screen ItemInfoBox values)
-                int acc = InventoryFormatting.ComputeAccuracyPercent(weapon, pc);
-                if (acc >= 0)
-                    infoLines.Add($"Accuracy: {acc} percent");
-                int crit = InventoryFormatting.ComputeCritChancePercent(weapon, pc);
-                if (crit >= 0)
-                    infoLines.Add($"Critical chance: {crit} percent");
-
-                // Operational stats (AP to attack, AP to reload, chance to jam, jammed flag)
-                foreach (string line in InventoryFormatting.BuildWeaponOperationalLines(weapon))
-                    infoLines.Add(line);
-
-                if (wt.armorPenetration > 0)
-                    infoLines.Add($"Armor penetration: {wt.armorPenetration}");
-
-                // Status-effect afflictor
-                string afflictor = InventoryFormatting.BuildAfflictorLine(weapon);
-                if (!string.IsNullOrEmpty(afflictor))
-                    infoLines.Add(afflictor);
-
-                // Energy-weapon notes + above/below threshold multipliers
-                foreach (string line in InventoryFormatting.BuildEnergyWeaponLines(wt))
-                    infoLines.Add(line);
-
-                // Mod slots (installed mods + empty slots)
-                foreach (string line in InventoryFormatting.BuildModSlotLines(weapon))
-                    infoLines.Add(line);
-            }
-
-            // Armor stats
-            if (item is ItemInstance_Armor armor && armor.template is ItemTemplate_Equipment eqt)
-            {
-                int armorValue = eqt.GetStat("armor");
-                if (armorValue > 0)
-                    infoLines.Add($"Armor value: {armorValue}");
-
-                // Mod slots on armor (if any)
-                foreach (string line in InventoryFormatting.BuildModSlotLines(armor))
-                    infoLines.Add(line);
-            }
-
-            // Ammo stats
-            if (item is ItemInstance_Ammo ammo && ammo.template is ItemTemplate_Ammo at)
-            {
-                string caliberDisplay = at.GetCaliberDisplayString();
-                if (!string.IsNullOrEmpty(caliberDisplay))
-                    infoLines.Add($"Caliber: {UITextExtractor.CleanText(caliberDisplay)}");
-                if (at.damageMultiplier != 1f && at.damageMultiplier > 0)
-                {
-                    int dmgPct = UnityEngine.Mathf.RoundToInt((at.damageMultiplier - 1f) * 100f);
-                    if (dmgPct != 0)
-                        infoLines.Add($"Damage modifier: {dmgPct:+0;-#} percent");
-                }
-                if (at.expansionMultiplier != 1f && at.expansionMultiplier > 0)
-                {
-                    int expPct = UnityEngine.Mathf.RoundToInt((at.expansionMultiplier - 1f) * 100f);
-                    if (expPct != 0)
-                        infoLines.Add($"Expansion: {expPct:+0;-#} percent");
-                }
-                if (at.penetration > 0)
-                    infoLines.Add($"Penetration: {at.penetration}");
-                if (at.chanceToReduceArmor > 0)
-                    infoLines.Add($"Armor reduction: {at.chanceToReduceArmor} percent chance, reduces by {at.armorReduction}");
-            }
-
-            // Usable/consumable stats
-            if (item is ItemInstance_Usable usable && usable.template is ItemTemplate_Usable ut)
-            {
-                if (ut.actionPoints > 0)
-                    infoLines.Add($"AP cost: {ut.actionPoints}");
-
-                // All skill-driven effect types, with PC-skill-adjusted heal values
-                foreach (string line in InventoryFormatting.BuildConsumableEffectLines(usable, pc))
-                    infoLines.Add($"Effect: {line}");
-
-                // Skill-book / XP-giver items (e.g. "+1 Surgeon skill")
-                if (ut is ItemTemplate_UsableXPGiver xpGiver)
-                {
-                    string xpLine = InventoryFormatting.BuildXPGiverLine(xpGiver);
-                    if (!string.IsNullOrEmpty(xpLine))
-                        infoLines.Add($"Grants: {xpLine}");
-                }
-
-                if (ut.aoeRadius > 0)
-                    infoLines.Add($"Area of effect: {ut.aoeRadius}");
-                if (ut.isConsumedOnUse)
-                    infoLines.Add("Consumed on use");
-            }
-
-            // Trinket info
-            if (item is ItemInstance_Trinket)
-            {
-                infoLines.Add("Trinket");
-            }
-
-            // Weapon mod info (slot, stat bonuses, requirements, allowed weapons)
-            if (item is ItemInstance_Mod modItem)
-            {
-                foreach (string line in InventoryFormatting.BuildWeaponModLines(modItem, pc))
-                    infoLines.Add(line);
-            }
-
-            // Junk
-            if (item.template.junk)
-            {
-                infoLines.Add("Junk item");
-            }
-
-            // New item flag
-            if (item.isNew)
-            {
-                infoLines.Add("New item");
-            }
-
-            // Equipment stat modifiers (e.g. +3 Strength)
-            foreach (string mod in InventoryFormatting.BuildModifierLines(item))
-                infoLines.Add($"Modifier: {mod}");
-
-            // Attribute requirements (annotated with met/not met for the current PC)
-            foreach (string req in InventoryFormatting.BuildRequirementLines(item, pc))
-                infoLines.Add(req);
-
-            // Trait-specific item modifiers (e.g. Psychopath, Mysterious Stranger)
-            foreach (string traitLine in InventoryFormatting.BuildTraitItemModifierLines(item, pc))
-                infoLines.Add(traitLine);
-
-            // Weight
-            float weight = item.GetWeight();
-            if (weight > 0)
-            {
-                if (item.quantity > 1)
-                    infoLines.Add($"Weight: {weight:0.0} lbs each, {weight * item.quantity:0.0} lbs total");
-                else
-                    infoLines.Add($"Weight: {weight:0.0} lbs");
-            }
-
-            // Value — vendor-aware (applies barter adjustment when a vendor screen is open)
-            int itemValue = InventoryFormatting.ComputeItemValue(item);
-            if (itemValue > 0)
-            {
-                if (item.quantity > 1)
-                {
-                    int perUnit = Mathf.Max(1, itemValue / Mathf.Max(1, item.quantity));
-                    infoLines.Add($"Value: ${perUnit} each, ${itemValue} total");
-                }
-                else
-                {
-                    infoLines.Add($"Value: ${itemValue}");
-                }
-            }
-
-            // Tier
-            if (item.template.tier > 0)
-            {
-                infoLines.Add($"Tier: {item.template.tier}");
-            }
-
-            // Description (can be multiline — split into separate lines)
-            if (!string.IsNullOrEmpty(item.template.description))
-            {
-                string desc = UITextExtractor.CleanText(
-                    Language.Localize(item.template.description, false, false, string.Empty));
-                if (!string.IsNullOrEmpty(desc))
-                {
-                    infoLines.Add($"Description: {desc}");
-                }
-            }
-
-            // Bonus string from ItemInfoBox — try to read from the actual UI
-            try
-            {
-                var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
-                ItemInfoBox infoBox = null;
-                if (charInfoMenu != null)
-                {
-                    // The CharacterInfoMenu's inventoryPanel has an ItemInfoBox
-                    infoBox = charInfoMenu.GetComponentInChildren<ItemInfoBox>();
-                }
-                if (infoBox == null)
-                {
-                    var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
-                    if (popupInv != null)
-                    {
-                        infoBox = popupInv.itemInfoBox ?? popupInv.descriptionPanel;
-                    }
-                }
-
-                if (infoBox != null)
-                {
-                    // Read weapon-specific labels if visible
-                    if (infoBox.damageLabel != null && !string.IsNullOrEmpty(infoBox.damageLabel.text)
-                        && infoBox.damageLabel.gameObject.activeInHierarchy)
-                    {
-                        string dmg = UITextExtractor.CleanText(infoBox.damageLabel.text);
-                        if (!string.IsNullOrEmpty(dmg))
-                            infoLines.Add($"Damage display: {dmg}");
-                    }
-                    if (infoBox.rangeLabel != null && !string.IsNullOrEmpty(infoBox.rangeLabel.text)
-                        && infoBox.rangeLabel.gameObject.activeInHierarchy)
-                    {
-                        string rng = UITextExtractor.CleanText(infoBox.rangeLabel.text);
-                        if (!string.IsNullOrEmpty(rng))
-                            infoLines.Add($"Range display: {rng}");
-                    }
-                    if (infoBox.accuracyLabel != null && !string.IsNullOrEmpty(infoBox.accuracyLabel.text)
-                        && infoBox.accuracyLabel.gameObject.activeInHierarchy)
-                    {
-                        string acc = UITextExtractor.CleanText(infoBox.accuracyLabel.text);
-                        if (!string.IsNullOrEmpty(acc))
-                            infoLines.Add($"Accuracy: {acc}");
-                    }
-                    if (infoBox.armorLabel != null && !string.IsNullOrEmpty(infoBox.armorLabel.text)
-                        && infoBox.armorLabel.gameObject.activeInHierarchy)
-                    {
-                        string arm = UITextExtractor.CleanText(infoBox.armorLabel.text);
-                        if (!string.IsNullOrEmpty(arm))
-                            infoLines.Add($"Armor display: {arm}");
-                    }
-                    if (infoBox.penetrationLabel != null && !string.IsNullOrEmpty(infoBox.penetrationLabel.text)
-                        && infoBox.penetrationLabel.gameObject.activeInHierarchy)
-                    {
-                        string pen = UITextExtractor.CleanText(infoBox.penetrationLabel.text);
-                        if (!string.IsNullOrEmpty(pen))
-                            infoLines.Add($"Penetration display: {pen}");
-                    }
-                    if (infoBox.ammoLabel != null && !string.IsNullOrEmpty(infoBox.ammoLabel.text)
-                        && infoBox.ammoLabel.gameObject.activeInHierarchy)
-                    {
-                        string ammoText = UITextExtractor.CleanText(infoBox.ammoLabel.text);
-                        if (!string.IsNullOrEmpty(ammoText))
-                            infoLines.Add($"Ammo: {ammoText}");
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                MelonLogger.Warning($"[InventoryState] Error reading ItemInfoBox labels: {e.Message}");
-            }
-
-            // Comparison vs equipped item (suppressed when the focused item is itself equipped)
-            if (currentZone != NavigationZone.Equipment)
-            {
-                AppendComparisonLines(item, pc);
-            }
+            infoLines.AddRange(lines);
         }
 
-        // Appends a "Compared to equipped X" section with stat deltas for weapons and
-        // armor/wearables. Silently skips when no comparable equipped item exists.
-        private void AppendComparisonLines(ItemInstance focused, PC pc)
+        /// <summary>
+        /// Finds the ItemInfoBox backing whichever inventory UI is currently active so the
+        /// info browser can scrape the same visible labels a sighted player reads.
+        /// </summary>
+        private ItemInfoBox ResolveActiveInfoBox()
         {
-            bool isWeapon = focused is ItemInstance_Weapon;
-            bool isArmorOrWearable = focused is ItemInstance_Armor || focused is ItemInstance_Wearable;
-            if (!isWeapon && !isArmorOrWearable) return;
-
-            ItemInstance equipped = GetEquippedComparisonItem(focused, pc);
-            if (equipped == null) return;
-
-            string equippedName = UITextExtractor.CleanText(
-                Language.Localize(equipped.template.displayName, false, false, string.Empty));
-
-            int headerIndex = infoLines.Count;
-            infoLines.Add($"Compared to equipped {equippedName}:");
-
-            if (isWeapon && equipped is ItemInstance_Weapon ew && focused is ItemInstance_Weapon fw)
+            var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+            if (charInfoMenu != null)
             {
-                AppendIntDiff("minimum damage", fw.GetMinDamage() - ew.GetMinDamage());
-                AppendIntDiff("maximum damage", fw.GetMaxDamage() - ew.GetMaxDamage());
-                AppendIntDiff("attack range", fw.GetAttackRange() - ew.GetAttackRange());
-
-                int fAcc = InventoryFormatting.ComputeAccuracyPercent(fw, pc);
-                int eAcc = InventoryFormatting.ComputeAccuracyPercent(ew, pc);
-                if (fAcc >= 0 && eAcc >= 0)
-                    AppendIntDiff("accuracy", fAcc - eAcc, " percent");
-
-                int fCrit = InventoryFormatting.ComputeCritChancePercent(fw, pc);
-                int eCrit = InventoryFormatting.ComputeCritChancePercent(ew, pc);
-                if (fCrit >= 0 && eCrit >= 0)
-                    AppendIntDiff("critical chance", fCrit - eCrit, " percent");
-
-                var fwt = fw.template as ItemTemplate_Weapon;
-                var ewt = ew.template as ItemTemplate_Weapon;
-                if (fwt != null && ewt != null)
-                    AppendIntDiff("armor penetration", fwt.armorPenetration - ewt.armorPenetration);
-
-                AppendWeightDiff(focused.GetWeight() - equipped.GetWeight());
-            }
-            else if (isArmorOrWearable && focused.template is ItemTemplate_Equipment fTpl
-                     && equipped.template is ItemTemplate_Equipment eTpl)
-            {
-                // Union of stat keys from both templates — covers armor, rad resistance,
-                // attribute bonuses, etc. Reuses FormatStatModifier so display names and
-                // negative-stat penalty annotations match the rest of the info browser.
-                var keys = new HashSet<string>();
-                if (fTpl.stats != null)
-                {
-                    foreach (var kvp in fTpl.stats) keys.Add(kvp.Key);
-                }
-                if (eTpl.stats != null)
-                {
-                    foreach (var kvp in eTpl.stats) keys.Add(kvp.Key);
-                }
-                foreach (var key in keys)
-                {
-                    int diff = fTpl.GetStat(key) - eTpl.GetStat(key);
-                    if (diff == 0) continue;
-                    string line = InventoryFormatting.FormatStatModifier(key, diff);
-                    if (!string.IsNullOrEmpty(line))
-                        infoLines.Add(line);
-                }
-
-                AppendWeightDiff(focused.GetWeight() - equipped.GetWeight());
+                var infoBox = charInfoMenu.GetComponentInChildren<ItemInfoBox>();
+                if (infoBox != null) return infoBox;
             }
 
-            // No diffs emitted — replace the header with a clearer "identical" line.
-            if (infoLines.Count == headerIndex + 1)
-            {
-                infoLines[headerIndex] = $"Identical stats to equipped {equippedName}";
-            }
-        }
+            var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+            if (popupInv != null)
+                return popupInv.itemInfoBox ?? popupInv.descriptionPanel;
 
-        private void AppendIntDiff(string label, int diff, string units = "")
-        {
-            if (diff == 0) return;
-            string sign = diff > 0 ? "+" : "";
-            infoLines.Add($"{sign}{diff}{units} {label}");
-        }
-
-        private void AppendWeightDiff(float diff)
-        {
-            if (UnityEngine.Mathf.Abs(diff) < 0.05f) return;
-            string sign = diff > 0 ? "+" : "";
-            infoLines.Add($"{sign}{diff:0.0} pounds weight");
+            return null;
         }
 
         // Returns the equipped ItemInstance to compare the focused item against:

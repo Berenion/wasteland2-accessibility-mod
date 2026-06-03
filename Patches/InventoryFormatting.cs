@@ -1000,5 +1000,426 @@ namespace Wasteland2AccessibilityMod.Patches
                     Language.Localize(PrintableNameHelper.PrintNames[key], false, false, string.Empty));
             return key;
         }
+
+        /// <summary>
+        /// Builds the full multi-line item detail block shared by the inventory and
+        /// shop info browsers. Mirrors the stats a sighted player sees in the on-screen
+        /// <see cref="ItemInfoBox"/> so both screens read identically.
+        ///
+        /// Context differences are supplied by the caller:
+        ///   infoBox            — on-screen ItemInfoBox to scrape display labels from (may be null)
+        ///   equippedSlotName   — adds an "Equipped in: X" line when non-null (inventory equipment zone)
+        ///   comparisonEquipped — equipped item to diff against, or null to skip the comparison section
+        ///   valueLinesOverride — replaces the default vendor-aware "Value" line; the shop passes its
+        ///                        own buy/sell price lines here, null uses the default valuation
+        /// </summary>
+        internal static List<string> BuildItemInfoLines(
+            ItemInstance item,
+            PC pc,
+            ItemInfoBox infoBox = null,
+            string equippedSlotName = null,
+            ItemInstance comparisonEquipped = null,
+            List<string> valueLinesOverride = null)
+        {
+            var lines = new List<string>();
+            if (item == null || item.template == null) return lines;
+
+            // Name
+            string name = UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty));
+            lines.Add($"Name: {name}");
+
+            // Type — for weapons use the skill name ("Assault Rifle"), otherwise fall back to GetTypeString
+            string typeStr = null;
+            if (item is ItemInstance_Weapon)
+                typeStr = GetWeaponSkillDisplayName(item.template as ItemTemplate_Weapon);
+            if (string.IsNullOrEmpty(typeStr))
+                typeStr = item.template.GetTypeString();
+            if (!string.IsNullOrEmpty(typeStr))
+                lines.Add($"Type: {typeStr}");
+
+            // Quantity
+            if (item.quantity > 1)
+                lines.Add($"Quantity: {item.quantity}");
+
+            // Equipment slot if equipped
+            if (!string.IsNullOrEmpty(equippedSlotName))
+                lines.Add($"Equipped in: {equippedSlotName}");
+
+            // Weapon stats — use instance getters so weapon-mod bonuses are reflected
+            if (item is ItemInstance_Weapon weapon && weapon.template is ItemTemplate_Weapon wt)
+            {
+                int minDmg = weapon.GetMinDamage();
+                int maxDmg = weapon.GetMaxDamage();
+                if (minDmg > 0 || maxDmg > 0)
+                {
+                    lines.Add(minDmg == maxDmg
+                        ? $"Damage: {maxDmg}"
+                        : $"Damage: {minDmg} to {maxDmg}");
+                }
+
+                // Ranged-specific: loaded ammo, reserve ammo, caliber, range brackets, firing modes
+                if (weapon is ItemInstance_WeaponRanged rangedInst && wt is ItemTemplate_WeaponRanged)
+                {
+                    int clip = rangedInst.GetClipSize();
+                    if (clip > 0)
+                        lines.Add($"Ammo loaded: {rangedInst.GetAmmoCount()} of {clip}");
+
+                    string reserveLine = BuildReserveAmmoLine(rangedInst, pc);
+                    if (!string.IsNullOrEmpty(reserveLine))
+                        lines.Add(reserveLine);
+
+                    string caliber = GetWeaponCaliberDisplay(wt);
+                    if (!string.IsNullOrEmpty(caliber))
+                        lines.Add($"Uses: {caliber}");
+
+                    foreach (string line in BuildRangeBracketLines(rangedInst, pc))
+                        lines.Add(line);
+
+                    foreach (string line in BuildFiringModeLines(rangedInst))
+                        lines.Add(line);
+                }
+                else
+                {
+                    // Melee / thrown / RPG: raw max range only
+                    int range = weapon.GetAttackRange();
+                    if (range > 0)
+                        lines.Add($"Range: {range}");
+                }
+
+                // PC-aware accuracy & crit (matches the on-screen ItemInfoBox values)
+                int acc = ComputeAccuracyPercent(weapon, pc);
+                if (acc >= 0)
+                    lines.Add($"Accuracy: {acc} percent");
+                int crit = ComputeCritChancePercent(weapon, pc);
+                if (crit >= 0)
+                    lines.Add($"Critical chance: {crit} percent");
+
+                // Operational stats (AP to attack, AP to reload, chance to jam, jammed flag)
+                foreach (string line in BuildWeaponOperationalLines(weapon))
+                    lines.Add(line);
+
+                if (wt.armorPenetration > 0)
+                    lines.Add($"Armor penetration: {wt.armorPenetration}");
+
+                // Status-effect afflictor
+                string afflictor = BuildAfflictorLine(weapon);
+                if (!string.IsNullOrEmpty(afflictor))
+                    lines.Add(afflictor);
+
+                // Energy-weapon notes + above/below threshold multipliers
+                foreach (string line in BuildEnergyWeaponLines(wt))
+                    lines.Add(line);
+
+                // Mod slots (installed mods + empty slots)
+                foreach (string line in BuildModSlotLines(weapon))
+                    lines.Add(line);
+            }
+
+            // Armor stats
+            if (item is ItemInstance_Armor armor && armor.template is ItemTemplate_Equipment eqt)
+            {
+                int armorValue = eqt.GetStat("armor");
+                if (armorValue > 0)
+                    lines.Add($"Armor value: {armorValue}");
+
+                // Mod slots on armor (if any)
+                foreach (string line in BuildModSlotLines(armor))
+                    lines.Add(line);
+            }
+
+            // Ammo stats
+            if (item is ItemInstance_Ammo ammo && ammo.template is ItemTemplate_Ammo at)
+            {
+                string caliberDisplay = at.GetCaliberDisplayString();
+                if (!string.IsNullOrEmpty(caliberDisplay))
+                    lines.Add($"Caliber: {UITextExtractor.CleanText(caliberDisplay)}");
+                if (at.damageMultiplier != 1f && at.damageMultiplier > 0)
+                {
+                    int dmgPct = Mathf.RoundToInt((at.damageMultiplier - 1f) * 100f);
+                    if (dmgPct != 0)
+                        lines.Add($"Damage modifier: {dmgPct:+0;-#} percent");
+                }
+                if (at.expansionMultiplier != 1f && at.expansionMultiplier > 0)
+                {
+                    int expPct = Mathf.RoundToInt((at.expansionMultiplier - 1f) * 100f);
+                    if (expPct != 0)
+                        lines.Add($"Expansion: {expPct:+0;-#} percent");
+                }
+                if (at.penetration > 0)
+                    lines.Add($"Penetration: {at.penetration}");
+                if (at.chanceToReduceArmor > 0)
+                    lines.Add($"Armor reduction: {at.chanceToReduceArmor} percent chance, reduces by {at.armorReduction}");
+            }
+
+            // Usable/consumable stats
+            if (item is ItemInstance_Usable usable && usable.template is ItemTemplate_Usable ut)
+            {
+                if (ut.actionPoints > 0)
+                    lines.Add($"AP cost: {ut.actionPoints}");
+
+                // All skill-driven effect types, with PC-skill-adjusted heal values
+                foreach (string line in BuildConsumableEffectLines(usable, pc))
+                    lines.Add($"Effect: {line}");
+
+                // Skill-book / XP-giver items (e.g. "+1 Surgeon skill")
+                if (ut is ItemTemplate_UsableXPGiver xpGiver)
+                {
+                    string xpLine = BuildXPGiverLine(xpGiver);
+                    if (!string.IsNullOrEmpty(xpLine))
+                        lines.Add($"Grants: {xpLine}");
+                }
+
+                if (ut.aoeRadius > 0)
+                    lines.Add($"Area of effect: {ut.aoeRadius}");
+                if (ut.isConsumedOnUse)
+                    lines.Add("Consumed on use");
+            }
+
+            // Trinket info
+            if (item is ItemInstance_Trinket)
+                lines.Add("Trinket");
+
+            // Weapon mod info (slot, stat bonuses, requirements, allowed weapons)
+            if (item is ItemInstance_Mod modItem)
+            {
+                foreach (string line in BuildWeaponModLines(modItem, pc))
+                    lines.Add(line);
+            }
+
+            // Junk
+            if (item.template.junk)
+                lines.Add("Junk item");
+
+            // New item flag
+            if (item.isNew)
+                lines.Add("New item");
+
+            // Equipment stat modifiers (e.g. +3 Strength)
+            foreach (string mod in BuildModifierLines(item))
+                lines.Add($"Modifier: {mod}");
+
+            // Attribute requirements (annotated with met/not met for the current PC)
+            foreach (string req in BuildRequirementLines(item, pc))
+                lines.Add(req);
+
+            // Trait-specific item modifiers (e.g. Psychopath, Mysterious Stranger)
+            foreach (string traitLine in BuildTraitItemModifierLines(item, pc))
+                lines.Add(traitLine);
+
+            // Weight
+            float weight = item.GetWeight();
+            if (weight > 0)
+            {
+                if (item.quantity > 1)
+                    lines.Add($"Weight: {weight:0.0} lbs each, {weight * item.quantity:0.0} lbs total");
+                else
+                    lines.Add($"Weight: {weight:0.0} lbs");
+            }
+
+            // Value / price — the shop passes its own buy/sell lines; everyone else gets the
+            // default vendor-aware valuation.
+            if (valueLinesOverride != null)
+            {
+                lines.AddRange(valueLinesOverride);
+            }
+            else
+            {
+                int itemValue = ComputeItemValue(item);
+                if (itemValue > 0)
+                {
+                    if (item.quantity > 1)
+                    {
+                        int perUnit = Mathf.Max(1, itemValue / Mathf.Max(1, item.quantity));
+                        lines.Add($"Value: ${perUnit} each, ${itemValue} total");
+                    }
+                    else
+                    {
+                        lines.Add($"Value: ${itemValue}");
+                    }
+                }
+            }
+
+            // Tier
+            if (item.template.tier > 0)
+                lines.Add($"Tier: {item.template.tier}");
+
+            // Description (can be multiline — split into separate lines)
+            if (!string.IsNullOrEmpty(item.template.description))
+            {
+                string desc = UITextExtractor.CleanText(
+                    Language.Localize(item.template.description, false, false, string.Empty));
+                if (!string.IsNullOrEmpty(desc))
+                    lines.Add($"Description: {desc}");
+            }
+
+            // Display labels scraped from the on-screen ItemInfoBox (if one was supplied)
+            AppendInfoBoxLabels(lines, infoBox);
+
+            // Comparison vs the equipped item (when one was supplied)
+            if (comparisonEquipped != null)
+                AppendComparisonLines(lines, item, comparisonEquipped, pc);
+
+            return lines;
+        }
+
+        /// <summary>
+        /// Reads the visible weapon/armor display labels off an on-screen ItemInfoBox and
+        /// appends them to <paramref name="lines"/>. No-op when infoBox is null.
+        /// </summary>
+        internal static void AppendInfoBoxLabels(List<string> lines, ItemInfoBox infoBox)
+        {
+            if (infoBox == null) return;
+            try
+            {
+                AppendInfoBoxLabel(lines, "Damage display", infoBox.damageLabel);
+                AppendInfoBoxLabel(lines, "Range display", infoBox.rangeLabel);
+                AppendInfoBoxLabel(lines, "Accuracy", infoBox.accuracyLabel);
+                AppendInfoBoxLabel(lines, "Armor display", infoBox.armorLabel);
+                AppendInfoBoxLabel(lines, "Penetration display", infoBox.penetrationLabel);
+                AppendInfoBoxLabel(lines, "Ammo", infoBox.ammoLabel);
+            }
+            catch (Exception e)
+            {
+                MelonLoader.MelonLogger.Warning($"[InventoryFormatting] Error reading ItemInfoBox labels: {e.Message}");
+            }
+        }
+
+        private static void AppendInfoBoxLabel(List<string> lines, string prefix, UILabel label)
+        {
+            if (label == null || string.IsNullOrEmpty(label.text) || !label.gameObject.activeInHierarchy)
+                return;
+            string text = UITextExtractor.CleanText(label.text);
+            if (!string.IsNullOrEmpty(text))
+                lines.Add($"{prefix}: {text}");
+        }
+
+        /// <summary>
+        /// Appends a "Compared to equipped X" section with stat deltas for weapons and
+        /// armor/wearables. No-op when the items aren't comparable or are the same instance.
+        /// </summary>
+        internal static void AppendComparisonLines(List<string> lines, ItemInstance focused, ItemInstance equipped, PC pc)
+        {
+            if (focused == null || equipped == null || focused == equipped) return;
+
+            bool isWeapon = focused is ItemInstance_Weapon;
+            bool isArmorOrWearable = focused is ItemInstance_Armor || focused is ItemInstance_Wearable;
+            if (!isWeapon && !isArmorOrWearable) return;
+
+            string equippedName = UITextExtractor.CleanText(
+                Language.Localize(equipped.template.displayName, false, false, string.Empty));
+
+            int headerIndex = lines.Count;
+            lines.Add($"Compared to equipped {equippedName}:");
+
+            if (isWeapon && equipped is ItemInstance_Weapon ew && focused is ItemInstance_Weapon fw)
+            {
+                AppendIntDiff(lines, "minimum damage", fw.GetMinDamage() - ew.GetMinDamage());
+                AppendIntDiff(lines, "maximum damage", fw.GetMaxDamage() - ew.GetMaxDamage());
+                AppendIntDiff(lines, "attack range", fw.GetAttackRange() - ew.GetAttackRange());
+
+                int fAcc = ComputeAccuracyPercent(fw, pc);
+                int eAcc = ComputeAccuracyPercent(ew, pc);
+                if (fAcc >= 0 && eAcc >= 0)
+                    AppendIntDiff(lines, "accuracy", fAcc - eAcc, " percent");
+
+                int fCrit = ComputeCritChancePercent(fw, pc);
+                int eCrit = ComputeCritChancePercent(ew, pc);
+                if (fCrit >= 0 && eCrit >= 0)
+                    AppendIntDiff(lines, "critical chance", fCrit - eCrit, " percent");
+
+                var fwt = fw.template as ItemTemplate_Weapon;
+                var ewt = ew.template as ItemTemplate_Weapon;
+                if (fwt != null && ewt != null)
+                    AppendIntDiff(lines, "armor penetration", fwt.armorPenetration - ewt.armorPenetration);
+
+                AppendWeightDiff(lines, focused.GetWeight() - equipped.GetWeight());
+            }
+            else if (isArmorOrWearable && focused.template is ItemTemplate_Equipment fTpl
+                     && equipped.template is ItemTemplate_Equipment eTpl)
+            {
+                // Union of stat keys from both templates — covers armor, rad resistance,
+                // attribute bonuses, etc. Reuses FormatStatModifier so display names and
+                // negative-stat penalty annotations match the rest of the info browser.
+                var keys = new HashSet<string>();
+                if (fTpl.stats != null)
+                {
+                    foreach (var kvp in fTpl.stats) keys.Add(kvp.Key);
+                }
+                if (eTpl.stats != null)
+                {
+                    foreach (var kvp in eTpl.stats) keys.Add(kvp.Key);
+                }
+                foreach (var key in keys)
+                {
+                    int diff = fTpl.GetStat(key) - eTpl.GetStat(key);
+                    if (diff == 0) continue;
+                    string line = FormatStatModifier(key, diff);
+                    if (!string.IsNullOrEmpty(line))
+                        lines.Add(line);
+                }
+
+                AppendWeightDiff(lines, focused.GetWeight() - equipped.GetWeight());
+            }
+
+            // No diffs emitted — replace the header with a clearer "identical" line.
+            if (lines.Count == headerIndex + 1)
+            {
+                lines[headerIndex] = $"Identical stats to equipped {equippedName}";
+            }
+        }
+
+        private static void AppendIntDiff(List<string> lines, string label, int diff, string units = "")
+        {
+            if (diff == 0) return;
+            string sign = diff > 0 ? "+" : "";
+            lines.Add($"{sign}{diff}{units} {label}");
+        }
+
+        private static void AppendWeightDiff(List<string> lines, float diff)
+        {
+            if (Mathf.Abs(diff) < 0.05f) return;
+            string sign = diff > 0 ? "+" : "";
+            lines.Add($"{sign}{diff:0.0} pounds weight");
+        }
+
+        /// <summary>
+        /// Resolves the equipped item on <paramref name="pc"/> to compare a focused item
+        /// against, working purely off the PC's equipment array (no inventory-screen UI).
+        ///   - Weapons → the PC's slot-1 weapon (falls back to the first equipped weapon)
+        ///   - Armor/Wearable → the equipped item occupying the focused item's slot
+        /// Returns null when nothing comparable is equipped.
+        /// </summary>
+        internal static ItemInstance ResolveEquippedComparisonItem(ItemInstance focused, PC pc)
+        {
+            if (focused == null || pc == null || pc.inventory == null) return null;
+            var equipment = pc.inventory.equipment;
+            if (equipment == null) return null;
+
+            if (focused is ItemInstance_Weapon)
+            {
+                var slot1Tpl = pc.pcStats != null ? pc.pcStats.GetWeaponTemplate(false) : null;
+                if (slot1Tpl != null)
+                {
+                    foreach (ItemInstance i in equipment)
+                        if (i != null && i is ItemInstance_Weapon && i.template == slot1Tpl)
+                            return i;
+                }
+                foreach (ItemInstance i in equipment)
+                    if (i is ItemInstance_Weapon) return i;
+                return null;
+            }
+
+            if (focused is ItemInstance_Armor || focused is ItemInstance_Wearable)
+            {
+                var focusedTpl = focused.template as ItemTemplate_Equipment;
+                if (focusedTpl == null) return null;
+                EquipmentSlot targetSlot = focusedTpl.slot;
+                foreach (ItemInstance i in equipment)
+                    if (i != null && i.template is ItemTemplate_Equipment t && t.slot == targetSlot)
+                        return i;
+            }
+
+            return null;
+        }
     }
 }

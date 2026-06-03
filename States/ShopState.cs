@@ -1154,161 +1154,39 @@ namespace Wasteland2AccessibilityMod.States
 
         private void BuildInfoLines(ItemInstance item)
         {
-            // Name
-            string name = UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty));
-            infoLines.Add($"Name: {name}");
+            PC pc = GetCurrentPC();
 
-            // Type — for weapons use the skill name ("Handguns", "Assault Rifle") to match
-            // the inventory info-browser; fall back to the generic GetTypeString otherwise.
-            string typeStr = null;
-            if (item is ItemInstance_Weapon)
-                typeStr = InventoryFormatting.GetWeaponSkillDisplayName(item.template as ItemTemplate_Weapon);
-            if (string.IsNullOrEmpty(typeStr))
-                typeStr = item.template.GetTypeString();
-            if (!string.IsNullOrEmpty(typeStr))
-                infoLines.Add($"Type: {typeStr}");
+            // Shop-specific trade price lines, inserted where the default "Value" line
+            // would otherwise appear in the shared block.
+            List<string> priceLines = BuildPriceInfoLines(item);
 
-            // Quantity
-            if (item.quantity > 1)
-                infoLines.Add($"Quantity: {item.quantity}");
+            // The vendor screen's ItemInfoBox carries the same visible labels a sighted
+            // player reads, so scrape it the same way the inventory browser does.
+            ItemInfoBox infoBox = null;
+            var vendorScreen = GetVendorScreen();
+            if (vendorScreen != null)
+                infoBox = vendorScreen.itemInfoBox;
 
-            // Trade price (shop-specific)
-            AddPriceInfoLines(item);
+            // Compare a vendor item the user might buy (or a player item) against what the
+            // selected PC currently has equipped.
+            ItemInstance comparisonEquipped = InventoryFormatting.ResolveEquippedComparisonItem(item, pc);
 
-            // Weapon stats
-            if (item is ItemInstance_Weapon weapon && weapon.template is ItemTemplate_Weapon wt)
-            {
-                if (wt.minDamage > 0 || wt.maxDamage > 0)
-                    infoLines.Add($"Damage: {wt.minDamage} to {wt.maxDamage}");
-                if (wt.attackRange > 0)
-                    infoLines.Add($"Range: {wt.attackRange}");
-                if (wt.criticalHitBonusChance > 0)
-                    infoLines.Add($"Critical chance: {wt.criticalHitBonusChance} percent");
-                if (wt.armorPenetration > 0)
-                    infoLines.Add($"Armor penetration: {wt.armorPenetration}");
+            var lines = InventoryFormatting.BuildItemInfoLines(
+                item, pc, infoBox,
+                equippedSlotName: null,
+                comparisonEquipped: comparisonEquipped,
+                valueLinesOverride: priceLines);
 
-                if (item is ItemInstance_WeaponRanged && wt is ItemTemplate_WeaponRanged rwt)
-                {
-                    if (rwt.clipSize > 0)
-                        infoLines.Add($"Clip size: {rwt.clipSize}");
-                }
-            }
-
-            // Armor stats
-            if (item is ItemInstance_Armor armor && armor.template is ItemTemplate_Equipment eqt)
-            {
-                int ac = eqt.GetStat("AC");
-                if (ac > 0)
-                    infoLines.Add($"Armor class: {ac}");
-            }
-
-            // Ammo stats
-            if (item is ItemInstance_Ammo ammo && ammo.template is ItemTemplate_Ammo at)
-            {
-                string caliberDisplay = at.GetCaliberDisplayString();
-                if (!string.IsNullOrEmpty(caliberDisplay))
-                    infoLines.Add($"Caliber: {UITextExtractor.CleanText(caliberDisplay)}");
-                if (at.damageMultiplier != 1f && at.damageMultiplier > 0)
-                {
-                    int dmgPct = Mathf.RoundToInt((at.damageMultiplier - 1f) * 100f);
-                    if (dmgPct != 0)
-                        infoLines.Add($"Damage modifier: {dmgPct:+0;-#} percent");
-                }
-                if (at.penetration > 0)
-                    infoLines.Add($"Penetration: {at.penetration}");
-                if (at.chanceToReduceArmor > 0)
-                    infoLines.Add($"Armor reduction: {at.chanceToReduceArmor} percent chance, reduces by {at.armorReduction}");
-            }
-
-            // Usable/consumable stats
-            if (item is ItemInstance_Usable usable && usable.template is ItemTemplate_Usable ut)
-            {
-                if (ut.actionPoints > 0)
-                    infoLines.Add($"AP cost: {ut.actionPoints}");
-
-                if (ut is ItemTemplate_UsableSkill skillTemplate && skillTemplate.itemEffects != null)
-                {
-                    foreach (var effect in skillTemplate.itemEffects)
-                    {
-                        string effectType = effect.effectType.ToString();
-                        if (effectType == "Heal" || effectType == "HealPercent")
-                        {
-                            if (effect.minHeal > 0 || effect.maxHeal > 0)
-                            {
-                                if (effect.minHeal == effect.maxHeal)
-                                    infoLines.Add($"Heals: {effect.maxHeal}");
-                                else
-                                    infoLines.Add($"Heals: {effect.minHeal} to {effect.maxHeal}");
-                            }
-                        }
-                    }
-
-                    if (!string.IsNullOrEmpty(skillTemplate.associatedSkill) && skillTemplate.associatedSkill != "NONE")
-                    {
-                        string skillName = skillTemplate.associatedSkill.Replace("_", " ");
-                        infoLines.Add($"Requires skill: {skillName}");
-                    }
-                }
-
-                if (ut.aoeRadius > 0)
-                    infoLines.Add($"Area of effect: {ut.aoeRadius}");
-                if (ut.isConsumedOnUse)
-                    infoLines.Add("Consumed on use");
-            }
-
-            // Trinket
-            if (item is ItemInstance_Trinket)
-                infoLines.Add("Trinket");
-
-            // Junk
-            if (item.template.junk)
-                infoLines.Add("Junk item");
-
-            // Weight
-            float weight = item.GetWeight();
-            if (weight > 0)
-            {
-                if (item.quantity > 1)
-                    infoLines.Add($"Weight: {weight:0.0} lbs each, {weight * item.quantity:0.0} lbs total");
-                else
-                    infoLines.Add($"Weight: {weight:0.0} lbs");
-            }
-
-            // Tier
-            if (item.template.tier > 0)
-                infoLines.Add($"Tier: {item.template.tier}");
-
-            // Description
-            if (!string.IsNullOrEmpty(item.template.description))
-            {
-                string desc = UITextExtractor.CleanText(
-                    Language.Localize(item.template.description, false, false, string.Empty));
-                if (!string.IsNullOrEmpty(desc))
-                    infoLines.Add($"Description: {desc}");
-            }
-
-            // Try to read from the VendorScreen's ItemInfoBox
-            try
-            {
-                var vendorScreen = GetVendorScreen();
-                if (vendorScreen != null && vendorScreen.itemInfoBox != null)
-                {
-                    ItemInfoBox infoBox = vendorScreen.itemInfoBox;
-                    AddInfoBoxLabels(infoBox);
-                }
-            }
-            catch (Exception e)
-            {
-                MelonLogger.Warning($"[ShopState] Error reading ItemInfoBox labels: {e.Message}");
-            }
+            infoLines.AddRange(lines);
         }
 
-        private void AddPriceInfoLines(ItemInstance item)
+        private List<string> BuildPriceInfoLines(ItemInstance item)
         {
-            if (item.template.price <= 0) return;
+            var priceLines = new List<string>();
+            if (item.template.price <= 0) return priceLines;
 
             var vendorScreen = GetVendorScreen();
-            if (vendorScreen == null) return;
+            if (vendorScreen == null) return priceLines;
 
             // Try to get the actual trade value via the Escrow system
             PC pc = GetCurrentPC();
@@ -1323,67 +1201,22 @@ namespace Wasteland2AccessibilityMod.States
                     int price = Mathf.FloorToInt(tradeValue);
 
                     if (currentZone == ShopZone.VendorInventory)
-                        infoLines.Add($"Buy price: {price} scrap");
+                        priceLines.Add($"Buy price: {price} scrap");
                     else if (currentZone == ShopZone.PlayerInventory)
-                        infoLines.Add($"Sell price: {price} scrap");
+                        priceLines.Add($"Sell price: {price} scrap");
                     else
-                        infoLines.Add($"Trade value: {price} scrap");
+                        priceLines.Add($"Trade value: {price} scrap");
 
                     if (item.quantity > 1)
-                        infoLines.Add($"Total: {price * item.quantity} scrap");
+                        priceLines.Add($"Total: {price * item.quantity} scrap");
 
-                    return;
+                    return priceLines;
                 }
             }
 
             // Fallback: base price
-            infoLines.Add($"Base price: {item.template.price} scrap");
-        }
-
-        private void AddInfoBoxLabels(ItemInfoBox infoBox)
-        {
-            if (infoBox.damageLabel != null && !string.IsNullOrEmpty(infoBox.damageLabel.text)
-                && infoBox.damageLabel.gameObject.activeInHierarchy)
-            {
-                string dmg = UITextExtractor.CleanText(infoBox.damageLabel.text);
-                if (!string.IsNullOrEmpty(dmg))
-                    infoLines.Add($"Damage display: {dmg}");
-            }
-            if (infoBox.rangeLabel != null && !string.IsNullOrEmpty(infoBox.rangeLabel.text)
-                && infoBox.rangeLabel.gameObject.activeInHierarchy)
-            {
-                string rng = UITextExtractor.CleanText(infoBox.rangeLabel.text);
-                if (!string.IsNullOrEmpty(rng))
-                    infoLines.Add($"Range display: {rng}");
-            }
-            if (infoBox.accuracyLabel != null && !string.IsNullOrEmpty(infoBox.accuracyLabel.text)
-                && infoBox.accuracyLabel.gameObject.activeInHierarchy)
-            {
-                string acc = UITextExtractor.CleanText(infoBox.accuracyLabel.text);
-                if (!string.IsNullOrEmpty(acc))
-                    infoLines.Add($"Accuracy: {acc}");
-            }
-            if (infoBox.armorLabel != null && !string.IsNullOrEmpty(infoBox.armorLabel.text)
-                && infoBox.armorLabel.gameObject.activeInHierarchy)
-            {
-                string arm = UITextExtractor.CleanText(infoBox.armorLabel.text);
-                if (!string.IsNullOrEmpty(arm))
-                    infoLines.Add($"Armor display: {arm}");
-            }
-            if (infoBox.penetrationLabel != null && !string.IsNullOrEmpty(infoBox.penetrationLabel.text)
-                && infoBox.penetrationLabel.gameObject.activeInHierarchy)
-            {
-                string pen = UITextExtractor.CleanText(infoBox.penetrationLabel.text);
-                if (!string.IsNullOrEmpty(pen))
-                    infoLines.Add($"Penetration display: {pen}");
-            }
-            if (infoBox.ammoLabel != null && !string.IsNullOrEmpty(infoBox.ammoLabel.text)
-                && infoBox.ammoLabel.gameObject.activeInHierarchy)
-            {
-                string ammoText = UITextExtractor.CleanText(infoBox.ammoLabel.text);
-                if (!string.IsNullOrEmpty(ammoText))
-                    infoLines.Add($"Ammo: {ammoText}");
-            }
+            priceLines.Add($"Base price: {item.template.price} scrap");
+            return priceLines;
         }
 
         #endregion
