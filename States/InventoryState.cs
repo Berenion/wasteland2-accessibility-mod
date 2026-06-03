@@ -109,6 +109,13 @@ namespace Wasteland2AccessibilityMod.States
                 var modalMenu = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
                 if (modalMenu != null && modalMenu.gameObject.activeInHierarchy) return false;
 
+                // Yield when the field-strip result popup is open (ItemResultState handles it).
+                // Otherwise this state re-activates the same frame the popup opens and its
+                // OnActivated announcement interrupts the strip result. On close, we re-activate
+                // and re-announce the focused item, which is the desired feedback.
+                var resultMenu = UnityEngine.Object.FindObjectOfType<PopupItemResultMenu>();
+                if (resultMenu != null && resultMenu.gameObject.activeInHierarchy) return false;
+
                 // Check for PopupInventoryMenu (loot containers) FIRST — loot takes priority
                 // because CharacterInfoMenu can coexist and would shadow the popup check
                 var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
