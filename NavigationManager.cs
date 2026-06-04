@@ -304,6 +304,7 @@ namespace Wasteland2AccessibilityMod
                 if (nexus.transform == null) continue;
                 if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) continue;
                 if (FOWHelper.IsPerceptionGated(nexus)) continue;
+                if (!HasInteractionSurface(nexus)) continue;
                 if (!MatchesCategory(nexus, currentCategory)) continue;
                 filteredInteractables.Add(nexus);
             }
@@ -314,6 +315,33 @@ namespace Wasteland2AccessibilityMod
                 .ToList();
 
             MelonLogger.Msg($"Filtered interactables: {filteredInteractables.Count} found (category: {currentCategory})");
+        }
+
+        /// <summary>
+        /// True if the nexus exposes something the player can actually target, ruling out
+        /// invisible scripting trigger volumes (e.g. AZ4_HiddenBoyTrigger) that register an
+        /// InteractableNexus — complete with an enabled Highlight — but offer no interaction.
+        /// A real target trips at least one of: it's an InteractableObject (objects, containers,
+        /// doors, switches), it has an examine SkillObject, it backs a mob (characters), or it
+        /// reports an available interaction such as Poked (map exits / skill interactions).
+        /// Verified against [TileTrace] logs: the trigger matches none of these; Harvey's Cart,
+        /// RedSkorpionPoster, the WorldLoadGlobe exit, and NPCs each match at least one.
+        /// </summary>
+        private static bool HasInteractionSurface(InteractableNexus nexus)
+        {
+            if (nexus.drama is InteractableObject) return true;
+            if (nexus.skobExamine != null) return true;
+            if (nexus.isMob) return true;
+
+            var interactions = nexus.GetAllowedInteractions();
+            if (interactions != null)
+            {
+                foreach (var kvp in interactions)
+                {
+                    if (kvp.Value == 1) return true;
+                }
+            }
+            return false;
         }
 
         private static void UpdatePartyList(Vector3 playerPos)
