@@ -1,8 +1,8 @@
 # Changelog
 
-## [2.0.0-beta] — 2026-05-28
+## [0.7.0-beta] — 2026-05-28
 
-First public beta of the rewritten accessibility mod. The 1.0 release (Xbox-controller-default) has been superseded entirely; v2.0 is a different mod sharing only the name.
+First public beta of the rewritten accessibility mod. The earlier Xbox-controller-default release has been superseded entirely; this is a different mod sharing only the name.
 
 ### Added — Screen reader pipeline
 - Tolk integration for NVDA, JAWS, and SAPI output.

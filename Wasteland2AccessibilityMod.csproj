@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net35</TargetFramework>
     <AssemblyName>Wasteland2AccessibilityMod</AssemblyName>
-    <Description>Accessibility mod for Wasteland 2 Director's Cut - Sets Xbox controller as default input method</Description>
+    <Description>Screen-reader and keyboard accessibility mod for Wasteland 2 Director's Cut</Description>
     <Version>0.7.0</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>

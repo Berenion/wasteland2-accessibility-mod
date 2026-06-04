@@ -1,6 +1,7 @@
 # Build outputs
 bin/
 obj/
+dist/
 *.dll
 *.pdb
 *.exe
@@ -49,6 +50,11 @@ Thumbs.db
 !*.md
 !*.cs
 !*.csproj
+!package.ps1
+
+# Bundled third-party redistributable (Tolk bridge, BSD 3-clause) — shipped in the release zip
+!redist/
+!redist/*.dll
 
 # Internal LLM-assistant guidance — not shipped
 CLAUDE.md
