@@ -1207,6 +1207,10 @@ namespace Wasteland2AccessibilityMod.States
                 if (interactable.isPC) continue;
                 if (!FOWHelper.IsVisibleToSighted(interactable.gameObject)) continue;
                 if (FOWHelper.IsPerceptionGated(interactable)) continue;
+                // Skip invisible scripting trigger volumes (e.g. AZ4_HiddenBoyTrigger) that
+                // register a nexus but expose no player interaction. Same gate as the cycling
+                // scanner in NavigationManager.
+                if (!NavigationManager.HasInteractionSurface(interactable)) continue;
 
                 if (IsOnCurrentTile(interactable.transform.position))
                 {

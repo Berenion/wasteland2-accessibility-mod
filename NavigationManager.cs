@@ -327,7 +327,7 @@ namespace Wasteland2AccessibilityMod
         /// Verified against [TileTrace] logs: the trigger matches none of these; Harvey's Cart,
         /// RedSkorpionPoster, the WorldLoadGlobe exit, and NPCs each match at least one.
         /// </summary>
-        private static bool HasInteractionSurface(InteractableNexus nexus)
+        public static bool HasInteractionSurface(InteractableNexus nexus)
         {
             if (nexus.drama is InteractableObject) return true;
             if (nexus.skobExamine != null) return true;
