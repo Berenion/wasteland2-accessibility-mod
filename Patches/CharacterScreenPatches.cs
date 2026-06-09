@@ -215,7 +215,7 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPrefix]
         public static bool Prefix()
         {
-            return !CharacterState.blockUIInput && !CharacterInfoState.blockUIInput && !GenericMenuState.blockUIInput;
+            return !CharacterState.blockUIInput && !CharacterInfoState.blockUIInput && !GenericMenuState.blockUIInput && !KeywordEntryState.blockUIInput;
         }
     }
 
@@ -230,7 +230,7 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPrefix]
         public static bool Prefix()
         {
-            return !CharacterState.blockUIInput && !CharacterInfoState.blockUIInput && !GenericMenuState.blockUIInput;
+            return !CharacterState.blockUIInput && !CharacterInfoState.blockUIInput && !GenericMenuState.blockUIInput && !KeywordEntryState.blockUIInput;
         }
     }
 }

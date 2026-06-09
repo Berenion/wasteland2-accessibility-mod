@@ -305,6 +305,19 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // Home / End jump to first / last option (indexed control-list menus only)
+            if (Input.GetKeyDown(KeyCode.Home) && optionsControls != null && optionsControls.Count > 0)
+            {
+                NavigateToEdge(toFirst: true);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.End) && optionsControls != null && optionsControls.Count > 0)
+            {
+                NavigateToEdge(toFirst: false);
+                return true;
+            }
+
             // Handle Delete key for SaveLoadScreen
             if (cachedSaveLoadScreen != null && Input.GetKeyDown(KeyCode.Delete))
             {
@@ -924,19 +937,32 @@ namespace Wasteland2AccessibilityMod.States
 
             // Up/Down navigation
             int newIndex = optionsControlIndex;
+            bool wrapped = false;
             if (direction == KeyCode.UpArrow)
             {
                 newIndex = optionsControlIndex - 1;
-                if (newIndex < 0) newIndex = optionsControls.Count - 1; // Wrap
+                if (newIndex < 0) { newIndex = optionsControls.Count - 1; wrapped = true; } // Wrap
             }
             else if (direction == KeyCode.DownArrow || direction == KeyCode.Tab)
             {
                 newIndex = optionsControlIndex + 1;
-                if (newIndex >= optionsControls.Count) newIndex = 0; // Wrap
+                if (newIndex >= optionsControls.Count) { newIndex = 0; wrapped = true; } // Wrap
             }
 
+            ApplyOptionSelection(newIndex, wrapped);
+        }
+
+        /// <summary>
+        /// Moves selection to a computed option index: syncs UICamera/SaveLoad selection,
+        /// announces, and plays the wrap cue if the move looped past an end. No-ops when
+        /// the index is unchanged or out of range. Shared by arrow nav and Home/End.
+        /// </summary>
+        private void ApplyOptionSelection(int newIndex, bool wrapped)
+        {
+            if (optionsControls == null) return;
             if (newIndex != optionsControlIndex && newIndex >= 0 && newIndex < optionsControls.Count)
             {
+                if (wrapped) MenuCue.PlayWrap();
                 optionsControlIndex = newIndex;
                 UICamera.selectedObject = optionsControls[newIndex];
 
@@ -962,6 +988,18 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
+        /// <summary>
+        /// Jumps option selection to the first or last entry (Home / End). Only meaningful
+        /// for the indexed control-list menus (Options, Pause, Save/Load).
+        /// </summary>
+        private void NavigateToEdge(bool toFirst)
+        {
+            if (optionsControls == null || optionsControls.Count == 0) return;
+            if (optionsControlIndex < 0 || optionsControlIndex >= optionsControls.Count)
+                optionsControlIndex = FindCurrentControlIndex();
+            ApplyOptionSelection(toFirst ? 0 : optionsControls.Count - 1, wrapped: false);
+        }
+
         private void CycleDropdownValue(OPT_Dropdown dropdown, int direction)
         {
             if (dropdown.popupList == null || dropdown.popupList.items == null) return;
@@ -976,8 +1014,10 @@ namespace Wasteland2AccessibilityMod.States
 
             int currentIndex = dropdown.popupList.items.IndexOf(dropdown.popupList.value);
             int newIndex = currentIndex + direction;
-            if (newIndex < 0) newIndex = dropdown.popupList.items.Count - 1;
-            if (newIndex >= dropdown.popupList.items.Count) newIndex = 0;
+            bool wrapped = false;
+            if (newIndex < 0) { newIndex = dropdown.popupList.items.Count - 1; wrapped = true; }
+            if (newIndex >= dropdown.popupList.items.Count) { newIndex = 0; wrapped = true; }
+            if (wrapped && dropdown.popupList.items.Count > 1) MenuCue.PlayWrap();
 
             dropdown.popupList.value = dropdown.popupList.items[newIndex];
             string val = UITextExtractor.CleanText(dropdown.popupList.value);

@@ -43,6 +43,7 @@ namespace Wasteland2AccessibilityMod.States
             public string SkillInfo;
             public bool IsGoodbye;
             public bool IsUnavailable;
+            public bool IsKeywordEntry;
             public GameObject ButtonObject;
         }
 
@@ -145,6 +146,7 @@ namespace Wasteland2AccessibilityMod.States
             // Down arrow - next option
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
+                if (selectedIndex == currentOptions.Count - 1 && currentOptions.Count > 1) MenuCue.PlayWrap();
                 selectedIndex = (selectedIndex + 1) % currentOptions.Count;
                 AnnounceCurrentOption();
                 InputSuppressor.ShouldSuppressUINavigation = true;
@@ -155,7 +157,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
                 selectedIndex--;
-                if (selectedIndex < 0) selectedIndex = currentOptions.Count - 1;
+                if (selectedIndex < 0) { selectedIndex = currentOptions.Count - 1; if (currentOptions.Count > 1) MenuCue.PlayWrap(); }
                 AnnounceCurrentOption();
                 InputSuppressor.ShouldSuppressUINavigation = true;
                 return true;
@@ -337,6 +339,25 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
+            // Append a synthetic "Enter a keyword or password" option whenever the conversation
+            // accepts manually typed keywords. The game's keyword text box is always present in
+            // keyboard conversations, but secret keywords (passwords like Red's computer access
+            // code) are never shown as buttons — this surfaces that typing path to the navigation.
+            if (IsManualKeywordInputAvailable(hud))
+            {
+                var keywordOption = new ConversationOption
+                {
+                    DisplayText = "Enter a keyword or password",
+                    IsKeywordEntry = true,
+                };
+                // Place it just before Goodbye ("leave it") so that stays the last option.
+                int goodbyeIndex = currentOptions.FindIndex(o => o.IsGoodbye);
+                if (goodbyeIndex >= 0)
+                    currentOptions.Insert(goodbyeIndex, keywordOption);
+                else
+                    currentOptions.Add(keywordOption);
+            }
+
             // Clamp selected index to valid range
             if (selectedIndex >= currentOptions.Count)
             {
@@ -446,11 +467,44 @@ namespace Wasteland2AccessibilityMod.States
             return announcement;
         }
 
+        /// <summary>
+        /// True when the conversation accepts manually typed keywords (the on-screen keyword
+        /// input box is shown). False on gamepad — where the game uses a modal instead — and
+        /// when the input pane is hidden (e.g. some world-map radio conversations).
+        /// </summary>
+        private static bool IsManualKeywordInputAvailable(ConversationHUD hud)
+        {
+            if (hud == null || hud.inputPane == null) return false;
+            if (MonoBehaviourSingleton<InputManager>.HasInstance() &&
+                MonoBehaviourSingleton<InputManager>.GetInstance().isGamepadOn)
+                return false;
+            return hud.inputPane.gameObject.activeInHierarchy;
+        }
+
+        /// <summary>
+        /// Opens the game's custom-keyword text box (the same ModalInputMenu used for gamepad).
+        /// KeywordEntryState then handles accessible typing; submitting routes through
+        /// ConversationHUD.OnCustomKeywordEntered -> OnCustomKeywordInput (the keyword/password check).
+        /// </summary>
+        private void OpenKeywordEntry(ConversationHUD hud)
+        {
+            if (hud == null) return;
+            ScreenReaderManager.SpeakInterrupt("Enter a keyword or password");
+            MonoBehaviourSingleton<GUIManager>.GetInstance().DisplayInputMenuOK(
+                "Enter keyword or password", "", hud.OnCustomKeywordEntered, "");
+        }
+
         private void SelectCurrentOption()
         {
             if (selectedIndex < 0 || selectedIndex >= currentOptions.Count) return;
 
             var opt = currentOptions[selectedIndex];
+
+            if (opt.IsKeywordEntry)
+            {
+                OpenKeywordEntry(MonoBehaviourSingleton<ConversationHUD>.GetInstance());
+                return;
+            }
 
             if (opt.IsUnavailable)
             {

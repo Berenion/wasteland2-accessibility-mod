@@ -602,6 +602,21 @@ namespace Wasteland2AccessibilityMod.States
 
         #region Navigation
 
+        private void JumpToEdge(bool toFirst)
+        {
+            if (lastPanel == CharacterInfoMenu.InfoPanel.Dossier)
+            {
+                if (dossierLines.Count == 0) return;
+                controlIndex = toFirst ? 0 : dossierLines.Count - 1;
+                AnnounceCurrentControl();
+                return;
+            }
+            if (controlList.Count == 0) return;
+            controlIndex = toFirst ? 0 : controlList.Count - 1;
+            SelectControl(controlList[controlIndex]);
+            AnnounceCurrentControl();
+        }
+
         private void NavigateList(int direction)
         {
             if (lastPanel == CharacterInfoMenu.InfoPanel.Dossier)
@@ -614,12 +629,14 @@ namespace Wasteland2AccessibilityMod.States
             if (controlList.Count == 0) return;
 
             int newIndex = controlIndex + direction;
-            if (newIndex < 0) newIndex = controlList.Count - 1;
-            if (newIndex >= controlList.Count) newIndex = 0;
+            bool wrapped = false;
+            if (newIndex < 0) { newIndex = controlList.Count - 1; wrapped = true; }
+            if (newIndex >= controlList.Count) { newIndex = 0; wrapped = true; }
 
             if (newIndex != controlIndex)
             {
                 controlIndex = newIndex;
+                if (wrapped) MenuCue.PlayWrap();
                 SelectControl(controlList[controlIndex]);
                 AnnounceCurrentControl();
             }
@@ -630,11 +647,13 @@ namespace Wasteland2AccessibilityMod.States
             if (dossierLines.Count == 0) return;
 
             int newIndex = controlIndex + direction;
-            if (newIndex < 0) newIndex = dossierLines.Count - 1;
-            if (newIndex >= dossierLines.Count) newIndex = 0;
+            bool wrapped = false;
+            if (newIndex < 0) { newIndex = dossierLines.Count - 1; wrapped = true; }
+            if (newIndex >= dossierLines.Count) { newIndex = 0; wrapped = true; }
 
             if (newIndex != controlIndex || lastAnnouncedText == null)
             {
+                if (wrapped && newIndex != controlIndex) MenuCue.PlayWrap();
                 controlIndex = newIndex;
                 string line = dossierLines[controlIndex];
                 lastAnnouncedText = line;
@@ -704,6 +723,22 @@ namespace Wasteland2AccessibilityMod.States
                     extra = $", {GetLogbookSortName()}";
                 ScreenReaderManager.SpeakInterrupt($"{panelName}{extra}, {controlIndex + 1} of {total}");
                 return true;
+            }
+
+            // Home / End jump to first / last entry in the current panel. Skipped while
+            // editing a value so those keys still reach the edit interaction.
+            if (!isEditingValue)
+            {
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    JumpToEdge(toFirst: true);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    JumpToEdge(toFirst: false);
+                    return true;
+                }
             }
 
             // D for character summary
@@ -1369,7 +1404,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
                 logbookDetailIndex--;
-                if (logbookDetailIndex < 0) logbookDetailIndex = logbookDetailLines.Count - 1;
+                if (logbookDetailIndex < 0) { logbookDetailIndex = logbookDetailLines.Count - 1; if (logbookDetailLines.Count > 1) MenuCue.PlayWrap(); }
                 AnnounceLogbookDetail();
                 return true;
             }
@@ -1377,7 +1412,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
                 logbookDetailIndex++;
-                if (logbookDetailIndex >= logbookDetailLines.Count) logbookDetailIndex = 0;
+                if (logbookDetailIndex >= logbookDetailLines.Count) { logbookDetailIndex = 0; if (logbookDetailLines.Count > 1) MenuCue.PlayWrap(); }
                 AnnounceLogbookDetail();
                 return true;
             }
@@ -1797,7 +1832,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
                 infoIndex--;
-                if (infoIndex < 0) infoIndex = infoLines.Count - 1;
+                if (infoIndex < 0) { infoIndex = infoLines.Count - 1; if (infoLines.Count > 1) MenuCue.PlayWrap(); }
                 AnnounceInfoLine();
                 return true;
             }
@@ -1805,7 +1840,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
                 infoIndex++;
-                if (infoIndex >= infoLines.Count) infoIndex = 0;
+                if (infoIndex >= infoLines.Count) { infoIndex = 0; if (infoLines.Count > 1) MenuCue.PlayWrap(); }
                 AnnounceInfoLine();
                 return true;
             }

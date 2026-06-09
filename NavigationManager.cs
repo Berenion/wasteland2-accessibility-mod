@@ -305,6 +305,7 @@ namespace Wasteland2AccessibilityMod
                 if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) continue;
                 if (FOWHelper.IsPerceptionGated(nexus)) continue;
                 if (!HasInteractionSurface(nexus)) continue;
+                if (IsLootedEmptyContainer(nexus)) continue;
                 if (!MatchesCategory(nexus, currentCategory)) continue;
                 filteredInteractables.Add(nexus);
             }
@@ -327,6 +328,24 @@ namespace Wasteland2AccessibilityMod
         /// Verified against [TileTrace] logs: the trigger matches none of these; Harvey's Cart,
         /// RedSkorpionPoster, the WorldLoadGlobe exit, and NPCs each match at least one.
         /// </summary>
+        /// <summary>
+        /// True once a lootable container has been opened and emptied, so it should drop
+        /// off the scanner — otherwise looted containers (the start-area diggables are the
+        /// worst case) pile up with no way to tell which still hold loot. The game's own
+        /// InteractableInventoryObject.empty getter reports this (the loot locker exists
+        /// and Count == 0). Ranger lockers and any container that accepts items are left
+        /// in: they stay useful as storage even when empty.
+        /// </summary>
+        private static bool IsLootedEmptyContainer(InteractableNexus nexus)
+        {
+            var invObj = nexus.drama as InteractableInventoryObject;
+            if (invObj == null) invObj = nexus.GetComponent<InteractableInventoryObject>();
+            if (invObj == null) return false;
+            if (invObj.isRangerLocker || invObj.willAcceptItems) return false;
+            if (!MonoBehaviourSingleton<LootLockerManager>.HasInstance()) return false;
+            return invObj.empty;
+        }
+
         public static bool HasInteractionSurface(InteractableNexus nexus)
         {
             if (nexus.drama is InteractableObject) return true;

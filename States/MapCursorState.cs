@@ -167,6 +167,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     if (partyInfoLines.Count > 0)
                     {
+                        if (partyInfoIndex == partyInfoLines.Count - 1 && partyInfoLines.Count > 1) MenuCue.PlayWrap();
                         partyInfoIndex = (partyInfoIndex + 1) % partyInfoLines.Count;
                         ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
                     }
@@ -178,7 +179,27 @@ namespace Wasteland2AccessibilityMod.States
                     if (partyInfoLines.Count > 0)
                     {
                         partyInfoIndex--;
-                        if (partyInfoIndex < 0) partyInfoIndex = partyInfoLines.Count - 1;
+                        if (partyInfoIndex < 0) { partyInfoIndex = partyInfoLines.Count - 1; if (partyInfoLines.Count > 1) MenuCue.PlayWrap(); }
+                        ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    if (partyInfoLines.Count > 0)
+                    {
+                        partyInfoIndex = 0;
+                        ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    if (partyInfoLines.Count > 0)
+                    {
+                        partyInfoIndex = partyInfoLines.Count - 1;
                         ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
                     }
                     return true;
@@ -205,6 +226,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
                 {
+                    if (actionIndex == actionList.Count - 1 && actionList.Count > 1) MenuCue.PlayWrap();
                     actionIndex = (actionIndex + 1) % actionList.Count;
                     AnnounceCurrentAction();
                     return true;
@@ -213,8 +235,20 @@ namespace Wasteland2AccessibilityMod.States
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
                 {
                     actionIndex--;
-                    if (actionIndex < 0) actionIndex = actionList.Count - 1;
+                    if (actionIndex < 0) { actionIndex = actionList.Count - 1; if (actionList.Count > 1) MenuCue.PlayWrap(); }
                     AnnounceCurrentAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    if (actionList.Count > 0) { actionIndex = 0; AnnounceCurrentAction(); }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    if (actionList.Count > 0) { actionIndex = actionList.Count - 1; AnnounceCurrentAction(); }
                     return true;
                 }
 
@@ -477,6 +511,16 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // B: toggle wall tones (echolocation prototype). When on, each cursor
+            // move probes the four cardinal directions for walls and plays a tone
+            // per direction whose volume/pitch tracks distance.
+            if (Input.GetKeyDown(KeyCode.B))
+            {
+                WallSonification.Toggle();
+                UpdateWallTones();
+                return true;
+            }
+
             // Suppress arrow keys even if not moving yet (repeat delay)
             if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.DownArrow) ||
                 Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.RightArrow))
@@ -502,6 +546,8 @@ namespace Wasteland2AccessibilityMod.States
             actionList.Clear();
             browsingPartyInfo = false;
             partyInfoLines.Clear();
+            // Stop wall tones when leaving the cursor (combat, menus, conversations).
+            if (WallSonification.Enabled) WallSonification.Disable();
             base.OnDeactivated();
         }
 
@@ -803,10 +849,58 @@ namespace Wasteland2AccessibilityMod.States
             return null;
         }
 
+        // --- Wall sonification (echolocation) ---
+
+        /// <summary>
+        /// Probes the four cardinal directions from the cursor tile by walking the
+        /// navigation grid's neighbour links, and feeds the per-direction wall
+        /// distances (in open tiles) to WallSonification. No-op when the feature is off.
+        /// </summary>
+        private void UpdateWallTones()
+        {
+            if (!WallSonification.Enabled) return;
+
+            CombatAStarNode start = GetNodeAtGridId(cursorGridId);
+
+            // Index order N, E, S, W to match CardinalDirections.Vectors and the
+            // pan/register tables in WallSonification.
+            float[] openTiles = new float[4];
+            for (int i = 0; i < 4; i++)
+                openTiles[i] = ProbeOpenTiles(start, CardinalDirections.Vectors[i], WallSonification.MaxTiles);
+
+            WallSonification.UpdateFromTileDistances(openTiles);
+        }
+
+        /// <summary>
+        /// Counts how many walkable tiles lie ahead in <paramref name="direction"/>
+        /// before a wall, by following grid neighbour links. A missing neighbour
+        /// means a wall (or map edge) blocks that direction — even if a node exists
+        /// on the far side of the wall, the two tiles are not linked. Returns the
+        /// number of open tiles (0 = wall adjacent), capped at <paramref name="maxTiles"/>.
+        /// </summary>
+        private float ProbeOpenTiles(CombatAStarNode start, Vector3 direction, int maxTiles)
+        {
+            if (start == null) return maxTiles;
+
+            CombatAStarNode node = start;
+            int steps = 0;
+            while (steps < maxTiles)
+            {
+                CombatAStarNode next = GetNeighborInDirection(node, direction);
+                if (next == null) break; // wall or map edge
+                node = next;
+                steps++;
+            }
+            return steps;
+        }
+
         // --- Announcements ---
 
         private void AnnounceCurrentTile(bool detailed, string prefix = null, bool reportHeightChange = false)
         {
+            // Update wall echolocation tones from the new cursor position (no-op if off).
+            UpdateWallTones();
+
             CombatAStarNode node = GetNodeAtGridId(cursorGridId);
 
             List<string> parts = new List<string>();
@@ -1838,14 +1932,29 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
             {
                 contextMenuIndex--;
-                if (contextMenuIndex < 0) contextMenuIndex = contextMenuOptions.Count - 1;
+                if (contextMenuIndex < 0) { contextMenuIndex = contextMenuOptions.Count - 1; if (contextMenuOptions.Count > 1) MenuCue.PlayWrap(); }
                 ScreenReaderManager.SpeakInterrupt(contextMenuOptions[contextMenuIndex].DisplayName);
                 SuppressInput();
                 return true;
             }
             if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
             {
+                if (contextMenuIndex == contextMenuOptions.Count - 1 && contextMenuOptions.Count > 1) MenuCue.PlayWrap();
                 contextMenuIndex = (contextMenuIndex + 1) % contextMenuOptions.Count;
+                ScreenReaderManager.SpeakInterrupt(contextMenuOptions[contextMenuIndex].DisplayName);
+                SuppressInput();
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                contextMenuIndex = 0;
+                ScreenReaderManager.SpeakInterrupt(contextMenuOptions[contextMenuIndex].DisplayName);
+                SuppressInput();
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                contextMenuIndex = contextMenuOptions.Count - 1;
                 ScreenReaderManager.SpeakInterrupt(contextMenuOptions[contextMenuIndex].DisplayName);
                 SuppressInput();
                 return true;

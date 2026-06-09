@@ -74,6 +74,19 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // Home / End - jump to first / last enabled button
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                NavigateToEnd(fromTop: true);
+                return true;
+            }
+
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                NavigateToEnd(fromTop: false);
+                return true;
+            }
+
             // Handle Enter key for activation
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
@@ -235,11 +248,12 @@ namespace Wasteland2AccessibilityMod.States
             // Find previous enabled button
             int startIndex = currentIndex;
             int newIndex = currentIndex;
+            bool wrapped = false;
 
             do
             {
                 newIndex--;
-                if (newIndex < 0) newIndex = menuButtons.Count - 1;
+                if (newIndex < 0) { newIndex = menuButtons.Count - 1; wrapped = true; }
 
                 // Check if this button is enabled
                 var entry = menuButtons[newIndex];
@@ -252,6 +266,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (newIndex != currentIndex)
             {
+                if (wrapped) MenuCue.PlayWrap();
                 currentIndex = newIndex;
                 SetSelection(currentIndex);
                 AnnounceButton(currentIndex);
@@ -265,11 +280,12 @@ namespace Wasteland2AccessibilityMod.States
             // Find next enabled button
             int startIndex = currentIndex;
             int newIndex = currentIndex;
+            bool wrapped = false;
 
             do
             {
                 newIndex++;
-                if (newIndex >= menuButtons.Count) newIndex = 0;
+                if (newIndex >= menuButtons.Count) { newIndex = 0; wrapped = true; }
 
                 // Check if this button is enabled
                 var entry = menuButtons[newIndex];
@@ -281,6 +297,38 @@ namespace Wasteland2AccessibilityMod.States
             while (newIndex != startIndex);
 
             if (newIndex != currentIndex)
+            {
+                if (wrapped) MenuCue.PlayWrap();
+                currentIndex = newIndex;
+                SetSelection(currentIndex);
+                AnnounceButton(currentIndex);
+            }
+        }
+
+        private void NavigateToEnd(bool fromTop)
+        {
+            if (menuButtons.Count == 0) return;
+
+            // Scan inward from the requested end for the first enabled button.
+            int newIndex = -1;
+            if (fromTop)
+            {
+                for (int i = 0; i < menuButtons.Count; i++)
+                {
+                    var entry = menuButtons[i];
+                    if (entry.button == null || entry.button.isEnabled) { newIndex = i; break; }
+                }
+            }
+            else
+            {
+                for (int i = menuButtons.Count - 1; i >= 0; i--)
+                {
+                    var entry = menuButtons[i];
+                    if (entry.button == null || entry.button.isEnabled) { newIndex = i; break; }
+                }
+            }
+
+            if (newIndex >= 0 && newIndex != currentIndex)
             {
                 currentIndex = newIndex;
                 SetSelection(currentIndex);

@@ -762,6 +762,14 @@ namespace Wasteland2AccessibilityMod.States
 
         // ========== Navigation ==========
 
+        private void JumpToControlEdge(bool toFirst)
+        {
+            if (controlList.Count == 0) return;
+            controlIndex = toFirst ? 0 : controlList.Count - 1;
+            SelectControl(controlList[controlIndex]);
+            AnnounceCurrentControl();
+        }
+
         private void NavigateList(int direction)
         {
             if (controlList.Count == 0) return;
@@ -769,12 +777,14 @@ namespace Wasteland2AccessibilityMod.States
             int newIndex = controlIndex + direction;
 
             // Wrap around
-            if (newIndex < 0) newIndex = controlList.Count - 1;
-            if (newIndex >= controlList.Count) newIndex = 0;
+            bool wrapped = false;
+            if (newIndex < 0) { newIndex = controlList.Count - 1; wrapped = true; }
+            if (newIndex >= controlList.Count) { newIndex = 0; wrapped = true; }
 
             if (newIndex != controlIndex)
             {
                 controlIndex = newIndex;
+                if (wrapped) MenuCue.PlayWrap();
                 SelectControl(controlList[controlIndex]);
                 AnnounceCurrentControl();
             }
@@ -867,7 +877,7 @@ namespace Wasteland2AccessibilityMod.States
             var popupList = obj.GetComponent<UIPopupList>();
             if (popupList != null)
             {
-                string label = FindLabelText(obj);
+                string label = GetPopupListLabel(obj, popupList);
                 string value = UITextExtractor.CleanText(popupList.value);
                 return $"{label}, {value}, dropdown";
             }
@@ -1047,6 +1057,29 @@ namespace Wasteland2AccessibilityMod.States
             return FindLabelText(obj);
         }
 
+        /// <summary>
+        /// Labels the character-creation flavor dropdowns (Religion, Ethnicity, Cigarettes).
+        /// FindLabelText can't be reused here: a UIPopupList's child UILabel shows the
+        /// *selected value*, not the field name, so the announcement would read the value
+        /// twice ("Catholic, Catholic, dropdown") and never name the field. Map the known
+        /// flavor-panel references instead, the same way GetInputFieldLabel does for inputs.
+        /// </summary>
+        private string GetPopupListLabel(GameObject obj, UIPopupList popupList)
+        {
+            var charScreen = CharacterScreen.instance;
+            if (charScreen != null && charScreen.dossierPanel != null)
+            {
+                var flavor = charScreen.dossierPanel.flavorPanel;
+                if (flavor != null)
+                {
+                    if (flavor.religionList == popupList) return "Religion";
+                    if (flavor.ethnicityList == popupList) return "Ethnicity";
+                    if (flavor.smokesList == popupList) return "Cigarettes";
+                }
+            }
+            return FindLabelText(obj);
+        }
+
         private string FindLabelText(GameObject obj)
         {
             // Look for a UILabel as sibling or parent that acts as a label for this control
@@ -1104,6 +1137,22 @@ namespace Wasteland2AccessibilityMod.States
                     context = " (Skills sub-area, F to switch back)";
                 ScreenReaderManager.SpeakInterrupt($"{panelName}{context}, {controlIndex + 1} of {controlList.Count}");
                 return true;
+            }
+
+            // Home / End jump to first / last control in the panel. Skipped while editing a
+            // text field or value so those keys still reach the field being edited.
+            if (!isEditingTextField && !isEditingValue)
+            {
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    JumpToControlEdge(toFirst: true);
+                    return true;
+                }
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    JumpToControlEdge(toFirst: false);
+                    return true;
+                }
             }
 
             // D to open derived stats browser (on panels that have them) or announce character summary
@@ -1634,7 +1683,10 @@ namespace Wasteland2AccessibilityMod.States
                     {
                         int dir = Input.GetKeyDown(KeyCode.RightArrow) ? 1 : -1;
                         int idx = popupList.items.IndexOf(popupList.value);
-                        int newIdx = (idx + dir + popupList.items.Count) % popupList.items.Count;
+                        int count = popupList.items.Count;
+                        if (count > 1 && ((dir > 0 && idx == count - 1) || (dir < 0 && idx == 0)))
+                            MenuCue.PlayWrap();
+                        int newIdx = (idx + dir + count) % count;
                         popupList.value = popupList.items[newIdx];
                         string val = UITextExtractor.CleanText(popupList.value);
                         ScreenReaderManager.SpeakInterrupt(val);
@@ -1953,7 +2005,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
                 infoIndex--;
-                if (infoIndex < 0) infoIndex = infoLines.Count - 1;
+                if (infoIndex < 0) { infoIndex = infoLines.Count - 1; if (infoLines.Count > 1) MenuCue.PlayWrap(); }
                 AnnounceInfoLine();
                 return true;
             }
@@ -1961,7 +2013,7 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
                 infoIndex++;
-                if (infoIndex >= infoLines.Count) infoIndex = 0;
+                if (infoIndex >= infoLines.Count) { infoIndex = 0; if (infoLines.Count > 1) MenuCue.PlayWrap(); }
                 AnnounceInfoLine();
                 return true;
             }

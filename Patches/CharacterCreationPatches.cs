@@ -1,9 +1,28 @@
 using HarmonyLib;
 using UnityEngine;
 using System.Reflection;
+using Wasteland2AccessibilityMod.Core;
 
 namespace Wasteland2AccessibilityMod.Patches
 {
+    /// <summary>
+    /// Starts the inventory load-grace window the moment the player confirms difficulty and
+    /// commits to a new game. CharacterScreen.OnConfirmDifficulty immediately calls
+    /// GiveDefaultEquipment for every party member (the "starting item spam") — and that runs
+    /// before EventInfo_NewGameInit and before any map/FOW load, so otherwise the AddItem
+    /// suppression window hasn't started yet. The later GotoGameplayMap → FOWSystem.LoadMap
+    /// refreshes the window to also cover items added while the first level loads.
+    /// </summary>
+    [HarmonyPatch(typeof(CharacterScreen), "OnConfirmDifficulty")]
+    public class CharacterScreen_OnConfirmDifficulty_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix()
+        {
+            GameLoadState.NotifyMapLoaded();
+        }
+    }
+
     // CHA_UsePremadePartyPanel_OnEnable_Patch removed - CharacterState handles panel announcements
 
     /// <summary>
@@ -199,6 +218,10 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             if (!isSelected || __instance == null) return;
 
+            // CharacterState / CharacterInfoState announce a richer version when they drive
+            // navigation. Suppress this legacy fallback to avoid the double announcement.
+            if (InputRouter.IsAnyStateActive()) return;
+
             // Get skill name and level
             string skillName = "";
             string skillLevel = "";
@@ -237,6 +260,11 @@ namespace Wasteland2AccessibilityMod.Patches
         public static void Postfix(CHA_AttributeEditor __instance, bool isSelected)
         {
             if (!isSelected || __instance == null) return;
+
+            // CharacterState / CharacterInfoState announce a richer version (with buff state,
+            // cap, and "attribute" suffix) when they drive navigation. Suppress this legacy
+            // fallback to avoid the double announcement.
+            if (InputRouter.IsAnyStateActive()) return;
 
             // Get attribute name, value, and description (rating)
             string attributeName = "";

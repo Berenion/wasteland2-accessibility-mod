@@ -231,6 +231,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
                 {
+                    if (actionIndex == actionList.Count - 1 && actionList.Count > 1) MenuCue.PlayWrap();
                     actionIndex = (actionIndex + 1) % actionList.Count;
                     AnnounceCurrentAction();
                     return true;
@@ -239,8 +240,20 @@ namespace Wasteland2AccessibilityMod.States
                 if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
                 {
                     actionIndex--;
-                    if (actionIndex < 0) actionIndex = actionList.Count - 1;
+                    if (actionIndex < 0) { actionIndex = actionList.Count - 1; if (actionList.Count > 1) MenuCue.PlayWrap(); }
                     AnnounceCurrentAction();
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    if (actionList.Count > 0) { actionIndex = 0; AnnounceCurrentAction(); }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    if (actionList.Count > 0) { actionIndex = actionList.Count - 1; AnnounceCurrentAction(); }
                     return true;
                 }
 
@@ -295,11 +308,13 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     if (targetMenuTab == 0 && targetActionList.Count > 0)
                     {
+                        if (targetActionIndex == targetActionList.Count - 1 && targetActionList.Count > 1) MenuCue.PlayWrap();
                         targetActionIndex = (targetActionIndex + 1) % targetActionList.Count;
                         AnnounceCurrentTargetAction();
                     }
                     else if (targetMenuTab == 1 && targetInfoLines.Count > 0)
                     {
+                        if (targetInfoIndex == targetInfoLines.Count - 1 && targetInfoLines.Count > 1) MenuCue.PlayWrap();
                         targetInfoIndex = (targetInfoIndex + 1) % targetInfoLines.Count;
                         ScreenReaderManager.SpeakInterrupt(FormatInfoLine(targetInfoIndex));
                     }
@@ -311,13 +326,43 @@ namespace Wasteland2AccessibilityMod.States
                     if (targetMenuTab == 0 && targetActionList.Count > 0)
                     {
                         targetActionIndex--;
-                        if (targetActionIndex < 0) targetActionIndex = targetActionList.Count - 1;
+                        if (targetActionIndex < 0) { targetActionIndex = targetActionList.Count - 1; if (targetActionList.Count > 1) MenuCue.PlayWrap(); }
                         AnnounceCurrentTargetAction();
                     }
                     else if (targetMenuTab == 1 && targetInfoLines.Count > 0)
                     {
                         targetInfoIndex--;
-                        if (targetInfoIndex < 0) targetInfoIndex = targetInfoLines.Count - 1;
+                        if (targetInfoIndex < 0) { targetInfoIndex = targetInfoLines.Count - 1; if (targetInfoLines.Count > 1) MenuCue.PlayWrap(); }
+                        ScreenReaderManager.SpeakInterrupt(FormatInfoLine(targetInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    if (targetMenuTab == 0 && targetActionList.Count > 0)
+                    {
+                        targetActionIndex = 0;
+                        AnnounceCurrentTargetAction();
+                    }
+                    else if (targetMenuTab == 1 && targetInfoLines.Count > 0)
+                    {
+                        targetInfoIndex = 0;
+                        ScreenReaderManager.SpeakInterrupt(FormatInfoLine(targetInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    if (targetMenuTab == 0 && targetActionList.Count > 0)
+                    {
+                        targetActionIndex = targetActionList.Count - 1;
+                        AnnounceCurrentTargetAction();
+                    }
+                    else if (targetMenuTab == 1 && targetInfoLines.Count > 0)
+                    {
+                        targetInfoIndex = targetInfoLines.Count - 1;
                         ScreenReaderManager.SpeakInterrupt(FormatInfoLine(targetInfoIndex));
                     }
                     return true;
@@ -352,6 +397,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     if (partyInfoLines.Count > 0)
                     {
+                        if (partyInfoIndex == partyInfoLines.Count - 1 && partyInfoLines.Count > 1) MenuCue.PlayWrap();
                         partyInfoIndex = (partyInfoIndex + 1) % partyInfoLines.Count;
                         ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
                     }
@@ -363,7 +409,27 @@ namespace Wasteland2AccessibilityMod.States
                     if (partyInfoLines.Count > 0)
                     {
                         partyInfoIndex--;
-                        if (partyInfoIndex < 0) partyInfoIndex = partyInfoLines.Count - 1;
+                        if (partyInfoIndex < 0) { partyInfoIndex = partyInfoLines.Count - 1; if (partyInfoLines.Count > 1) MenuCue.PlayWrap(); }
+                        ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    if (partyInfoLines.Count > 0)
+                    {
+                        partyInfoIndex = 0;
+                        ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    if (partyInfoLines.Count > 0)
+                    {
+                        partyInfoIndex = partyInfoLines.Count - 1;
                         ScreenReaderManager.SpeakInterrupt(FormatPartyInfoLine(partyInfoIndex));
                     }
                     return true;
@@ -395,6 +461,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     if (log.Count > 0)
                     {
+                        if (logIndex == log.Count - 1 && log.Count > 1) MenuCue.PlayWrap();
                         logIndex = (logIndex + 1) % log.Count;
                         ScreenReaderManager.SpeakInterrupt(FormatLogEntry(log, logIndex));
                     }
@@ -406,7 +473,27 @@ namespace Wasteland2AccessibilityMod.States
                     if (log.Count > 0)
                     {
                         logIndex--;
-                        if (logIndex < 0) logIndex = log.Count - 1;
+                        if (logIndex < 0) { logIndex = log.Count - 1; if (log.Count > 1) MenuCue.PlayWrap(); }
+                        ScreenReaderManager.SpeakInterrupt(FormatLogEntry(log, logIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.Home))
+                {
+                    if (log.Count > 0)
+                    {
+                        logIndex = 0;
+                        ScreenReaderManager.SpeakInterrupt(FormatLogEntry(log, logIndex));
+                    }
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.End))
+                {
+                    if (log.Count > 0)
+                    {
+                        logIndex = log.Count - 1;
                         ScreenReaderManager.SpeakInterrupt(FormatLogEntry(log, logIndex));
                     }
                     return true;

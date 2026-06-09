@@ -59,3 +59,6 @@ Thumbs.db
 # Internal LLM-assistant guidance — not shipped
 CLAUDE.md
 llm-docs/
+
+# Local issue-tracking scratchpad — not shipped
+ISSUES.txt

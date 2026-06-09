@@ -55,6 +55,7 @@ namespace Wasteland2AccessibilityMod
             InputRouter.Register(new ExplorationState());  // Priority 10 - exploration cycling
 
             // Phase 2: Menu/dialog states
+            InputRouter.Register(new KeywordEntryState()); // Priority 72 - conversation custom-keyword/password text box
             InputRouter.Register(new DialogState());       // Priority 70 - modal dialogs (highest menu priority)
             InputRouter.Register(new MainMenuState());     // Priority 60 - main menu navigation
             InputRouter.Register(new KeypadState());       // Priority 58 - safe/passcode keypad popup

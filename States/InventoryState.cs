@@ -330,6 +330,16 @@ namespace Wasteland2AccessibilityMod.States
                 NavigateList(1);
                 return true;
             }
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                JumpToListEdge(toFirst: true);
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                JumpToListEdge(toFirst: false);
+                return true;
+            }
 
             // Left/Right - switch zones
             if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.RightArrow))
@@ -428,6 +438,16 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
                 NavigateList(1);
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.Home))
+            {
+                JumpToListEdge(toFirst: true);
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.End))
+            {
+                JumpToListEdge(toFirst: false);
                 return true;
             }
 
@@ -661,6 +681,24 @@ namespace Wasteland2AccessibilityMod.States
 
         #region Navigation
 
+        private void JumpToListEdge(bool toFirst)
+        {
+            if (currentList.Count == 0 && currentZone == NavigationZone.ContainerItems)
+            {
+                BuildContainerItemList();
+            }
+            if (currentList.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt(GetZoneEmptyMessage());
+                return;
+            }
+
+            currentIndex = toFirst ? 0 : currentList.Count - 1;
+            // User pressed Home/End — always speak, even if unchanged.
+            lastAnnouncedText = null;
+            AnnounceCurrentItem(interrupt: true);
+        }
+
         private void NavigateList(int direction)
         {
             // If the list is empty but the loot grid hasn't populated yet, try to rebuild
@@ -682,11 +720,19 @@ namespace Wasteland2AccessibilityMod.States
             int newIndex = currentIndex + direction;
 
             // Wrap around
+            bool wrapped = false;
             if (newIndex < 0)
+            {
                 newIndex = currentList.Count - 1;
+                wrapped = true;
+            }
             else if (newIndex >= currentList.Count)
+            {
                 newIndex = 0;
+                wrapped = true;
+            }
 
+            if (wrapped && newIndex != currentIndex) MenuCue.PlayWrap();
             currentIndex = newIndex;
             // User pressed an arrow — always speak, even if the new item matches the
             // previous announcement (e.g. wrapping in a 1-item list).
@@ -743,8 +789,10 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             int newIdx = currentContainerIdx + direction;
-            if (newIdx < 0) newIdx = containerButtons.Count - 1;
-            else if (newIdx >= containerButtons.Count) newIdx = 0;
+            bool wrapped = false;
+            if (newIdx < 0) { newIdx = containerButtons.Count - 1; wrapped = true; }
+            else if (newIdx >= containerButtons.Count) { newIdx = 0; wrapped = true; }
+            if (wrapped && containerButtons.Count > 1) MenuCue.PlayWrap();
 
             popupInv.SelectContainer(containerButtons[newIdx]);
 
@@ -1055,7 +1103,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (infoLines.Count == 0) return true;
                 infoLineIndex--;
-                if (infoLineIndex < 0) infoLineIndex = infoLines.Count - 1;
+                if (infoLineIndex < 0) { infoLineIndex = infoLines.Count - 1; if (infoLines.Count > 1) MenuCue.PlayWrap(); }
                 ScreenReaderManager.SpeakInterrupt($"{infoLines[infoLineIndex]}, {infoLineIndex + 1} of {infoLines.Count}");
                 return true;
             }
@@ -1064,7 +1112,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (infoLines.Count == 0) return true;
                 infoLineIndex++;
-                if (infoLineIndex >= infoLines.Count) infoLineIndex = 0;
+                if (infoLineIndex >= infoLines.Count) { infoLineIndex = 0; if (infoLines.Count > 1) MenuCue.PlayWrap(); }
                 ScreenReaderManager.SpeakInterrupt($"{infoLines[infoLineIndex]}, {infoLineIndex + 1} of {infoLines.Count}");
                 return true;
             }

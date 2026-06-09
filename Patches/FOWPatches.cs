@@ -1,4 +1,5 @@
 using HarmonyLib;
+using Wasteland2AccessibilityMod.Core;
 
 namespace Wasteland2AccessibilityMod.Patches
 {
@@ -17,6 +18,7 @@ namespace Wasteland2AccessibilityMod.Patches
         public static void Postfix()
         {
             FOWHelper.NotifyFOWMapLoaded();
+            GameLoadState.NotifyMapLoaded();
         }
     }
 }

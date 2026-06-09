@@ -15,7 +15,7 @@ First public beta of the rewritten accessibility mod. The earlier Xbox-controlle
 - Save / Load screen text editing with screen-reader feedback.
 
 ### Added — Exploration
-- Interactable list cursor (`PgUp`/`PgDn`) with category cycling (`Ctrl+PgUp`/`PgDn`).
+- Interactable **scanner** (`PgUp`/`PgDn`) with category cycling (`Ctrl+PgUp`/`PgDn`).
 - Grid-based **map cursor** for tile-by-tile world exploration with cardinal movement, step-size adjustment, ctrl-extend, and tile announcements.
 - Context menu, actions menu, and tile selection for the map cursor.
 - Item-on-object detection — auto-uses the right item (e.g. shovel on dirt pile) when present.

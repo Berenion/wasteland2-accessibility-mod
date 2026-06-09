@@ -1,635 +1,289 @@
-# Wasteland 2 Accessibility Mod
+Wasteland 2 Accessibility Mod
 
-A screen-reader and keyboard accessibility mod for **Wasteland 2 Director's Cut**. Built primarily for blind and low-vision players, but useful for anyone who prefers keyboard-only play.
+A screen-reader and keyboard accessibility mod for Wasteland 2 Director's Cut. Built for blind and low-vision players, and for anyone who prefers keyboard-only play.
 
-**Status:** Public beta. Expect rough edges; please report what you find.
+Status: public beta. Please report what you find (see Reporting bugs).
 
-## Table of contents
+Sections in this file, in order. Search for a name to jump to it:
+- What it does
+- Requirements
+- Installing
+- Configuration
+- Reporting bugs
+- Controls
+- Original game keys in combat
+- Key conflicts
+- Building from source
+- Credits and license
 
-- [What it does](#what-it-does)
-- [Requirements](#requirements)
-- [Installation](#installation)
-  - [Verifying the mod loaded](#verifying-the-mod-loaded)
-- [First-launch quickstart](#first-launch-quickstart)
-- [Configuration](#configuration)
-- [Reporting bugs](#reporting-bugs)
-- [Troubleshooting](#troubleshooting)
-- [Building from source](#building-from-source)
-- [Controls and hotkeys](#controls-and-hotkeys)
-  - [Notation](#notation)
-  - [Universal navigation](#universal-navigation)
-  - [Always-on (most exploration / map contexts)](#always-on-most-exploration--map-contexts)
-  - [Main menu](#main-menu)
-  - [Modal dialogs](#modal-dialogs-confirmations-tutorials-world-map-encounters)
-  - [Keypad popup](#keypad-popup-safes-doors-terminals)
-  - [Generic menus](#generic-menus-pause-options-save--load-etc)
-  - [Exploration](#exploration-world--dungeon)
-    - [List cursor (interactables)](#list-cursor-interactables)
-    - [Grid cursor (map cursor)](#grid-cursor-map-cursor)
-  - [World map](#world-map)
-  - [Combat](#combat)
-    - [Combat cursor movement](#combat-cursor-movement)
-    - [Combat action menus](#combat-action-menus)
-    - [Combatant cycling](#combatant-cycling)
-    - [Item / skill targeting](#item--skill-targeting)
-    - [Free aim](#free-aim-tab--free-aim)
-    - [Other combat keys](#other-combat-keys)
-  - [Conversations](#conversations)
-  - [Inventory (character info screen)](#inventory-character-info-screen)
-  - [Loot containers](#loot-containers-popupinventorymenu)
-  - [Vendor / shop](#vendor--shop)
-  - [Character creation](#character-creation)
-  - [Character info (in-game)](#character-info-in-game)
-- [Original game hotkeys in combat](#original-game-hotkeys-in-combat)
-- [Notes on key conflicts](#notes-on-key-conflicts)
-- [Credits](#credits)
-- [License](#license)
 
-## What it does
+What it does
 
-- Reads game UI, dialogue, combat events, item info, and world objects through NVDA, JAWS, or Windows SAPI (via the Tolk library).
-- Replaces mouse-driven interaction with full keyboard navigation in every menu: main menu, character creation, inventory, loot, shops, conversations, the world map, combat, and modal dialogs.
-- Adds a **virtual grid cursor** in exploration and combat, so you can move tile-by-tile, hear what's on each tile, and order interactions without seeing the screen.
-- Adds a **world-map review cursor** with proximity alerts for POIs and radiation, water-cost path estimation, and POI cycling.
-- Adds **tactical pause** (Space) that freezes time outside combat. Auto-pauses while inventory / loot / vendor screens are open.
-- Locks camera rotation so "up" stays north (toggleable with F10), removing rotational disorientation.
+- Speaks UI, dialogue, combat events, item info, and world objects through NVDA, JAWS, or Windows SAPI (via the Tolk library).
+- Full keyboard navigation in every screen: menus, character creation, inventory, loot, shops, conversations, the world map, combat, and dialogs.
+- A virtual grid cursor for exploration and combat: move tile by tile, hear what is on each tile, and act on it.
+- A world-map review cursor with POI and radiation alerts, water-cost estimates, and POI cycling.
+- Tactical pause (Space) that freezes time outside combat. Auto-pauses for inventory, loot, and vendor screens.
+- Camera rotation lock so "up" stays north (F10 toggles it).
 
-## Requirements
 
-| Component | Version / source |
-|---|---|
-| Wasteland 2 Director's Cut | Steam or GOG |
-| MelonLoader | **0.5.7 Open-Beta** — <https://github.com/LavaGang/MelonLoader/releases/tag/v0.5.7>. **Do not use 0.6.x or newer**; they crash with Wasteland 2 Director's Cut. |
-| Tolk runtime DLL | `Tolk.dll` is **bundled in the release archive** — just copy it next to `WL2.exe`. |
-| `nvdaControllerClient64.dll` | **NVDA users only**, and **not** bundled — supply it yourself (from a Tolk release) next to `WL2.exe`. Without it, NVDA falls back to SAPI speech. |
-| Screen reader (optional) | NVDA, JAWS, or any SAPI voice. If none is running, Tolk falls back to SAPI. |
+Requirements
 
-The mod targets .NET Framework 3.5 (Unity 4.x). MelonLoader installs that runtime automatically.
+- Wasteland 2 Director's Cut (Steam or GOG).
+- MelonLoader 0.5.7 Open-Beta, from https://github.com/LavaGang/MelonLoader/releases/tag/v0.5.7 . Do not use 0.6.x or newer; they crash with this game.
+- Tolk.dll: bundled in the release archive. Copy it next to WL2.exe.
+- nvdaControllerClient64.dll: NVDA users only, and not bundled. Get it from a Tolk release (https://github.com/dkager/tolk/releases) and put it next to WL2.exe. Without it, NVDA falls back to SAPI.
+- A screen reader is optional: NVDA, JAWS, or any SAPI voice. With none running, Tolk uses SAPI.
 
-## Installation
+The mod targets .NET Framework 3.5; MelonLoader installs that runtime for you.
 
-1. **Install MelonLoader 0.5.7** (specifically — newer versions crash with this game)
-   - Download from <https://github.com/LavaGang/MelonLoader/releases/tag/v0.5.7>. Use `MelonLoader.Installer.exe` from that release, **not** the latest installer (the latest installer will pull a newer MelonLoader that crashes).
-   - Run it, point it at your Wasteland 2 install folder (the folder that contains `WL2.exe`), and click **Install**.
-   - On a normal Steam install, that folder is `...\steamapps\common\Wasteland 2 Director's Cut\Build\`.
-   - If you already have a newer MelonLoader installed and the game crashes on launch, uninstall it (delete `version.dll`, `dobby.dll`, and the `MelonLoader` folder from the game directory) before installing 0.5.7.
-2. **Install the mod DLL.**
-   - Copy `Wasteland2AccessibilityMod.dll` from the release archive's `Mods\` folder into `<game folder>\Mods\`. (MelonLoader creates the `Mods` folder on first launch.)
-3. **Install the bundled `Tolk.dll`.**
-   - Copy **`Tolk.dll`** from the release archive into the **same folder as `WL2.exe`** (not into `Mods`). This is the screen-reader bridge and ships with the mod.
-   - **NVDA users:** also place **`nvdaControllerClient64.dll`** next to `WL2.exe`. It is *not* bundled — grab it from a [Tolk release](https://github.com/dkager/tolk/releases). Without it, NVDA falls back to SAPI speech.
-4. **Start your screen reader** before launching the game (recommended — Tolk can also attach to one started later, but starting first is the reliable path).
-5. **Launch the game.**
 
-> The release archive mirrors the game's `Build` folder layout, so you can also just extract it straight into your Wasteland 2 `Build` directory — `Mods\` and `Tolk.dll` land in the right places.
+Installing
 
-### Verifying the mod loaded
+The release archive mirrors the game's Build folder, so the quickest path is to extract it straight into your Wasteland 2 Build directory after MelonLoader is installed: the mod DLL and Tolk.dll land in the right places. In full:
 
-Open `<game folder>\MelonLoader\Latest.log` after the game has started. You should see:
+1. Install MelonLoader 0.5.7. Use MelonLoader.Installer.exe from the 0.5.7 release linked above, not the latest installer (the latest one pulls a newer MelonLoader that crashes). Point it at the folder holding WL2.exe and install. On Steam that folder is ...\steamapps\common\Wasteland 2 Director's Cut\Build\ . If a newer MelonLoader is already installed and the game crashes on launch, delete version.dll, dobby.dll, and the MelonLoader folder from the game directory first, then install 0.5.7.
+2. Copy Wasteland2AccessibilityMod.dll into <game>\Mods\ . MelonLoader creates the Mods folder on first launch.
+3. Copy Tolk.dll next to WL2.exe, not into Mods. NVDA users: also put nvdaControllerClient64.dll there.
+4. Start your screen reader, then launch the game.
 
-```
-MelonLoader v0.5.7 Open-Beta
-...
-Melon Assembly loaded: '.\Mods\Wasteland2AccessibilityMod.dll'
-...
-Wasteland 2 Accessibility Mod v0.7.0 (beta)
-Screen reader detected: NVDA   (or JAWS, or "No screen reader detected (Tolk loaded, will use SAPI if available)")
-[Core] Input router initialized with all states (including MainMenu)
-```
+To confirm it loaded, open <game>\MelonLoader\Latest.log and look for a "Wasteland 2 Accessibility Mod" line and a "Screen reader detected" line. If they are missing, recheck that the DLL is in Mods and that Tolk.dll sits next to WL2.exe, then see Reporting bugs.
 
-If you don't see those lines, see [Troubleshooting](#troubleshooting) below.
 
-## First-launch quickstart
+Configuration
 
-The main menu announces itself. From there:
+The mod writes <game>\UserData\Wasteland2Accessibility.cfg on first run. Edit it directly or use the in-game toggles; changes save automatically.
 
-- **Up / Down** to move through menu options, **Enter** to select.
-- Pick **New Game** or **Continue** to get in-world.
+- UseClockPositions (default off): speak directions as clock positions ("3 o'clock") instead of compass names. Toggle in-game with =.
+- ObjectNamesFirst (default off): lead tile announcements with the object name instead of the coordinate. Toggle with K.
+- UseTileDistances (default on): report distances in tiles when a combat grid is available (one tile is about 1.6 metres); otherwise in metres.
+- ConveyElevation (default on): announce terrain height changes and height relative to the party. Toggle with H.
+- AnnounceLineOfSight (default off): say whether a tile is in sight of the active character (perception in exploration, clear line of fire in combat). Toggle with Y.
 
-Once you're in the game world:
 
-- **Arrow keys** move the grid cursor around the current tile. The cursor tells you what's on each tile as you move.
-- **Enter** interacts with whatever the cursor is on — talk to an NPC, open a container, attack a frozen enemy, examine an object.
-- **Space** toggles tactical pause. Use it freely; the game also auto-pauses for inventory/loot/vendor screens.
-- **]** (right bracket) tells the selected party member to walk to where the cursor is.
-- **I** opens the character / inventory screen. **Escape** opens the pause menu.
-- **F1–F7** select party member 1 through 7.
+Reporting bugs
 
-The full hotkey reference is in the [Controls and hotkeys](#controls-and-hotkeys) section below.
+Open an issue at https://github.com/Berenion/wasteland2-accessibility-mod/issues . Attach the log file, <game>\MelonLoader\Latest.log, and say which screen reader you use and what you were doing. That is usually enough to track it down.
 
-## Configuration
 
-The mod creates `<game folder>\UserData\Wasteland2Accessibility.cfg` on first run. These settings live there:
+Controls
 
-| Setting | Default | What it does |
-|---|---|---|
-| `UseClockPositions` | `false` | When `true`, directions are spoken as clock positions ("3 o'clock") instead of compass names ("east"). Toggle in-game with `=`. |
-| `ObjectNamesFirst` | `false` | When `true`, tile announcements lead with the object name; when `false`, they lead with the tile coordinate. Toggle in-game with `K`. |
-| `UseTileDistances` | `true` | When `true` and a combat grid is available, distances are reported in tiles (1 tile ≈ 1.6 m). When `false`, always in meters. |
-| `ConveyElevation` | `true` | When `true`, the exploration cursor announces terrain height changes and height relative to the party (for finding ramps and edges). Toggle in-game with `H`. |
-| `AnnounceLineOfSight` | `false` | When `true`, the tile cursor also says whether the tile is within line of sight of the selected/active character. In exploration it reflects perception range plus occlusion; in combat it's a clear line of fire. Toggle in-game with `Y`. |
+Contexts are detected automatically: open the world map and the world-map keys apply; open inventory and the inventory keys take over. You never switch contexts by hand.
 
-You can edit the file directly or use the in-game toggles. Changes save automatically.
+Notation: Ctrl+X and Shift+X mean hold that modifier. For value changes, the top-row = / - keys and the numpad + / - keys are interchangeable. Backslash repeats the last announcement in most contexts.
 
-## Reporting bugs
+Baseline keys are the same in nearly every list and menu. The sections below list only what differs from or adds to these:
+- Up / Down: previous / next item.
+- Enter: activate or confirm.
+- Escape: close, cancel, or go back.
+- Home / End: first / last item.
+- Backslash: repeat the last announcement.
+- F1 to F7: select party member 1 to 7.
+The grid and combat cursors reassign Home, End, Tab, and Backslash; this is noted where it applies.
 
-Useful information when filing an issue:
+Always on, in exploration and map contexts:
+- F1 to F7: select party member 1 to 7 (exploration and the world map also allow Shift or Ctrl for multi-select).
+- F10: toggle camera rotation lock. On by default, so up stays north.
+- Space: toggle tactical pause. Auto-pauses for inventory, loot, and vendor screens.
 
-1. **What you were doing**, step by step from the last menu / screen change. Include the screen / context the bug occurred in (exploration, combat, inventory, vendor, etc.).
-2. **What you expected to be announced** vs **what was actually announced** (or silence, if nothing was).
-3. The relevant section of `<game folder>\MelonLoader\Latest.log`. Lines tagged `[Wasteland 2 Accessibility Mod]`, `[CombatState]`, `[MapCursorState]`, etc. are the mod's own logs and usually pinpoint the issue.
-4. Your screen reader (NVDA / JAWS / SAPI) and its version.
-5. Whether the issue reproduces consistently or only sometimes.
+Main menu:
+- Up / Down move between entries, Enter activates.
 
-A short screen-reader audio capture (Windows + Alt + R, or any tool that records system audio) is the gold standard for "speech sounds wrong" bugs.
+Modal dialogs (confirmations, tutorials, world-map encounters):
+- Yes/No and OK/Cancel: Left or Up is previous, Right or Down is next, Enter activates.
+- Difficulty selection: Left / Right change difficulty (Rookie, Seasoned, Ranger, Legend); Up / Down switch Play and Back.
+- Quantity prompt (split stack, partial buy): Left / Right change by one; PgDn / PgUp by ten; Home sets the minimum; End sets the maximum; Up / Down switch OK and Cancel.
+- POI panel: Left / Right / Up / Down cycle the buttons, Enter activates.
+- Tutorial popups: Enter continues; the full text reads on appearance.
 
-## Troubleshooting
+Keypad (safes, doors, terminals):
+- 0 to 9 (top row or numpad): type a digit, up to eight.
+- Backspace: delete the last digit. C: clear. Enter: submit. Escape: cancel.
 
-**Game starts but no MelonLoader console appears.**
-MelonLoader installs in console-less mode by default in recent versions. Look at `<game folder>\MelonLoader\Latest.log` instead — it has the same content.
+Generic menus (pause, options, save and load):
+- Baseline, plus Left / Right to move within the focused control, Tab for the next element, PgUp / PgDn to switch Options tabs, Delete to delete the selected save.
+- Save-name field: Enter saves, Escape cancels and restores the prior name; typing and Backspace work, and the last character typed is spoken.
 
-**Game starts, console shows MelonLoader, but no mod messages.**
-The DLL isn't in the right folder. Confirm `Wasteland2AccessibilityMod.dll` is in `<game folder>\Mods\` (not `Plugins`, not `UserLibs`).
+Exploration runs two cursors at once: the scanner cycles nearby interactables, and the grid cursor moves tile by tile.
 
-**Mod loads but says `Failed to initialize Tolk` in the log.**
-`Tolk.dll` or `nvdaControllerClient64.dll` is missing from the folder that contains `WL2.exe`. They must sit next to the executable, not inside `Mods`.
+Exploration, scanner:
+- PgUp / PgDn: previous / next interactable in the current category.
+- Ctrl+PgUp / Ctrl+PgDn: previous / next category (containers, NPCs, doors, and so on).
+- =: toggle direction format (compass or clock).
+- K: toggle announcement order (coordinate first or object name first).
+- ' (apostrophe): announce party scrap.
+- Enter: interact with the item the scanner is on. If the object needs an item your party carries (a shovel for a dirt pile, say), it is used automatically.
+- Backspace: stop party movement.
+- R: answer the radio. I: open character/inventory. G: toggle group mode.
+- Shift or Ctrl plus F1 to F7: add that ranger to the selection, to build a multi-ranger group.
+- F1 to F7 on the current leader: re-press to centre the camera on them.
+- Escape: pause menu.
 
-**Mod loads, Tolk initializes, but nothing speaks.**
-Confirm a screen reader is running. If you're using SAPI fallback, the log will say `No screen reader detected (Tolk loaded, will use SAPI if available)` — make sure Windows has at least one SAPI voice installed.
+Exploration, grid cursor:
+- Arrows: move one step. Shift+Left / Shift+Right: decrease / increase step size, one to thirty tiles.
+- Ctrl+Arrow: move that direction until blocked by terrain.
+- Tab: open the actions menu (skills and usable items) at the cursor.
+- Enter: open the tile's context menu. Or fire/use when a free-aim or item mode is active, or open a single ranger's info if one ranger is on the tile.
+- Backslash: detailed scan of the current tile. X: examine the first examinable object on the tile.
+- ]: order the selected ranger to walk to the cursor.
+- Home: jump the cursor to the selected interactable (the one from the scanner). End: distance and direction to it.
+- Shift+Home: jump the cursor to the party leader. Shift+End: distance and direction to the leader.
+- F: toggle camera-follows-cursor. K: toggle announcement order. H: toggle elevation announcements. Y: toggle line-of-sight announcements.
+- Escape: cancel an active free-aim or item mode; with none active, open the pause menu.
+Context menus and selection lists use the baseline keys.
 
-**Game says "Still loading, try again" when you press Space.**
-The game is in a paused state it manages itself (scene load, cutscene start, etc.). Wait a moment and try again.
+World map:
+- Arrows: move the review cursor. Shift+Left / Shift+Right: step size, one to a hundred units.
+- PgUp / PgDn: cycle visible POIs. Ctrl+PgUp / Ctrl+PgDn: cycle POI category.
+- Home: jump the cursor to the selected POI. End: distance and direction to it.
+- Shift+Home: jump the cursor to the party. Shift+End: distance to the party.
+- ]: order the party to the cursor (announces water cost and any radiation crossings). Backspace: stop the party.
+- Enter: interact with the POI at or near the cursor; the party walks there first if needed.
+- Space: cursor summary (step size, distance to party, radiation, nearest POI).
+- W: water supply. Shift+W: estimate water cost from the party to the cursor.
+- F: toggle camera-follows-cursor. R: answer the radio. I: character/inventory. Escape: pause menu.
+- Shift or Ctrl plus F1 to F7: add that ranger to the selection.
 
-**A specific UI element isn't announced.**
-That's likely a missing patch — file a bug with the exact screen and element. The mod covers a lot of the game, but Wasteland 2 has many one-off UI screens and there are gaps.
+Combat is turn-based. The cursor jumps to the active actor each turn and announces whose turn it is. Space stays the game's End Turn.
 
-**Camera keeps rotating away from north.**
-Press **F10** to re-lock it. The lock state is per-session.
+Combat, cursor:
+- Arrows: move one step. Shift+Left / Shift+Right: step size. Ctrl+Arrow: move until blocked.
+- ]: move the current actor to the cursor (costs AP).
+- Backslash: detailed tile announcement. K: toggle announcement order. Y: toggle line-of-sight (clear line of fire).
+- F: toggle camera-follows-cursor. This takes over the game's precision-shot key; precision shots are in the target menu.
+- Shift+Home: jump to the current actor. Shift+End: distance to the current actor.
+- Home: jump to the selected combatant (from PgUp/PgDn). End: distance to it.
 
-## Building from source
+Combat, menus and review:
+- Tab: open/close the actions menu (move, attack, skills, items).
+- T: open/close the initiative tracker (turn order with HP, AP, status).
+- Enter on a hostile: target actions menu. Enter on an ally: that ranger's info.
+- L: open the combat log; L or Escape closes it.
+- PgUp / PgDn: cycle combatants. Ctrl+PgUp / Ctrl+PgDn: cycle combatant category.
+- In the actions and target menus, baseline keys cycle entries and Enter executes. In the target menu, Left / Right switch the Actions and Info tabs.
 
-The repo includes the required reference DLLs in `libs/`, so no first-time setup is needed:
+Combat, targeting and free aim:
+- After choosing a targeted item or skill, move the cursor to the target and press Enter; Escape cancels.
+- Free aim (Tab, then Free Aim): move to the target tile and press Enter to fire; Escape cancels.
 
-```
+Combat, other:
+- I: inventory (your turn only). Escape: pause menu when no menu is open.
+
+Conversations:
+- Baseline keys move through options. While the NPC is still speaking, Enter skips the voiceover instead of selecting.
+- Skill-check options announce the required level and whether you pass. Goodbye options announce as "ends conversation."
+
+Inventory (character info screen):
+- Up / Down move within a zone; Left / Right switch Equipment and Backpack.
+- Enter: item context menu (Equip, Drop, Use, Split, and so on). E: quick equip/unequip.
+- Tab: full item info, spoken once. I: item info browser (Up/Down lines, Home/End jump, Escape or I closes).
+- R: flavor description. F: cycle the filter. C: context summary (ranger, weight, filter).
+- PgUp / PgDn: switch character-info tabs.
+
+Loot containers:
+- Up / Down move items; Left / Right switch container; F1 to F7 choose the destination ranger.
+- Enter: transfer to the selected ranger. T: take all. G: distribute across the party.
+- Tab: item info. I: info browser. R: description. F: filter. C: context summary.
+
+Vendor and shop:
+- Left / Right cycle four zones: Player Inventory, Escrow, Vendor Inventory, Filters. Up / Down move within a zone.
+- Enter: buy, sell, or move, depending on the zone. I: item info browser. R: description.
+- S: scrap balance. J: sell all junk. F: filter.
+- Quantity dialogs use the modal quantity-prompt keys above; the total price is announced as you adjust.
+
+Character creation has eight panels: Use Default Party, Party, Add Character, Attributes, Skills, Traits, Dossier, Flavor.
+
+Character creation, all panels:
+- Tab: panel name and position. D: on Attributes/Skills, open the Derived Stats browser; on other panels, announce the character summary.
+- N: Next/Done. Enter on the Previous/Next buttons calls Back/Done. Escape: game-native Back.
+
+Character creation, party panels (Use Default Party, Party, Add Character):
+- Baseline keys; Enter selects a slot, accepts a premade character, or starts the game.
+- Party panel: I re-announces the character; Delete removes the focused slot (with confirmation); S starts playing once enough rangers are present.
+- Add Character panel: R reads the biography.
+
+Character creation, Attributes:
+- Up / Down move attributes. + / - adjust (also = / -, numpad + / -, or Enter then Left/Right).
+- Enter: edit mode (Left/Right adjust, Enter or Escape exits). I: describe. P: points remaining.
+- F: switch to Skills without leaving the panel; F again switches back.
+
+Character creation, Skills (or Attributes then F):
+- Up / Down move skills. Left / Right switch category (Combat, Knowledge, General).
+- + / - adjust (or Enter for edit mode). I: describe. P: points remaining. F (from Attributes): switch back.
+
+Character creation, Traits:
+- Up / Down move traits. Enter or Space toggles. I: browsable perk description (Up/Down lines, Escape closes).
+
+Character creation, Dossier and Flavor:
+- Up / Down move fields. Left / Right cycle a dropdown value or toggle gender.
+- Enter on a text field starts editing: type, Enter confirms, Escape cancels.
+
+Character creation, browsers:
+- Derived Stats (Attributes/Skills, then D): baseline keys cycle stats, Home/End jump, I describes.
+- Trait/perk description (I on a trait): baseline keys move through the lines, Home/End jump.
+
+Character info in-game has tabs: Attributes, Skills, Traits, Dossier, Logbook, Inventory (inventory is covered above).
+
+Character info, all tabs:
+- Tab: panel and position. D: full character summary. PgUp / PgDn: switch tab.
+- E: current XP and XP to the next level. S: unified stats browser (Header, Combat, Derived).
+
+Character info, Attributes and Skills (level-up):
+- As in character creation, plus: on Skills, F cycles Learned and the three unlearned categories, and Left / Right switch the unlearned category once past Learned.
+- + / - or Enter raise with available points. P: points remaining. I: describe.
+
+Character info, Traits:
+- Up / Down move traits. Enter or Space toggles, if perk points are available. I: perk description. P: perk points remaining.
+
+Character info, Dossier:
+- Up / Down move fields. I on the Quirk line opens the quirk description; on any other line it reads the biography.
+
+Character info, Logbook:
+- Up / Down move entries. Enter or Right opens an entry's details. Left: previous sort category. F: next sort category.
+- X: toggle flagged. I: announce the entry's location or source.
+- In a detail view, baseline keys move through the lines (Home/End jump), Tab announces position, Escape or Left returns to the list.
+
+
+Original game keys in combat
+
+In combat the mod claims only the keys it needs; every other vanilla binding still reaches the game. The most useful:
+- Space: end turn. X: swap weapons. V: ambush (overwatch). R: reload. G: show the movement grid.
+- ' (apostrophe): stand. ; (semicolon): crouch. B: change fire mode. N: toggle show attack range. Z: highlight enemies.
+- 1 to 9: the on-screen item hotkey slots.
+
+In exploration the map cursor owns the keyboard and suppresses the game's own input, so vanilla hotkeys generally do not fire there. Use the mod's equivalents instead: I for character/inventory, and the cursor for navigation and interaction.
+
+Camera keys: W A S D pan the camera and Q / E rotate it, but rotation only takes effect when the rotation lock is off (F10; on by default, so up stays north).
+
+
+Key conflicts
+
+Some mod keys overlap with vanilla bindings. In combat the mod takes only the keys it uses; in cursor and menu contexts, including exploration, it suppresses vanilla input more broadly. Where it matters:
+- T (game: centre on character): the combat initiative tracker.
+- Tab (game: select next mob): the actions menu in combat and at the map cursor.
+- F (game: precision shot in combat): camera-follow toggle in every cursor context; precision shots are in the target menu.
+- Space (game: end turn in combat, toggle group mode in exploration): tactical pause in exploration; left alone for End Turn in combat.
+- ] (game: unbound): move to cursor in exploration, combat, and the world map.
+
+
+Building from source
+
+The repo includes the reference DLLs in libs/, so no setup is needed. Build with:
+
 dotnet build -c Release
-```
 
-Output lands in `bin\Release\net35\Wasteland2AccessibilityMod.dll`. An MSBuild target auto-copies it to `..\Mods\` if that folder exists next to the repo (useful when developing against a local game install).
+The DLL lands in bin\Release\net35\ and auto-copies to ..\Mods\ if that folder exists next to the repo. To make the release archive, run:
 
-To assemble the distributable release archive, run:
-
-```
 powershell -ExecutionPolicy Bypass -File package.ps1
-```
 
-This builds Release and produces `dist\Wasteland2AccessibilityMod-v<version>.zip`, bundling the mod DLL, the Tolk bridge (`redist\Tolk.dll`), and this README in the game's `Build` folder layout.
+That builds Release and produces dist\Wasteland2AccessibilityMod-v<version>.zip with the mod DLL, Tolk.dll, and this readme.
 
-## Controls and hotkeys
 
-Every keybinding the mod adds, organized by context. Most contexts are auto-detected: when you're on the world map, the world-map controls apply; when you open inventory, inventory controls take over. You don't switch contexts manually.
+Credits and license
 
-### Notation
-
-- Keys are written with their printed names: `Up`, `Down`, `PgUp`, `PgDn`, `Backspace`, `Home`, `End`, `\` (backslash), `]` (right bracket), `=` (equals), `'` (apostrophe).
-- `Ctrl+X` means hold Ctrl while pressing X. `Shift+X` same idea.
-- `Numpad +/-` and the top-row `=` / `-` keys are interchangeable wherever value adjustment is mentioned.
-
-### Universal navigation
-
-These keys behave the same in nearly every menu, list, and cursor context. The sections below list only what's **different from or in addition to** this baseline — if a context isn't mentioned for one of these keys, it follows the baseline.
-
-| Key | Action |
-|---|---|
-| `Up` / `Down` | Previous / next item in the current list. |
-| `Enter` | Activate / select / confirm the focused item. |
-| `Escape` | Close, cancel, or go back. |
-| `Home` / `End` | Jump to first / last item (in lists that support it). |
-| `\` | Repeat the last announcement. |
-| `F1`–`F7` | Switch to party member 1 through 7. |
-
-A few contexts override these — combat leaves `Space` to the game for End Turn, and the grid/combat cursors give `Home`/`End`, `Tab`, and `\` cursor-specific meanings (`\` becomes a detailed scan of the current tile rather than a repeat). Those overrides are called out where they apply.
-
-### Always-on (most exploration / map contexts)
-
-| Key | Action |
-|---|---|
-| `F1`–`F7` | Select party member 1 through 7. (Exploration and world map additionally support Shift/Ctrl multi-select — see those sections.) |
-| `F10` | Toggle camera rotation lock. Locked = "up" is always north. Default: locked. |
-| `Space` | Toggle tactical pause. Auto-pauses while inventory / loot / vendor screens are open. |
-
-### Main menu
-
-Baseline navigation. `Up` / `Down` move between Continue / Load / New Game / Options / Credits / Exit; `Enter` activates.
-
-### Modal dialogs (confirmations, tutorials, world-map encounters)
-
-Generic Yes/No and OK/Cancel modals — `Left` / `Up` is the previous button, `Right` / `Down` the next, `Enter` activates.
-
-Difficulty selection (when starting a new game):
-
-| Key | Action |
-|---|---|
-| `Left` / `Right` | Change difficulty (Rookie / Seasoned / Ranger / Legend). |
-| `Up` / `Down` | Switch between Play and Back. |
-
-Quantity prompt (split-stack, partial-buy):
-
-| Key | Action |
-|---|---|
-| `Left` / `Right` | Adjust quantity by 1. |
-| `PgDn` / `PgUp` | Adjust quantity by 10. |
-| `Home` | Set to minimum. |
-| `End` | Set to maximum. |
-| `Up` / `Down` | Switch between OK and Cancel. |
-
-POI panel (world-map encounters, locations with multiple entries): `Left` / `Right` / `Up` / `Down` cycle the buttons (Attack / Run, Confirm / Cancel, or per-entry buttons), `Enter` activates.
-
-Tutorial popups: `Enter` continues. The full tutorial text reads on appearance.
-
-### Keypad popup (safes, doors, terminals)
-
-| Key | Action |
-|---|---|
-| `0`–`9` (top row or numpad) | Type that digit (up to 8 digits, the game's own limit). |
-| `Backspace` | Delete the last digit. |
-| `C` | Clear the field. |
-| `Enter` | Submit. |
-| `Escape` | Cancel. |
-
-### Generic menus (pause, options, save / load, etc.)
-
-Baseline navigation, plus:
-
-| Key | Action |
-|---|---|
-| `Left` / `Right` | Navigate the focused control list (alongside `Up` / `Down`). |
-| `Tab` | Move to the next element. |
-| `PgUp` / `PgDn` | Switch tabs in the Options menu. |
-| `Delete` | Delete the selected save (Save / Load screen only). |
-
-Save-name text field: `Enter` confirms and saves, `Escape` cancels and restores the prior name. Typed characters and Backspace work as expected; the last typed character is spoken for feedback.
-
-### Exploration (world / dungeon)
-
-Two cursor systems run in parallel during exploration: a **list cursor** that cycles through nearby interactables, and a **grid cursor** (map cursor) for tile-by-tile navigation.
-
-#### List cursor (interactables)
-
-| Key | Action |
-|---|---|
-| `PgUp` / `PgDn` | Previous / next interactable in the current category. |
-| `Ctrl+PgUp` / `Ctrl+PgDn` | Previous / next category (containers → NPCs → doors → ...). |
-| `=` | Toggle direction format (cardinal vs clock positions). |
-| `K` | Toggle tile announcement order (coordinates first vs object names first). |
-| `'` | Announce party scrap (currency). |
-| `Enter` | Interact with the selected list item. If the object accepts an item your party carries (shovel for a dirt pile, etc.), it uses it automatically. |
-| `Backspace` | Stop party movement. |
-| `R` | Answer the radio. |
-| `I` | Open the character / inventory screen. |
-| `G` | Toggle party group mode (grouped / ungrouped). |
-| `Shift+F1`–`F7` or `Ctrl+F1`–`F7` | Add that ranger to the current selection (instead of replacing it). Use to build a multi-ranger group. |
-| `F1`–`F7` (already-selected leader) | Re-pressing the key for the current leader centers the camera on them. |
-| `Escape` | Open the pause menu. |
-
-#### Grid cursor (map cursor)
-
-| Key | Action |
-|---|---|
-| `Up` / `Down` / `Left` / `Right` | Move the cursor one step in that cardinal direction. |
-| `Shift+Left` / `Shift+Right` | Decrease / increase the step size (1–30 tiles per key press). |
-| `Ctrl+Arrow` | Move in that direction until blocked by terrain. |
-| `Tab` | Open the actions menu (skills + usable items) at the cursor. |
-| `Enter` | Open the context menu on the cursor's tile (or attack / use item if a free-aim or item-use mode is active, or open party-member info if a single ranger is on the tile). |
-| `\` | Detailed scan of the current tile (everything on it). |
-| `X` | Examine the first examinable object on the tile. |
-| `]` | Order the selected ranger to walk to the cursor. |
-| `Shift+Home` | Jump cursor to the party leader. |
-| `Shift+End` | Announce distance and direction from cursor to party leader. |
-| `Home` | Jump cursor to the currently selected interactable (the one from PgUp/PgDn cycling). |
-| `End` | Distance and direction to the selected interactable. |
-| `F` | Toggle camera-follows-cursor. |
-| `K` | Toggle tile announcement order. |
-| `H` | Toggle elevation announcements (height changes and height relative to the party). |
-| `Y` | Toggle line-of-sight announcements (whether the tile is within sight of the selected ranger). |
-| `Escape` | Cancel an active free-aim / item-use mode. (With no active mode, opens the pause menu via exploration.) |
-
-Context menus and selection lists (PC selection, target selection) use baseline navigation.
-
-### World map
-
-| Key | Action |
-|---|---|
-| `Up` / `Down` / `Left` / `Right` | Move the review cursor in that direction. |
-| `Shift+Left` / `Shift+Right` | Decrease / increase step size (1–100 world units). |
-| `PgUp` / `PgDn` | Cycle through visible POIs (locations, oases, encounters). |
-| `Ctrl+PgUp` / `Ctrl+PgDn` | Cycle POI category. |
-| `Home` | Jump cursor to the selected POI. |
-| `End` | Announce distance and direction from cursor to selected POI. |
-| `Shift+Home` | Jump cursor to the party. |
-| `Shift+End` | Announce distance from cursor to the party. |
-| `]` | Order the party to walk to the cursor (announces water cost and any radiation crossings). |
-| `Backspace` | Stop the party. |
-| `Enter` | Interact with the POI at or near the cursor (walks the party there first if needed). |
-| `Space` | Announce a cursor summary (step size, distance to party, radiation, nearest POI). |
-| `W` | Announce water supply (current / max). |
-| `Shift+W` | Estimate water cost from the party to the cursor. |
-| `F` | Toggle camera-follows-cursor. |
-| `R` | Answer the radio. |
-| `I` | Open the character / inventory screen. |
-| `Escape` | Pause menu. |
-| `Shift+F1`–`F7` or `Ctrl+F1`–`F7` | Add that ranger to the current selection (instead of replacing it). |
-
-### Combat
-
-Combat is turn-based. The cursor auto-jumps to the active actor when a new turn starts and announces whose turn it is.
-
-#### Combat cursor movement
-
-| Key | Action |
-|---|---|
-| `Up` / `Down` / `Left` / `Right` | Move the cursor one step. |
-| `Shift+Left` / `Shift+Right` | Decrease / increase step size. |
-| `Ctrl+Arrow` | Move until blocked. |
-| `]` | Move the current actor to the cursor (costs AP). |
-| `\` | Detailed tile announcement. |
-| `K` | Toggle tile announcement order. |
-| `Y` | Toggle line-of-sight announcements (whether the active character has a clear line of fire to the tile). |
-| `F` | Toggle camera-follows-cursor. (Suppresses the game's "headshot/precision shot" binding — precision shots are available through the Tab target-actions menu instead.) |
-| `Shift+Home` | Jump cursor to the current actor. |
-| `Shift+End` | Distance from cursor to the current actor. |
-| `Home` | Jump cursor to the selected combatant (from PgUp/PgDn cycling). |
-| `End` | Distance from cursor to the selected combatant. |
-
-> `Space` is the game's "end turn" key in combat — the mod leaves it alone.
-
-#### Combat action menus
-
-| Key | Action |
-|---|---|
-| `Tab` | Open / close the combat actions menu (movement, attacks, skills, items). |
-| `T` | Open / close the initiative tracker (full turn order with HP, AP, status). |
-| `Enter` on cursor over a hostile | Open the target actions menu for that enemy. |
-| `Enter` on cursor over an ally | Open that ranger's info screen. |
-| `L` | Open the combat log. `L` or `Escape` to close. |
-
-Inside the actions menu and target actions menu, baseline navigation cycles entries (`Left` / `Right` also work, except in the target actions menu where they switch between the Actions and Info tabs). `Enter` executes the focused action.
-
-#### Combatant cycling
-
-| Key | Action |
-|---|---|
-| `PgUp` / `PgDn` | Previous / next combatant in the current category. |
-| `Ctrl+PgUp` / `Ctrl+PgDn` | Previous / next combatant category (allies / enemies / etc.). |
-
-#### Item / skill targeting
-
-After choosing an item or skill from the Tab actions menu that needs a target, the cursor enters a targeting mode:
-
-- Move the cursor onto the desired character / tile and press `Enter`.
-- `Escape` cancels.
-
-#### Free aim (Tab → Free Aim)
-
-- Move cursor to target tile and press `Enter` to fire.
-- `Escape` cancels.
-
-#### Other combat keys
-
-| Key | Action |
-|---|---|
-| `I` | Open inventory (player's turn only). |
-| `Escape` | Open the pause menu (when no browse mode is active). |
-
-### Conversations
-
-Baseline navigation moves through dialogue options. The one override: while the NPC is still speaking, `Enter` skips the current voiceover instead of selecting an option.
-
-Skill-check options announce the required skill level and whether you can pass. Goodbye options announce as "ends conversation."
-
-### Inventory (character info screen)
-
-`Up` / `Down` navigate within the current zone (Equipment or Backpack); `Left` / `Right` switch between the two zones.
-
-| Key | Action |
-|---|---|
-| `Enter` | Open the context menu on the current item (Equip, Drop, Use, Split, etc.). |
-| `E` | Quick equip / unequip the current item. |
-| `Tab` | Detailed item info (one-shot, spoken in full). |
-| `I` | Open the **item info browser** — full item details split into browsable lines (`Up`/`Down` to navigate, `Home`/`End` to jump, `Escape` or `I` to close). |
-| `R` | Read the item's flavor description. |
-| `F` | Cycle the inventory filter (All / Weapons / Armor / ...). |
-| `C` | Read the inventory context summary (selected ranger, weight, filter, etc.). |
-| `PgUp` / `PgDn` | Switch character-info tabs (Attributes / Skills / Inventory / ...). |
-
-### Loot containers (PopupInventoryMenu)
-
-`Up` / `Down` navigate items; `Left` / `Right` switch container (if multiple are open). `F1`–`F7` choose the destination party member.
-
-| Key | Action |
-|---|---|
-| `Enter` | Transfer the item to the currently selected ranger. |
-| `T` | Take all. |
-| `G` | Distribute all (split intelligently across the party). |
-| `Tab` | Detailed item info. |
-| `I` | Item info browser. |
-| `R` | Read item description. |
-| `F` | Cycle filter. |
-| `C` | Loot context summary. |
-
-### Vendor / shop
-
-Four zones cycle with `Left` / `Right`: **Player Inventory → Escrow → Vendor Inventory → Filters**. `Up` / `Down` navigate within the current zone.
-
-| Key | Action |
-|---|---|
-| `Enter` | Buy / sell / move item depending on the zone you're in. |
-| `I` | Open the item info browser for the current item. |
-| `R` | Read the item description. |
-| `S` | Announce your party's scrap balance. |
-| `J` | Sell all junk. |
-| `F` | Cycle filter. |
-
-Quantity-selection dialogs that pop up during buy/sell use the **modal quantity prompt** controls listed above. Total price is announced as you adjust.
-
-### Character creation
-
-Eight panels: Use Default Party / Party / Add Character / Attributes / Skills / Traits / Dossier / Flavor. Some keys are common across all panels.
-
-#### Character creation — common across all panels
-
-| Key | Action |
-|---|---|
-| `Tab` | Announce panel name + current position. |
-| `D` | On Attributes / Skills: open the Derived Stats browser. On other panels: announce the character summary. |
-| `N` | Next / Done (same as the Done button). |
-| `Enter` on Previous / Next nav buttons | Calls Back / Done respectively. |
-| `Escape` | Game-native Back — the mod lets it pass through. |
-
-#### Use Default Party / Party / Add Character panels
-
-Baseline navigation: `Up` / `Down` move through the list, `Enter` activates (select a slot, accept a premade character, start the game).
-
-**Party panel extras**
-
-| Key | Action |
-|---|---|
-| `I` | Re-announce the current character details. |
-| `Delete` | Remove the character in the focused slot (with confirmation). |
-| `S` | Start playing (shortcut — only when enough rangers are present). |
-
-**Add Character panel extras**
-
-| Key | Action |
-|---|---|
-| `R` | Read the biography. |
-
-#### Attributes panel
-
-`Up` / `Down` navigate attributes.
-
-| Key | Action |
-|---|---|
-| `+` / `-` (or `=` / `-`, numpad `+/-`, or `Left` / `Right` after pressing `Enter`) | Adjust the focused attribute. |
-| `Enter` | Enter edit mode — `Left`/`Right` adjust, `Enter` or `Escape` exits. |
-| `I` | Describe the focused attribute. |
-| `P` | Announce attribute points remaining. |
-| `F` | Switch sub-area to Skills (you can adjust skills without leaving this panel). `F` again to switch back. |
-
-#### Skills panel (or Attributes → F)
-
-`Up` / `Down` navigate skills.
-
-| Key | Action |
-|---|---|
-| `Left` / `Right` | Switch skill category (Combat / Knowledge / General). |
-| `+` / `-` (or `Enter` for edit mode) | Adjust the focused skill. |
-| `I` | Describe the focused skill. |
-| `P` | Announce skill points remaining. |
-| `F` (only from Attributes panel) | Switch back to attributes. |
-
-#### Traits panel
-
-`Up` / `Down` navigate traits.
-
-| Key | Action |
-|---|---|
-| `Enter` / `Space` | Toggle the focused trait. |
-| `I` | Open the browsable perk description (`Up`/`Down` lines, `Escape` to close). |
-
-#### Dossier / Flavor panels
-
-`Up` / `Down` navigate fields.
-
-| Key | Action |
-|---|---|
-| `Left` / `Right` | Cycle a dropdown value or toggle a gender button. |
-| `Enter` on a text input | Enter text-editing mode. Type normally, `Enter` to confirm, `Escape` to cancel. |
-
-#### Derived Stats browser (Attributes/Skills → `D`)
-
-Baseline navigation cycles derived stats (Hit Points, Action Points, Combat Speed, etc.); `Home` / `End` jump to first / last. `I` describes the focused stat.
-
-#### Trait / perk description browser (`I` on a trait)
-
-Baseline navigation moves through the description lines (`Home` / `End` for first / last).
-
-### Character info (in-game)
-
-Tabs: Attributes / Skills / Traits / Dossier / Logbook / Inventory (inventory is documented in its own section above).
-
-#### Character info — common
-
-| Key | Action |
-|---|---|
-| `Tab` | Announce current panel and position. |
-| `D` | Announce full character summary. |
-| `PgUp` / `PgDn` | Switch tab. |
-| `E` | Announce current XP and XP to next level. |
-| `S` | Open the unified stats browser (Header / Combat / Derived sections). |
-
-#### Attributes / Skills (level-up flow)
-
-Same as character creation, plus:
-
-- **Skills:** `F` cycles section between **Learned** and the three **unlearned** categories (Combat / Knowledge / General).
-- `Left` / `Right` switches unlearned category once you're past Learned.
-- `+`/`-` or `Enter` → edit mode for raising attributes/skills with available points.
-- `P` announces points remaining.
-- `I` describes the focused attribute or skill.
-
-#### Traits panel (in-game)
-
-`Up` / `Down` navigate traits.
-
-| Key | Action |
-|---|---|
-| `Enter` / `Space` | Toggle (if perk points available). |
-| `I` | Open browsable perk description. |
-| `P` | Announce perk points remaining. |
-
-#### Dossier panel (in-game)
-
-`Up` / `Down` navigate fields (name, biography, quirk, etc.).
-
-| Key | Action |
-|---|---|
-| `I` | On the Quirk line: open the quirk description browser. On any other line: read the biography. |
-
-#### Logbook panel
-
-`Up` / `Down` navigate entries.
-
-| Key | Action |
-|---|---|
-| `Enter` or `Right` | Open the selected entry's details. |
-| `Left` | Previous sort category. |
-| `F` | Next sort category. |
-| `X` | Toggle flagged on the current entry. |
-| `I` | Announce the entry's location / source. |
-
-Inside a logbook detail view, baseline navigation moves through the detail lines (`Home` / `End` for first / last). `Tab` announces position; `Escape` or `Left` returns to the entry list.
-
-## Original game hotkeys in combat
-
-During **combat**, the mod intercepts only the keys it needs for the accessible cursor and menus — every other Wasteland 2 default binding passes straight through to the game, so you still issue the vanilla combat commands directly. The most useful:
-
-| Key | Game action |
-|---|---|
-| `Space` | End turn. |
-| `X` | Swap weapons. |
-| `V` | Ambush (overwatch). |
-| `R` | Reload. |
-| `G` | Show the movement grid. |
-| `'` (apostrophe) | Stand. |
-| `;` (semicolon) | Crouch. |
-| `B` | Change fire mode. |
-| `N` | Toggle "show attack range". |
-| `Z` | Highlight all enemies. |
-| `1`–`9` | Trigger the on-screen item hotkey slots. |
-
-Any other vanilla binding the mod doesn't claim in combat also reaches the game, subject to what the game itself allows mid-combat.
-
-During **exploration the mod's map cursor owns the keyboard** — it suppresses the game's own input processing every frame — so these vanilla hotkeys generally do **not** fire there. Use the mod's equivalents instead (see [Exploration](#exploration-world--dungeon)); for example `I` opens the character / inventory screen, and the cursor handles map navigation and interaction.
-
-**Camera keys:** `W` `A` `S` `D` still pan the camera, and `Q` / `E` rotate it — but rotation only takes effect when the camera-rotation lock is **off** (toggle with `F10`; the lock is on by default so "up" stays north).
-
-## Notes on key conflicts
-
-A few of the mod's keys overlap with Wasteland 2's own bindings. In **combat** the mod grabs only the keys it uses and leaves the rest to the game; in its **cursor and menu contexts (including exploration)** it suppresses the game's input more broadly, so the vanilla bindings are inactive there. Where an overlapping key matters:
-
-- `T` (game: "center on character") — used by the combat initiative tracker in combat.
-- `Tab` (game: "select next mob") — used for the actions menu in combat and the actions menu at the map cursor.
-- `F` (game: "headshot / precision shot" in combat, unbound elsewhere) — camera-follow toggle in every cursor context, including combat. Precision shots are available through the Tab target-actions menu.
-- `Space` (game: "end turn" in combat, "toggle group mode" in exploration) — `Space` is tactical pause in exploration. In combat, the mod leaves Space alone for End Turn.
-- `]` (game: unbound by default) — "move to cursor" in exploration / combat / world map.
-
-## Credits
-
-- **Tolk** — Davy Kager (BSD 3-clause). Bridges the mod to NVDA, JAWS, and SAPI.
-- **MelonLoader** — LavaGang. Loads the mod into the Unity game.
-- **Harmony** — Andreas Pardeike. Runtime method patching.
-- The Wasteland 2 community — testing, feedback, and putting up with the rough edges.
-
-## License
+- Tolk, by Davy Kager (BSD 3-clause). Bridges the mod to NVDA, JAWS, and SAPI.
+- MelonLoader, by LavaGang. Loads the mod into the game.
+- Harmony, by Andreas Pardeike. Runtime method patching.
+- The Wasteland 2 community, for testing and feedback.
 
 Community accessibility mod. Modify and share freely.

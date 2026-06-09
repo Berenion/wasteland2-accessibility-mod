@@ -99,7 +99,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (Input.GetKeyDown(KeyCode.UpArrow))
                 {
                     selectedButtonIndex--;
-                    if (selectedButtonIndex < 0) selectedButtonIndex = buttons.Count - 1;
+                    if (selectedButtonIndex < 0) { selectedButtonIndex = buttons.Count - 1; if (buttons.Count > 1) MenuCue.PlayWrap(); }
                     AnnounceButton();
                     InputSuppressor.ShouldSuppressUINavigation = true;
                     InputSuppressor.ShouldSuppressGameInput = true;
@@ -109,6 +109,7 @@ namespace Wasteland2AccessibilityMod.States
                 // Down - next button (Play/Back)
                 if (Input.GetKeyDown(KeyCode.DownArrow))
                 {
+                    if (selectedButtonIndex == buttons.Count - 1 && buttons.Count > 1) MenuCue.PlayWrap();
                     selectedButtonIndex = (selectedButtonIndex + 1) % buttons.Count;
                     AnnounceButton();
                     InputSuppressor.ShouldSuppressUINavigation = true;
@@ -172,7 +173,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (Input.GetKeyDown(KeyCode.UpArrow))
                 {
                     selectedButtonIndex--;
-                    if (selectedButtonIndex < 0) selectedButtonIndex = buttons.Count - 1;
+                    if (selectedButtonIndex < 0) { selectedButtonIndex = buttons.Count - 1; if (buttons.Count > 1) MenuCue.PlayWrap(); }
                     AnnounceButton();
                     InputSuppressor.ShouldSuppressUINavigation = true;
                     InputSuppressor.ShouldSuppressGameInput = true;
@@ -181,6 +182,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 if (Input.GetKeyDown(KeyCode.DownArrow))
                 {
+                    if (selectedButtonIndex == buttons.Count - 1 && buttons.Count > 1) MenuCue.PlayWrap();
                     selectedButtonIndex = (selectedButtonIndex + 1) % buttons.Count;
                     AnnounceButton();
                     InputSuppressor.ShouldSuppressUINavigation = true;
@@ -194,7 +196,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.UpArrow))
                 {
                     selectedButtonIndex--;
-                    if (selectedButtonIndex < 0) selectedButtonIndex = buttons.Count - 1;
+                    if (selectedButtonIndex < 0) { selectedButtonIndex = buttons.Count - 1; if (buttons.Count > 1) MenuCue.PlayWrap(); }
                     AnnounceButton();
                     InputSuppressor.ShouldSuppressUINavigation = true;
                     InputSuppressor.ShouldSuppressGameInput = true;
@@ -203,6 +205,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.DownArrow))
                 {
+                    if (selectedButtonIndex == buttons.Count - 1 && buttons.Count > 1) MenuCue.PlayWrap();
                     selectedButtonIndex = (selectedButtonIndex + 1) % buttons.Count;
                     AnnounceButton();
                     InputSuppressor.ShouldSuppressUINavigation = true;
@@ -257,6 +260,9 @@ namespace Wasteland2AccessibilityMod.States
             // modal via CreateMessageMenu() without calling AddScreen, so the modal never
             // appears in GUIManager.screens even though it is visible and interactive.
             var modal = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
+            // ModalInputMenu (custom-keyword / password text entry) is owned by KeywordEntryState,
+            // which needs higher priority for typing. Don't treat it as a generic yes/no modal.
+            if (modal is ModalInputMenu) return false;
             return modal != null && modal.gameObject.activeInHierarchy;
         }
 
@@ -297,9 +303,10 @@ namespace Wasteland2AccessibilityMod.States
             buttons.Clear();
             bool changed = false;
 
-            // Check for ModalMessageMenu (includes DifficultySelectionMenu which inherits from it)
+            // Check for ModalMessageMenu (includes DifficultySelectionMenu which inherits from it).
+            // ModalInputMenu is excluded — KeywordEntryState owns the keyword/password text box.
             ModalMessageMenu modal = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
-            if (modal != null && modal.gameObject.activeInHierarchy)
+            if (modal != null && !(modal is ModalInputMenu) && modal.gameObject.activeInHierarchy)
             {
                 // Check if this is the difficulty selection screen
                 var diffMenu = modal as DifficultySelectionMenu;

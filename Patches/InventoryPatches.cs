@@ -94,6 +94,11 @@ namespace Wasteland2AccessibilityMod.Patches
             // Only announce for player inventories (not for vendors, containers, etc.)
             if (__instance is InventoryPlayer && item != null && __result > 0)
             {
+                // Suppress the burst of adds the game fires while populating inventories
+                // on a fresh start or a save load — that's the "starting item spam," not
+                // a pickup the player initiated.
+                if (GameLoadState.IsBulkInventoryWindow()) return;
+
                 string itemName = UITextExtractor.CleanText(item.template.displayName);
                 string announcement;
 

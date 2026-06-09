@@ -295,8 +295,10 @@ namespace Wasteland2AccessibilityMod.States
             int newZoneIdx = currentZoneIdx + direction;
 
             // Wrap around
-            if (newZoneIdx < 0) newZoneIdx = ZoneOrder.Length - 1;
-            else if (newZoneIdx >= ZoneOrder.Length) newZoneIdx = 0;
+            bool wrapped = false;
+            if (newZoneIdx < 0) { newZoneIdx = ZoneOrder.Length - 1; wrapped = true; }
+            else if (newZoneIdx >= ZoneOrder.Length) { newZoneIdx = 0; wrapped = true; }
+            if (wrapped) MenuCue.PlayWrap();
 
             ShopZone newZone = ZoneOrder[newZoneIdx];
             var vendorScreen = GetVendorScreen();
@@ -592,11 +594,19 @@ namespace Wasteland2AccessibilityMod.States
             int newIndex = currentIndex + direction;
 
             // Wrap around
+            bool wrapped = false;
             if (newIndex < 0)
+            {
                 newIndex = currentList.Count - 1;
+                wrapped = true;
+            }
             else if (newIndex >= currentList.Count)
+            {
                 newIndex = 0;
+                wrapped = true;
+            }
 
+            if (wrapped && newIndex != currentIndex) MenuCue.PlayWrap();
             currentIndex = newIndex;
             AnnounceCurrentItem(interrupt: true);
         }
@@ -1082,7 +1092,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (infoLines.Count == 0) return true;
                 infoLineIndex--;
-                if (infoLineIndex < 0) infoLineIndex = infoLines.Count - 1;
+                if (infoLineIndex < 0) { infoLineIndex = infoLines.Count - 1; if (infoLines.Count > 1) MenuCue.PlayWrap(); }
                 ScreenReaderManager.SpeakInterrupt($"{infoLines[infoLineIndex]}, {infoLineIndex + 1} of {infoLines.Count}");
                 return true;
             }
@@ -1091,7 +1101,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (infoLines.Count == 0) return true;
                 infoLineIndex++;
-                if (infoLineIndex >= infoLines.Count) infoLineIndex = 0;
+                if (infoLineIndex >= infoLines.Count) { infoLineIndex = 0; if (infoLines.Count > 1) MenuCue.PlayWrap(); }
                 ScreenReaderManager.SpeakInterrupt($"{infoLines[infoLineIndex]}, {infoLineIndex + 1} of {infoLines.Count}");
                 return true;
             }
