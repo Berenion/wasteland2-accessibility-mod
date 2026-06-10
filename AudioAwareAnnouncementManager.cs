@@ -46,7 +46,7 @@ namespace Wasteland2AccessibilityMod
 
         public void Initialize()
         {
-            MelonLogger.Msg("[AudioAware] AudioAwareAnnouncementManager initialized");
+            ModLog.Debug("[AudioAware] AudioAwareAnnouncementManager initialized");
         }
 
         public void Update()
@@ -58,7 +58,7 @@ namespace Wasteland2AccessibilityMod
             {
                 // Conversation started
                 conversationStartTime = Time.time;
-                MelonLogger.Msg($"[AudioAware] Conversation started");
+                ModLog.Debug($"[AudioAware] Conversation started");
             }
             else if (!isInConversation && wasInConversationLastFrame)
             {
@@ -66,7 +66,7 @@ namespace Wasteland2AccessibilityMod
                 conversationEndTime = Time.time;
                 if (announcementQueue.Count > 0)
                 {
-                    MelonLogger.Msg($"[AudioAware] Conversation ended - will speak {announcementQueue.Count} queued announcement(s) after short delay");
+                    ModLog.Debug($"[AudioAware] Conversation ended - will speak {announcementQueue.Count} queued announcement(s) after short delay");
                 }
             }
 
@@ -85,7 +85,7 @@ namespace Wasteland2AccessibilityMod
             if (wasPlayingLastFrame && !isAudioPlaying)
             {
                 lastAudioStopTime = Time.time;
-                MelonLogger.Msg($"[AudioAware] Voice audio stopped");
+                ModLog.Debug($"[AudioAware] Voice audio stopped");
             }
 
             wasPlayingLastFrame = isAudioPlaying;
@@ -174,7 +174,7 @@ namespace Wasteland2AccessibilityMod
 
                     if ((bool)isPlayingMethod.Invoke(audioObject, null))
                     {
-                        MelonLogger.Msg($"[AudioAware] Audio playing: textKind={textKindName}");
+                        ModLog.Debug($"[AudioAware] Audio playing: textKind={textKindName}");
                         return true;
                     }
 
@@ -213,7 +213,7 @@ namespace Wasteland2AccessibilityMod
                 if (ScreenReaderManager.IsLoaded)
                 {
                     ScreenReaderManager.SpeakDirect(text, interrupt);
-                    MelonLogger.Msg($"[AudioAware] Speaking immediately (no voiceover): {text}");
+                    ModLog.Debug($"[AudioAware] Speaking immediately (no voiceover): {text}");
                 }
                 return;
             }
@@ -237,7 +237,7 @@ namespace Wasteland2AccessibilityMod
             };
 
             announcementQueue.Enqueue(announcement);
-            MelonLogger.Msg($"[AudioAware] Queued (voiceover active): {text} (Queue size: {announcementQueue.Count})");
+            ModLog.Debug($"[AudioAware] Queued (voiceover active): {text} (Queue size: {announcementQueue.Count})");
         }
 
         /// <summary>
@@ -252,7 +252,7 @@ namespace Wasteland2AccessibilityMod
 
             // Dequeue and speak the next announcement
             var announcement = announcementQueue.Dequeue();
-            MelonLogger.Msg($"[AudioAware] Speaking from queue: {announcement.Text}");
+            ModLog.Debug($"[AudioAware] Speaking from queue: {announcement.Text}");
 
             // Speak directly using ScreenReaderManager (use SpeakDirect to avoid circular calls)
             if (ScreenReaderManager.IsLoaded)

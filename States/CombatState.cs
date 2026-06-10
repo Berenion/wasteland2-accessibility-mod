@@ -103,6 +103,7 @@ namespace Wasteland2AccessibilityMod.States
         private bool browsingPartyInfo = false;
         private List<string> partyInfoLines = new List<string>();
         private int partyInfoIndex = 0;
+        private PC partyInfoPc = null; // live handle, so FormatPartyInfoLine can re-read fresh HP/AP
 
         // --- Combat Log Viewer (L key) ---
         private bool browsingLog = false;
@@ -440,6 +441,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     browsingPartyInfo = false;
                     partyInfoLines.Clear();
+                    partyInfoPc = null;
                     EventManager.ignoreNextBack = true;
                     ScreenReaderManager.SpeakInterrupt("Info closed");
                     return true;
@@ -818,7 +820,7 @@ namespace Wasteland2AccessibilityMod.States
 
         public override void OnActivated()
         {
-            MelonLogger.Msg("[CombatState] Activated - combat started");
+            ModLog.Debug("[CombatState] Activated - combat started");
             cursorInitialized = false;
             lastTrackedActor = null;
             EnsureCursorReady();
@@ -843,6 +845,7 @@ namespace Wasteland2AccessibilityMod.States
             freeAimUser = null;
             browsingPartyInfo = false;
             partyInfoLines.Clear();
+            partyInfoPc = null;
             cursorInitialized = false;
             combatMap = null;
             fullMap = null;
@@ -850,7 +853,7 @@ namespace Wasteland2AccessibilityMod.States
             combatantList.Clear();
             combatantIndex = -1;
             combatantCategory = 0;
-            MelonLogger.Msg("[CombatState] Deactivated - combat ended");
+            ModLog.Debug("[CombatState] Deactivated - combat ended");
         }
 
         // =====================================================================
@@ -916,7 +919,7 @@ namespace Wasteland2AccessibilityMod.States
                 combatMap = map;
                 fullMap = fullMapField?.GetValue(combatAStar) as Dictionary<Vector3, CombatAStarNode>;
                 cursorInitialized = false;
-                MelonLogger.Msg($"[CombatState] Combat grid loaded: {combatMap.Count} nodes");
+                ModLog.Debug($"[CombatState] Combat grid loaded: {combatMap.Count} nodes");
             }
 
             return true;
@@ -938,7 +941,7 @@ namespace Wasteland2AccessibilityMod.States
                 cursorGridId = node.id;
                 cursorPosition = node.position;
                 cursorInitialized = true;
-                MelonLogger.Msg($"[CombatState] Cursor initialized to {GetMobName(mob)} at grid {cursorGridId}");
+                ModLog.Debug($"[CombatState] Cursor initialized to {GetMobName(mob)} at grid {cursorGridId}");
             }
         }
 
@@ -960,90 +963,29 @@ namespace Wasteland2AccessibilityMod.States
 
         private void MoveCursor(int directionIndex, int tilesToMove)
         {
-            Vector3 direction = CardinalDirections.Vectors[directionIndex];
             previousCursorY = cursorPosition.y;
 
-            // Single-step moves onto the target tile even when it has no walkable
-            // combat node (terrain, cover, wall, or outside the combat area), so the
-            // user can inspect a blocked tile with the cursor — the same free off-grid
-            // behavior the exploration cursor has. Multi-tile / Ctrl moves still stop
-            // before the first non-walkable tile so the cursor never flies through walls.
-            if (tilesToMove <= 1)
+            // Shared stepping (see GridCursorStepper). Combat snaps the single-step grid id
+            // to the resolved node and describes blocked tiles via DescribeOffGridTile.
+            var result = GridCursorStepper.Step(
+                cursorGridId, cursorPosition, directionIndex, tilesToMove,
+                GetNodeAtGridId, DescribeOffGridTile, snapSingleStepToNode: true);
+
+            if (!result.Moved)
             {
-                Vector3 stepGridId = new Vector3(
-                    cursorGridId.x + direction.x,
-                    cursorGridId.y,
-                    cursorGridId.z + direction.z);
-
-                CombatAStarNode stepNode = GetNodeAtGridId(stepGridId);
-                if (stepNode != null)
-                {
-                    cursorGridId = stepNode.id;
-                    cursorPosition = stepNode.position;
-                }
-                else
-                {
-                    cursorGridId = stepGridId;
-                    cursorPosition = new Vector3(
-                        stepGridId.x * TileCoordinateSystem.SquareSize,
-                        cursorPosition.y,
-                        stepGridId.z * TileCoordinateSystem.SquareSize);
-                }
-
-                if (cameraFollowsCursor) SnapCameraToCursor();
-                AnnounceTile(detailed: false, reportHeightChange: true);
+                ScreenReaderManager.SpeakInterrupt(result.BlockReason ?? "Blocked");
                 return;
             }
 
-            Vector3 currentGridId = cursorGridId;
-            Vector3 currentPosition = cursorPosition;
-            int actualSteps = 0;
-            string blockReason = null;
-
-            for (int i = 0; i < tilesToMove; i++)
-            {
-                Vector3 newGridId = new Vector3(
-                    currentGridId.x + direction.x,
-                    currentGridId.y,
-                    currentGridId.z + direction.z);
-
-                CombatAStarNode node = GetNodeAtGridId(newGridId);
-                if (node != null)
-                {
-                    currentGridId = node.id;
-                    currentPosition = node.position;
-                    actualSteps++;
-                    continue;
-                }
-
-                // No combat node — describe what's there (terrain/wall or outside combat)
-                Vector3 blockedWorldPos = new Vector3(
-                    newGridId.x * TileCoordinateSystem.SquareSize,
-                    currentPosition.y,
-                    newGridId.z * TileCoordinateSystem.SquareSize);
-                blockReason = DescribeOffGridTile(newGridId, blockedWorldPos);
-                break;
-            }
-
-            if (actualSteps == 0)
-            {
-                ScreenReaderManager.SpeakInterrupt(blockReason ?? "Blocked");
-                return;
-            }
-
-            cursorGridId = currentGridId;
-            cursorPosition = currentPosition;
+            cursorGridId = result.GridId;
+            cursorPosition = result.Position;
             if (cameraFollowsCursor) SnapCameraToCursor();
 
-            // For multi-tile moves, prefix the announcement with the tile count
-            // and any blocking reason so the user knows the move stopped early.
-            string prefix = null;
-            if (tilesToMove > 1)
-            {
-                prefix = actualSteps + (actualSteps == 1 ? " tile" : " tiles");
-                if (blockReason != null)
-                    prefix += ", " + blockReason;
-            }
+            // Multi-tile moves prefix the announcement with the tile count and any blocking
+            // reason so the user knows the move stopped early; single steps have no prefix.
+            string prefix = result.SingleStep
+                ? null
+                : GridCursorStepper.BuildMovePrefix(result.ActualSteps, result.BlockReason);
             AnnounceTile(detailed: false, prefix: prefix, reportHeightChange: true);
         }
 
@@ -2362,6 +2304,7 @@ namespace Wasteland2AccessibilityMod.States
 
         private void OpenPartyMemberInfo(PC pc)
         {
+            partyInfoPc = pc;
             partyInfoLines.Clear();
             BuildPartyMemberInfo(pc);
 
@@ -2380,70 +2323,22 @@ namespace Wasteland2AccessibilityMod.States
 
         private void BuildPartyMemberInfo(PC pc)
         {
-            // --- Health ---
-            float maxHP = pc.stats.GetMaxHP();
-            float hpPercent = maxHP > 0 ? (pc.curHP / maxHP) * 100f : 0;
-            string healthLine = "Health: " + Mathf.RoundToInt(pc.curHP) + " of " + Mathf.RoundToInt(maxHP)
-                + " (" + hpPercent.ToString("F0") + "%)";
-
-            if (pc.healthState != PC.HealthState.Healthy)
-                healthLine += ", " + pc.healthState.ToString();
-
-            partyInfoLines.Add(healthLine);
-
-            // --- CON / AP ---
-            partyInfoLines.Add("AP: " + pc.combatActionPointsRemaining + " of " + pc.stats.GetActionPoints());
-
-            // --- Stance / Cover ---
-            var stanceParts = new List<string>();
-            if (pc.isCrouching) stanceParts.Add("crouching");
-            if (pc.inCover)
-                stanceParts.Add(pc.coverType == Cover.CoverType.Tall ? "tall cover" : "short cover");
-            if (pc.isHidden) stanceParts.Add("hidden");
-            if (stanceParts.Count > 0)
-                partyInfoLines.Add("Stance: " + string.Join(", ", stanceParts.ToArray()));
-
-            // --- Weapon ---
-            try
-            {
-                var weaponInstance = pc.pcStats.GetWeaponInstance();
-                if (weaponInstance != null && weaponInstance.template != null)
-                {
-                    string weaponName = UITextExtractor.CleanText(
-                        Language.Localize(weaponInstance.template.displayName, false, false, string.Empty));
-                    string weaponLine = "Weapon: " + weaponName;
-
-                    var ranged = weaponInstance as ItemInstance_WeaponRanged;
-                    if (ranged != null)
-                    {
-                        weaponLine += ", " + ranged.GetAmmoCount() + " of " + ranged.GetClipSize() + " ammo";
-                        if (pc.IsJammed()) weaponLine += ", jammed";
-                    }
-                    partyInfoLines.Add(weaponLine);
-                }
-            }
-            catch (Exception ex) { MelonLogger.Warning($"[CombatState] BuildPartyMemberInfo weapon section failed: {ex.Message}"); }
-
-            // --- Status Effects ---
-            try
-            {
-                if (pc.template != null && pc.template.statusEffects != null
-                    && pc.template.statusEffects.Count > 0)
-                {
-                    foreach (var effect in pc.template.statusEffects)
-                    {
-                        string line = Helpers.StatusEffectHelper.BuildEffectLine(effect);
-                        if (!string.IsNullOrEmpty(line))
-                            partyInfoLines.Add(line);
-                    }
-                }
-            }
-            catch (Exception ex) { MelonLogger.Warning($"[CombatState] BuildPartyMemberInfo status effects section failed: {ex.Message}"); }
+            // Shared builder (combat context: adds AP, Stance and the weapon "jammed" note).
+            partyInfoLines.AddRange(CharacterAnnouncementHelper.BuildPartyMemberInfoLines(pc, true));
         }
 
         private string FormatPartyInfoLine(int index)
         {
-            if (index < 0 || index >= partyInfoLines.Count) return "";
+            // Re-read live from the PC handle: HP/AP/status can change while the panel
+            // is open, so reading back a frozen string would announce stale numbers.
+            if (partyInfoPc != null)
+            {
+                partyInfoLines.Clear();
+                partyInfoLines.AddRange(CharacterAnnouncementHelper.BuildPartyMemberInfoLines(partyInfoPc, true));
+            }
+            if (partyInfoLines.Count == 0) return "";
+            if (index < 0) index = 0;
+            if (index >= partyInfoLines.Count) index = partyInfoLines.Count - 1;
             return partyInfoLines[index] + ", " + (index + 1) + " of " + partyInfoLines.Count;
         }
 
@@ -2506,7 +2401,7 @@ namespace Wasteland2AccessibilityMod.States
                             return;
                         }
                     }
-                    catch (Exception) { }
+                    catch (Exception ex) { MelonLogger.Warning($"[CombatState] free-aim TargetVisible check failed: {ex.Message}"); }
                 }
 
                 var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
@@ -2938,8 +2833,10 @@ namespace Wasteland2AccessibilityMod.States
             {
                 return pc.CanAttack(target, true, false);
             }
-            catch
+            catch (Exception ex)
             {
+                // Don't let a broken lookup masquerade as "out of range" — surface it.
+                MelonLogger.Warning($"[CombatState] CanPerformAttack failed (reporting as unavailable): {ex.Message}");
                 return false;
             }
         }
@@ -3240,7 +3137,13 @@ namespace Wasteland2AccessibilityMod.States
 
         private string FormatInfoLine(int index)
         {
-            if (index < 0 || index >= targetInfoLines.Count) return "";
+            // Re-read live from the target handle so HP/AP/cover aren't stale while browsing.
+            // BuildTargetInfoLines clears and rebuilds from current data, so it's safe to repeat.
+            if (targetMob != null)
+                BuildTargetInfoLines(targetMob);
+            if (targetInfoLines.Count == 0) return "";
+            if (index < 0) index = 0;
+            if (index >= targetInfoLines.Count) index = targetInfoLines.Count - 1;
             return targetInfoLines[index] + ", " + (index + 1) + " of " + targetInfoLines.Count;
         }
 
@@ -3415,7 +3318,13 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (cm == null || target == null) return true;
             try { return cm.IsTargetVisibleToFaction(target, Faction.Ranger); }
-            catch { return true; }
+            catch (Exception ex)
+            {
+                // Fail closed: if we can't confirm visibility, don't leak a possibly-hidden
+                // enemy into the initiative list. Log so the broken check is diagnosable.
+                MelonLogger.Warning($"[CombatState] IsMobRevealedToParty failed (treating as not revealed): {ex.Message}");
+                return false;
+            }
         }
 
         // Filter for inclusion in the initiative list. Intentionally looser than CombatManager.UpdateDisplayQueue:
@@ -3566,7 +3475,14 @@ namespace Wasteland2AccessibilityMod.States
 
             int position = initiativeList.IndexOf(entry) + 1;
 
-            if (entry.IsCurrentActor)
+            // Recompute the volatile bits live from the mob handle: the "current turn"
+            // flag and HP/AP details would otherwise name the wrong actor or report stale
+            // numbers if the view is read across a turn boundary. Name/faction stay frozen
+            // (they don't change mid-combat). Bombs have no handle, so use the stored values.
+            bool isCurrentActor = entry.Mob != null ? (entry.Mob == GetCurrentActor()) : entry.IsCurrentActor;
+            string details = entry.Mob != null ? BuildInitiativeMobDetails(entry.Mob) : entry.Details;
+
+            if (isCurrentActor)
                 parts.Add(position + ". " + entry.Name + ", current turn");
             else
                 parts.Add(position + ". " + entry.Name);
@@ -3574,8 +3490,8 @@ namespace Wasteland2AccessibilityMod.States
             if (entry.Name != "Bomb")
                 parts.Add(entry.IsHostile ? "hostile" : "friendly");
 
-            if (!string.IsNullOrEmpty(entry.Details))
-                parts.Add(entry.Details);
+            if (!string.IsNullOrEmpty(details))
+                parts.Add(details);
 
             return string.Join(", ", parts.ToArray());
         }

@@ -35,7 +35,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     announcement += entry;
                 }
 
-                MelonLogger.Msg($"[DiaryPatches] Diary opened: {title}");
+                ModLog.Debug($"[DiaryPatches] Diary opened: {title}");
                 ScreenReaderManager.SpeakInterrupt(announcement);
             }
             catch (System.Exception ex)
@@ -62,7 +62,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 if (string.IsNullOrEmpty(entry))
                     return;
 
-                MelonLogger.Msg("[DiaryPatches] Diary page changed");
+                ModLog.Debug("[DiaryPatches] Diary page changed");
                 ScreenReaderManager.SpeakInterrupt(entry);
             }
             catch (System.Exception ex)

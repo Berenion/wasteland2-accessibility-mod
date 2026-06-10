@@ -77,7 +77,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 string announcement = $"Discovered {typeName}: {name}{directionInfo}";
                 ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[WorldMapPatches] {announcement}");
+                ModLog.Debug($"[WorldMapPatches] {announcement}");
             }
             catch (System.Exception ex)
             {
@@ -117,7 +117,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 // All POI types that trigger HUD_POIPanel are announced by DialogState
                 // when the panel opens, so just log here to avoid duplicate/competing speech
-                MelonLogger.Msg($"[WorldMapState] Instigating POI: {name}");
+                ModLog.Debug($"[WorldMapState] Instigating POI: {name}");
             }
             catch (System.Exception ex)
             {

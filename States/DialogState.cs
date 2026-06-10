@@ -724,7 +724,7 @@ namespace Wasteland2AccessibilityMod.States
 
             ScreenReaderManager.SpeakInterrupt($"{btn.Label} pressed");
 
-            MelonLogger.Msg($"[DialogState] Pressed: {btn.Label}");
+            ModLog.Debug($"[DialogState] Pressed: {btn.Label}");
 
             if (btn.ClickAction != null)
             {

@@ -63,7 +63,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     ScreenReaderManager.SpeakInterrupt(announcement);
                 else
                     ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[CharacterAnnouncementHelper] Derived stat [{index}]: {announcement}");
+                ModLog.Debug($"[CharacterAnnouncementHelper] Derived stat [{index}]: {announcement}");
             }
             catch (Exception ex)
             {
@@ -141,7 +141,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     }
                     lines.Add($"{displayName}: {valueText}");
                 }
-                catch { }
+                catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildDerivedStatLines failed for '{statName}': {ex.Message}"); }
             }
             return lines;
         }
@@ -170,7 +170,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     lines.Add($"{name}, level {level}, {rank}");
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildHeaderSnapshotLines name/level/rank failed: {ex.Message}"); }
 
             try
             {
@@ -183,7 +183,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     lines.Add(hp);
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildHeaderSnapshotLines health failed: {ex.Message}"); }
 
             try
             {
@@ -201,7 +201,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     lines.Add($"Capacity {cur} of {max} pounds{note}");
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildHeaderSnapshotLines capacity failed: {ex.Message}"); }
 
             try
             {
@@ -212,7 +212,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     lines.Add($"Water: {game.water} of {game.GetMaxWater()}");
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildHeaderSnapshotLines money/water failed: {ex.Message}"); }
 
             try
             {
@@ -227,7 +227,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                         lines.Add($"{tmpl.availableTraitPoints} perk point{(tmpl.availableTraitPoints == 1 ? "" : "s")} available");
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildHeaderSnapshotLines points-available failed: {ex.Message}"); }
 
             // Status effects — one line per effect, with full StatusEffectHelper detail
             try
@@ -242,7 +242,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildHeaderSnapshotLines status effects failed: {ex.Message}"); }
 
             return lines;
         }
@@ -306,7 +306,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     lines.Add($"Damage: {dmgText}");
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildCombatSnapshotLines damage failed: {ex.Message}"); }
 
             string[] combatStats = new string[]
             {
@@ -335,7 +335,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                         value = raw.ToString();
                     lines.Add($"{display}: {value}");
                 }
-                catch { }
+                catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildCombatSnapshotLines failed for '{statName}': {ex.Message}"); }
             }
 
             return lines;
@@ -366,6 +366,106 @@ namespace Wasteland2AccessibilityMod.Helpers
             }
 
             ScreenReaderManager.SpeakInterrupt(string.Join(", ", parts.ToArray()));
+        }
+
+        // ========== Party Member Info (browsable panel) ==========
+
+        /// <summary>
+        /// Builds the browsable party-member info panel shared by CombatState and MapCursorState.
+        /// Health / Weapon / Status sections are identical in both; the combat context adds AP,
+        /// Stance and a weapon "jammed" note, while the exploration context shows Level/XP instead.
+        /// Single source of truth so the same character is never described two ways.
+        /// </summary>
+        public static List<string> BuildPartyMemberInfoLines(PC pc, bool combat)
+        {
+            var lines = new List<string>();
+            if (pc == null) return lines;
+
+            // --- Health ---
+            try
+            {
+                float maxHP = pc.stats.GetMaxHP();
+                float hpPercent = maxHP > 0 ? (pc.curHP / maxHP) * 100f : 0;
+                string healthLine = "Health: " + Mathf.RoundToInt(pc.curHP) + " of " + Mathf.RoundToInt(maxHP)
+                    + " (" + hpPercent.ToString("F0") + "%)";
+                if (pc.healthState != PC.HealthState.Healthy)
+                    healthLine += ", " + pc.healthState.ToString();
+                lines.Add(healthLine);
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildPartyMemberInfoLines health section failed: {ex.Message}"); }
+
+            if (combat)
+            {
+                // --- AP ---
+                try
+                {
+                    lines.Add("AP: " + pc.combatActionPointsRemaining + " of " + pc.stats.GetActionPoints());
+                }
+                catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildPartyMemberInfoLines AP section failed: {ex.Message}"); }
+
+                // --- Stance / Cover ---
+                try
+                {
+                    var stanceParts = new List<string>();
+                    if (pc.isCrouching) stanceParts.Add("crouching");
+                    if (pc.inCover)
+                        stanceParts.Add(pc.coverType == Cover.CoverType.Tall ? "tall cover" : "short cover");
+                    if (pc.isHidden) stanceParts.Add("hidden");
+                    if (stanceParts.Count > 0)
+                        lines.Add("Stance: " + string.Join(", ", stanceParts.ToArray()));
+                }
+                catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildPartyMemberInfoLines stance section failed: {ex.Message}"); }
+            }
+            else
+            {
+                // --- Level / XP ---
+                try
+                {
+                    string xpLine = BuildXPAnnouncement(pc);
+                    if (!string.IsNullOrEmpty(xpLine))
+                        lines.Add(xpLine);
+                }
+                catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildPartyMemberInfoLines XP section failed: {ex.Message}"); }
+            }
+
+            // --- Weapon ---
+            try
+            {
+                var weaponInstance = pc.pcStats.GetWeaponInstance();
+                if (weaponInstance != null && weaponInstance.template != null)
+                {
+                    string weaponName = UITextExtractor.CleanText(
+                        Language.Localize(weaponInstance.template.displayName, false, false, string.Empty));
+                    string weaponLine = "Weapon: " + weaponName;
+
+                    var ranged = weaponInstance as ItemInstance_WeaponRanged;
+                    if (ranged != null)
+                    {
+                        weaponLine += ", " + ranged.GetAmmoCount() + " of " + ranged.GetClipSize() + " ammo";
+                        if (combat && pc.IsJammed()) weaponLine += ", jammed";
+                    }
+                    lines.Add(weaponLine);
+                }
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildPartyMemberInfoLines weapon section failed: {ex.Message}"); }
+
+            // --- Status Effects ---
+            try
+            {
+                if (pc.template != null && pc.template.statusEffects != null
+                    && pc.template.statusEffects.Count > 0)
+                {
+                    foreach (var effect in pc.template.statusEffects)
+                    {
+                        string line = StatusEffectHelper.BuildEffectLine(effect);
+                        if (!string.IsNullOrEmpty(line))
+                            lines.Add(line);
+                    }
+                }
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildPartyMemberInfoLines status effects section failed: {ex.Message}"); }
+
+            return lines;
         }
 
         // ========== XP ==========

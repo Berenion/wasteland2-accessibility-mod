@@ -161,7 +161,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                         return charScreen.traitsPanel.descriptionPanel;
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] FindAnyDescriptionPanel menu lookup failed: {ex.Message}"); }
 
             // Active first, then any
             var active = UnityEngine.Object.FindObjectOfType<CHA_DescriptionPanel>();

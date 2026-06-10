@@ -36,7 +36,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     ? cleanedText
                     : name + ": " + cleanedText;
 
-                MelonLogger.Msg($"[FloatingText] {announcement}");
+                ModLog.Debug($"[FloatingText] {announcement}");
 
                 // Add to combat log for review
                 HUD_Controller_QueueTextDescription_Patch.CombatLog.Add(announcement);

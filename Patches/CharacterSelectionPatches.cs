@@ -31,7 +31,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 // Get character name
                 string name = GetCharacterName(__instance);
 
-                MelonLogger.Msg($"Character selected: {name}");
+                ModLog.Debug($"Character selected: {name}");
                 ScreenReaderManager.SpeakInterrupt(name);
             }
             catch (System.Exception ex)

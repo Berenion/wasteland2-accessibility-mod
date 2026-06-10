@@ -372,7 +372,7 @@ namespace Wasteland2AccessibilityMod.Patches
             PC modOwner = __instance.ownerPC ?? bestSmith;
             MonoBehaviourSingleton<GUIManager>.GetInstance().OpenModItemMenu(item as ItemInstance_Mod, modOwner);
 
-            MelonLogger.Msg($"[InventoryPatches] Opened ModItemMenu for {UITextExtractor.CleanText(item.template.displayName)}");
+            ModLog.Debug($"[InventoryPatches] Opened ModItemMenu for {UITextExtractor.CleanText(item.template.displayName)}");
             return false; // skip original AttemptToUse
         }
     }
@@ -409,7 +409,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
             string announcement = $"Select a weapon to attach {modName}. {weaponCount} compatible weapon{(weaponCount != 1 ? "s" : "")}. Use arrows to navigate, Enter to attach, Escape to cancel.";
             ScreenReaderManager.SpeakInterrupt(announcement);
-            MelonLogger.Msg($"[InventoryPatches] ModItemMenu opened: {weaponCount} weapons for {modName}");
+            ModLog.Debug($"[InventoryPatches] ModItemMenu opened: {weaponCount} weapons for {modName}");
         }
     }
 
@@ -574,7 +574,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 if (drama != null && !Drama.NotifyOnTradeItemsEvent(cnpc, "WillGiveItem", dragDropItem, null))
                 {
                     ScreenReaderManager.SpeakInterrupt($"{UITextExtractor.CleanText(Language.Localize(ownerPC.pcTemplate.displayName, false, false, string.Empty))} refuses to give that item");
-                    MelonLogger.Msg("[GiveTo] CNPC refused to give item");
+                    ModLog.Debug("[GiveTo] CNPC refused to give item");
                     return;
                 }
             }
@@ -620,7 +620,7 @@ namespace Wasteland2AccessibilityMod.Patches
             // Announce to screen reader
             string qtyText = transferQty > 1 ? $" x{transferQty}" : "";
             ScreenReaderManager.SpeakInterrupt($"Gave {itemName}{qtyText} to {targetName}");
-            MelonLogger.Msg($"[GiveTo] Transferred {itemName} (x{transferQty}) from {ownerPC?.name ?? "?"} to {targetName}");
+            ModLog.Debug($"[GiveTo] Transferred {itemName} (x{transferQty}) from {ownerPC?.name ?? "?"} to {targetName}");
 
             // Check encumbrance
             float maxWeight = targetPC.pcStats.GetMaxWeight();

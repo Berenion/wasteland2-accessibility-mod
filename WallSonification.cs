@@ -59,7 +59,7 @@ namespace Wasteland2AccessibilityMod
             EnsureAudio();
             enabled = true;
             ScreenReaderManager.SpeakInterrupt("Wall tones on");
-            MelonLogger.Msg("[WallSonification] Enabled");
+            ModLog.Debug("[WallSonification] Enabled");
         }
 
         public static void Disable()
@@ -67,7 +67,7 @@ namespace Wasteland2AccessibilityMod
             enabled = false;
             SilenceAll();
             ScreenReaderManager.SpeakInterrupt("Wall tones off");
-            MelonLogger.Msg("[WallSonification] Disabled");
+            ModLog.Debug("[WallSonification] Disabled");
         }
 
         /// <summary>
@@ -137,7 +137,7 @@ namespace Wasteland2AccessibilityMod
             }
 
             audioReady = true;
-            MelonLogger.Msg("[WallSonification] Audio initialized");
+            ModLog.Debug("[WallSonification] Audio initialized");
         }
 
         /// <summary>

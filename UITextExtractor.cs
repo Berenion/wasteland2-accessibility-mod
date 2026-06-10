@@ -146,6 +146,14 @@ namespace Wasteland2AccessibilityMod
             // Remove NGUI color/formatting codes like [FFFFFF], [-], [b], [/b], etc.
             text = Regex.Replace(text, @"\[/?[\w-]*\]", "");
 
+            // Catch truncated/unclosed tags the pair-matching regex above can't:
+            // a malformed "[b" with no closing bracket, or a stray "]" left behind
+            // by a half-formed tag. Without this, a single odd input is spoken verbatim
+            // (e.g. the player hears "[b"). This is the one chokepoint every spoken
+            // string flows through, so it's worth being defensive here.
+            text = Regex.Replace(text, @"\[/?[\w-]*", ""); // dangling opening fragment
+            text = text.Replace("]", "");                  // orphaned closing bracket
+
             // Remove angle bracket formatting like <@>, <@&>, <&>, etc.
             text = Regex.Replace(text, @"<[@&]+>", "");
 

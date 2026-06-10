@@ -79,7 +79,7 @@ namespace Wasteland2AccessibilityMod
             int count = filteredInteractables.Count;
             ScreenReaderManager.SpeakInterrupt($"{categoryName}, {count} found");
 
-            MelonLogger.Msg($"Category changed to: {categoryName} ({count} items)");
+            ModLog.Debug($"Category changed to: {categoryName} ({count} items)");
         }
 
         /// <summary>
@@ -108,7 +108,7 @@ namespace Wasteland2AccessibilityMod
             int count = filteredInteractables.Count;
             ScreenReaderManager.SpeakInterrupt($"{categoryName}, {count} found");
 
-            MelonLogger.Msg($"Category changed to: {categoryName} ({count} items)");
+            ModLog.Debug($"Category changed to: {categoryName} ({count} items)");
         }
 
         private static string GetCategoryDisplayName(InteractableCategory category)
@@ -236,7 +236,7 @@ namespace Wasteland2AccessibilityMod
                 selectedInteractable = nexus;
             }
 
-            MelonLogger.Msg($"Announcing: {announcement} (fromCycling: {isFromCycling})");
+            ModLog.Debug($"Announcing: {announcement} (fromCycling: {isFromCycling})");
             ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
@@ -315,7 +315,7 @@ namespace Wasteland2AccessibilityMod
                 .OrderBy(n => Vector3.Distance(n.InstigatePoint, playerPos))
                 .ToList();
 
-            MelonLogger.Msg($"Filtered interactables: {filteredInteractables.Count} found (category: {currentCategory})");
+            ModLog.Debug($"Filtered interactables: {filteredInteractables.Count} found (category: {currentCategory})");
         }
 
         /// <summary>
@@ -422,7 +422,7 @@ namespace Wasteland2AccessibilityMod
                 .OrderBy(n => Vector3.Distance(n.transform.position, playerPos))
                 .ToList();
 
-            MelonLogger.Msg($"Filtered party members: {filteredInteractables.Count} found");
+            ModLog.Debug($"Filtered party members: {filteredInteractables.Count} found");
         }
 
         private static bool MatchesCategory(InteractableNexus nexus, InteractableCategory category)

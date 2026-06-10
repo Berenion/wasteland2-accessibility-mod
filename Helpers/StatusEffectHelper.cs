@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MelonLoader;
 
 namespace Wasteland2AccessibilityMod.Helpers
 {
@@ -44,7 +45,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     parts.Add(cleanType);
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[StatusEffectHelper] BuildEffectLine effect-type section failed: {ex.Message}"); }
 
             // --- Buff / debuff ---
             parts.Add(effect.positiveEffect ? "buff" : "debuff");
@@ -60,7 +61,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                         parts.Add(desc);
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[StatusEffectHelper] BuildEffectLine description section failed: {ex.Message}"); }
 
             // --- HP change over time ---
             try
@@ -73,7 +74,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     parts.Add(sign + hpChange + " CON every " + effect.secondsPerHitpointChange + " " + seconds);
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[StatusEffectHelper] BuildEffectLine HP-change section failed: {ex.Message}"); }
 
             // --- Stat modifications ---
             try
@@ -108,7 +109,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[StatusEffectHelper] BuildEffectLine stat-modifications section failed: {ex.Message}"); }
 
             // --- Duration remaining ---
             try
@@ -132,7 +133,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     }
                 }
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[StatusEffectHelper] BuildEffectLine duration section failed: {ex.Message}"); }
 
             // --- Removal info ---
             try
@@ -142,7 +143,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                 else if (effect.cannotBeRemoved)
                     parts.Add("cannot be removed");
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[StatusEffectHelper] BuildEffectLine removal-info section failed: {ex.Message}"); }
 
             return string.Join(", ", parts.ToArray());
         }

@@ -39,7 +39,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 parts.Add("Total: " + totalXP + " XP");
 
                 string announcement = string.Join(". ", parts.ToArray());
-                MelonLogger.Msg("[CombatSummary] " + announcement);
+                ModLog.Debug("[CombatSummary] " + announcement);
                 // Queue so the final kill's combat log / floating text finishes before
                 // the summary plays, instead of being cut off.
                 ScreenReaderManager.Speak(announcement);

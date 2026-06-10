@@ -78,6 +78,7 @@ namespace Wasteland2AccessibilityMod.States
         private bool browsingPartyInfo = false;
         private List<string> partyInfoLines = new List<string>();
         private int partyInfoIndex = 0;
+        private PC partyInfoPc = null; // live handle, so FormatPartyInfoLine can re-read fresh HP/status
 
         // Context menu option
         private struct ContextMenuOption
@@ -210,6 +211,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     browsingPartyInfo = false;
                     partyInfoLines.Clear();
+                    partyInfoPc = null;
                     ScreenReaderManager.SpeakInterrupt("Info closed");
                     return true;
                 }
@@ -546,6 +548,7 @@ namespace Wasteland2AccessibilityMod.States
             actionList.Clear();
             browsingPartyInfo = false;
             partyInfoLines.Clear();
+            partyInfoPc = null;
             // Stop wall tones when leaving the cursor (combat, menus, conversations).
             if (WallSonification.Enabled) WallSonification.Disable();
             base.OnDeactivated();
@@ -577,7 +580,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (kvp.Key.z < minZ) minZ = kvp.Key.z;
                     if (kvp.Key.z > maxZ) maxZ = kvp.Key.z;
                 }
-                MelonLogger.Msg($"[MapCursorState] Grid loaded: {fullMap.Count} nodes, " +
+                ModLog.Debug($"[MapCursorState] Grid loaded: {fullMap.Count} nodes, " +
                     $"X range [{minX}-{maxX}], Z range [{minZ}-{maxZ}]");
             }
 
@@ -618,7 +621,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (!loggedNoParty)
                 {
-                    MelonLogger.Msg("[MapCursorState] No party leader found");
+                    ModLog.Debug("[MapCursorState] No party leader found");
                     loggedNoParty = true;
                 }
                 return;
@@ -641,7 +644,7 @@ namespace Wasteland2AccessibilityMod.States
                 cursorPosition = new Vector3(gridX * TileCoordinateSystem.SquareSize, worldPos.y, gridZ * TileCoordinateSystem.SquareSize);
             }
             cursorInitialized = true;
-            MelonLogger.Msg($"[MapCursorState] Party at world ({worldPos.x:F1}, {worldPos.y:F1}, {worldPos.z:F1}) -> grid {cursorGridId}");
+            ModLog.Debug($"[MapCursorState] Party at world ({worldPos.x:F1}, {worldPos.y:F1}, {worldPos.z:F1}) -> grid {cursorGridId}");
         }
 
         private CombatAStarNode FindNodeAtPosition(Vector3 worldPos)
@@ -680,7 +683,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (bestNode != null)
             {
-                MelonLogger.Msg($"[MapCursorState] ID lookup failed for ({gridX},{floor},{gridZ}), " +
+                ModLog.Debug($"[MapCursorState] ID lookup failed for ({gridX},{floor},{gridZ}), " +
                     $"nearest node by XZ: {bestNode.id} at world ({bestNode.position.x:F1}, {bestNode.position.y:F1}, {bestNode.position.z:F1}), " +
                     $"dist={Mathf.Sqrt(bestDist):F1}");
             }
@@ -720,82 +723,34 @@ namespace Wasteland2AccessibilityMod.States
 
         private void MoveInDirection(int directionIndex, int tilesToMove)
         {
-            Vector3 direction = CardinalDirections.Vectors[directionIndex];
             previousCursorY = cursorPosition.y;
 
-            // Single-step preserves the original free off-grid behavior so the
-            // user can still inspect tiles outside the walkable grid.
-            if (tilesToMove <= 1)
+            // Shared stepping (see GridCursorStepper). Exploration keeps the raw single-step
+            // grid id (no snap) and describes blocked tiles via IdentifyObstruction, falling
+            // back to "edge of map" when nothing specific is found.
+            var result = GridCursorStepper.Step(
+                cursorGridId, cursorPosition, directionIndex, tilesToMove,
+                GetNodeAtGridId,
+                (gridId, worldPos) =>
+                {
+                    string reason = IdentifyObstruction(worldPos);
+                    return string.IsNullOrEmpty(reason) ? "edge of map" : reason;
+                },
+                snapSingleStepToNode: false);
+
+            if (!result.Moved)
             {
-                cursorGridId = new Vector3(
-                    cursorGridId.x + direction.x,
-                    cursorGridId.y,
-                    cursorGridId.z + direction.z);
-
-                CombatAStarNode node = GetNodeAtGridId(cursorGridId);
-                if (node != null)
-                {
-                    cursorPosition = node.position;
-                }
-                else
-                {
-                    cursorPosition = new Vector3(
-                        cursorGridId.x * TileCoordinateSystem.SquareSize,
-                        cursorPosition.y,
-                        cursorGridId.z * TileCoordinateSystem.SquareSize);
-                }
-
-                if (cameraFollowsCursor) SnapCameraToCursor();
-                AnnounceCurrentTile(detailed: false, reportHeightChange: true);
+                ScreenReaderManager.SpeakInterrupt(result.BlockReason ?? "Blocked");
                 return;
             }
 
-            // Multi-tile move: walk tile-by-tile and stop at the first non-walkable
-            // tile so the cursor doesn't fly through walls.
-            Vector3 currentGridId = cursorGridId;
-            Vector3 currentPosition = cursorPosition;
-            int actualSteps = 0;
-            string blockReason = null;
-
-            for (int i = 0; i < tilesToMove; i++)
-            {
-                Vector3 newGridId = new Vector3(
-                    currentGridId.x + direction.x,
-                    currentGridId.y,
-                    currentGridId.z + direction.z);
-
-                CombatAStarNode node = GetNodeAtGridId(newGridId);
-                if (node != null)
-                {
-                    currentGridId = node.id;
-                    currentPosition = node.position;
-                    actualSteps++;
-                    continue;
-                }
-
-                Vector3 blockedWorldPos = new Vector3(
-                    newGridId.x * TileCoordinateSystem.SquareSize,
-                    currentPosition.y,
-                    newGridId.z * TileCoordinateSystem.SquareSize);
-                blockReason = IdentifyObstruction(blockedWorldPos);
-                if (string.IsNullOrEmpty(blockReason))
-                    blockReason = "edge of map";
-                break;
-            }
-
-            if (actualSteps == 0)
-            {
-                ScreenReaderManager.SpeakInterrupt(blockReason ?? "Blocked");
-                return;
-            }
-
-            cursorGridId = currentGridId;
-            cursorPosition = currentPosition;
+            cursorGridId = result.GridId;
+            cursorPosition = result.Position;
             if (cameraFollowsCursor) SnapCameraToCursor();
 
-            string prefix = actualSteps + (actualSteps == 1 ? " tile" : " tiles");
-            if (blockReason != null)
-                prefix += ", " + blockReason;
+            string prefix = result.SingleStep
+                ? null
+                : GridCursorStepper.BuildMovePrefix(result.ActualSteps, result.BlockReason);
             AnnounceCurrentTile(detailed: false, prefix: prefix, reportHeightChange: true);
         }
 
@@ -943,7 +898,7 @@ namespace Wasteland2AccessibilityMod.States
                             if (critChance > 0)
                                 mobName += ", " + critChance + "% crit";
                         }
-                        catch (Exception) { }
+                        catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] hit/crit chance for '{mobName}' failed: {ex.Message}"); }
                     }
                     objectParts.Add(mobName);
                 }
@@ -1509,7 +1464,7 @@ namespace Wasteland2AccessibilityMod.States
                         // Check if ExamineDrama would succeed (dry run) before committing
                         if (Drama.ExamineDrama(nexus.drama, pc, dontExecute: true))
                         {
-                            MelonLogger.Msg($"[MapCursorState] Examining: {name}");
+                            ModLog.Debug($"[MapCursorState] Examining: {name}");
                             ScreenReaderManager.SpeakInterrupt("Examining " + name);
                             Drama.ExamineDrama(nexus.drama, pc, dontExecute: false);
                             return;
@@ -1526,7 +1481,7 @@ namespace Wasteland2AccessibilityMod.States
                      nexus.skobExamine.perceived))
                 {
                     string name = GetInteractableName(nexus) ?? "Object";
-                    MelonLogger.Msg($"[MapCursorState] Examining (description): {name}");
+                    ModLog.Debug($"[MapCursorState] Examining (description): {name}");
                     ScreenReaderManager.SpeakInterrupt("Examining " + name);
 
                     if (MonoBehaviourSingleton<InputManager>.HasInstance())
@@ -1541,7 +1496,7 @@ namespace Wasteland2AccessibilityMod.States
                         MonoBehaviourSingleton<InputManager>.GetInstance().CheckExamineDrama(nexus.transform);
                         if (HUD_Controller_QueueTextDescription_Patch.AnnouncedCount == before)
                         {
-                            MelonLogger.Msg($"[MapCursorState] No description produced for: {name}");
+                            ModLog.Debug($"[MapCursorState] No description produced for: {name}");
                             ScreenReaderManager.Speak("No description available");
                         }
                     }
@@ -1563,7 +1518,7 @@ namespace Wasteland2AccessibilityMod.States
                         if (Drama.ExamineDrama(drama, pc, dontExecute: true))
                         {
                             string name = GetMobName(mob);
-                            MelonLogger.Msg($"[MapCursorState] Examining NPC: {name}");
+                            ModLog.Debug($"[MapCursorState] Examining NPC: {name}");
                             ScreenReaderManager.SpeakInterrupt("Examining " + name);
                             Drama.ExamineDrama(drama, pc, dontExecute: false);
                             return;
@@ -1582,14 +1537,14 @@ namespace Wasteland2AccessibilityMod.States
         {
             try
             {
-                MelonLogger.Msg($"[ExamineDiag] === ExamineObjectOnTile dump: cursor=({cursorGridId.x},{cursorGridId.z}) ===");
-                MelonLogger.Msg($"[ExamineDiag] On-tile interactables: {onTileInteractables.Count}");
+                ModLog.Debug($"[ExamineDiag] === ExamineObjectOnTile dump: cursor=({cursorGridId.x},{cursorGridId.z}) ===");
+                ModLog.Debug($"[ExamineDiag] On-tile interactables: {onTileInteractables.Count}");
                 for (int i = 0; i < onTileInteractables.Count; i++)
                 {
                     DescribeNexus($"[ExamineDiag]   [int {i}]", onTileInteractables[i]);
                 }
 
-                MelonLogger.Msg($"[ExamineDiag] On-tile mobs: {onTileMobs.Count}");
+                ModLog.Debug($"[ExamineDiag] On-tile mobs: {onTileMobs.Count}");
                 for (int i = 0; i < onTileMobs.Count; i++)
                 {
                     DescribeMob($"[ExamineDiag]   [mob {i}]", onTileMobs[i]);
@@ -1610,9 +1565,9 @@ namespace Wasteland2AccessibilityMod.States
                 }
                 if (unfilteredCount == 0)
                 {
-                    MelonLogger.Msg($"[ExamineDiag] No additional (filtered) nexuses on tile.");
+                    ModLog.Debug($"[ExamineDiag] No additional (filtered) nexuses on tile.");
                 }
-                MelonLogger.Msg($"[ExamineDiag] === end dump ===");
+                ModLog.Debug($"[ExamineDiag] === end dump ===");
             }
             catch (System.Exception ex)
             {
@@ -1622,7 +1577,7 @@ namespace Wasteland2AccessibilityMod.States
 
         private static void DescribeNexus(string prefix, InteractableNexus nexus)
         {
-            if (nexus == null) { MelonLogger.Msg($"{prefix} <null>"); return; }
+            if (nexus == null) { ModLog.Debug($"{prefix} <null>"); return; }
             string goName = nexus.gameObject != null ? nexus.gameObject.name : "<no go>";
             string dramaType = nexus.drama != null ? nexus.drama.GetType().Name : "null";
             string skob = "null";
@@ -1639,12 +1594,12 @@ namespace Wasteland2AccessibilityMod.States
                     parentDrama = $"{pDrama.GetType().Name} on '{pDrama.gameObject.name}' (sameGo={pDrama.gameObject == nexus.gameObject})";
             }
             Vector3 pos = nexus.transform != null ? nexus.transform.position : Vector3.zero;
-            MelonLogger.Msg($"{prefix} go='{goName}' pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) drama={dramaType} skob=[{skob}] parentDrama={parentDrama} isPC={nexus.isPC} isVisible={nexus.isVisible}");
+            ModLog.Debug($"{prefix} go='{goName}' pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) drama={dramaType} skob=[{skob}] parentDrama={parentDrama} isPC={nexus.isPC} isVisible={nexus.isVisible}");
         }
 
         private static void DescribeMob(string prefix, Mob mob)
         {
-            if (mob == null) { MelonLogger.Msg($"{prefix} <null>"); return; }
+            if (mob == null) { ModLog.Debug($"{prefix} <null>"); return; }
             string goName = mob.gameObject != null ? mob.gameObject.name : "<no go>";
             string displayName = (mob.template != null) ? mob.template.displayName : "<no template>";
             var drama = mob.GetComponent<Drama>();
@@ -1658,7 +1613,7 @@ namespace Wasteland2AccessibilityMod.States
             var skob = mob.GetComponent<SkillObject_Examine>();
             string skobStr = (skob != null) ? $"diff={skob.difficulty}, perceived={skob.perceived}, hidden={skob.hidden}" : "null";
             Vector3 pos = mob.transform != null ? mob.transform.position : Vector3.zero;
-            MelonLogger.Msg($"{prefix} go='{goName}' display='{displayName}' pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) type={mob.GetType().Name} drama={dramaType} hasExamine={hasExamine} skob=[{skobStr}] dead={mob.isDead} hidden={mob.isHidden}");
+            ModLog.Debug($"{prefix} go='{goName}' display='{displayName}' pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) type={mob.GetType().Name} drama={dramaType} hasExamine={hasExamine} skob=[{skobStr}] dead={mob.isDead} hidden={mob.isHidden}");
         }
 
         private string WhyNexusFiltered(InteractableNexus nexus)
@@ -1707,7 +1662,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 string announcement = contextMenuOptions.Count + " objects. " + contextMenuOptions[0].DisplayName;
                 ScreenReaderManager.SpeakInterrupt(announcement);
-                MelonLogger.Msg($"[MapCursorState] Context menu opened with {contextMenuOptions.Count} objects");
+                ModLog.Debug($"[MapCursorState] Context menu opened with {contextMenuOptions.Count} objects");
                 return;
             }
 
@@ -1752,7 +1707,7 @@ namespace Wasteland2AccessibilityMod.States
 
             string announcement = contextMenuOptions.Count + " things on tile. " + contextMenuOptions[0].DisplayName;
             ScreenReaderManager.SpeakInterrupt(announcement);
-            MelonLogger.Msg($"[MapCursorState] Tile selection menu opened with {contextMenuOptions.Count} options ({pcs.Count} PCs + {interactables.Count} interactables)");
+            ModLog.Debug($"[MapCursorState] Tile selection menu opened with {contextMenuOptions.Count} options ({pcs.Count} PCs + {interactables.Count} interactables)");
         }
 
         private void BuildActionMenu(InteractableNexus target)
@@ -1769,18 +1724,18 @@ namespace Wasteland2AccessibilityMod.States
                     var parts = new System.Collections.Generic.List<string>();
                     foreach (var kvp in interactions)
                         parts.Add($"{kvp.Key}={kvp.Value}");
-                    MelonLogger.Msg($"[MapCursorState] Interactions for {targetName}: {string.Join(", ", parts.ToArray())}");
-                    MelonLogger.Msg($"[MapCursorState] Drama type: {target.drama.GetType().Name}, blockPoke={target.drama.blockPoke}, bInstigateBlocked={target.drama.bInstigateBlocked}");
+                    ModLog.Debug($"[MapCursorState] Interactions for {targetName}: {string.Join(", ", parts.ToArray())}");
+                    ModLog.Debug($"[MapCursorState] Drama type: {target.drama.GetType().Name}, blockPoke={target.drama.blockPoke}, bInstigateBlocked={target.drama.bInstigateBlocked}");
                     var iObj = target.drama as InteractableObject;
                     if (iObj != null)
-                        MelonLogger.Msg($"[MapCursorState] InteractableObject: IgnorePokedEvent={iObj.IgnorePokedEvent}, isActive={iObj.isActive}, isLocked={iObj.isLocked}");
+                        ModLog.Debug($"[MapCursorState] InteractableObject: IgnorePokedEvent={iObj.IgnorePokedEvent}, isActive={iObj.isActive}, isLocked={iObj.isLocked}");
                     var teleporter = target.drama as InteractableTeleporter;
                     if (teleporter != null)
-                        MelonLogger.Msg($"[MapCursorState] Teleporter: mustActivateBeforeTeleport={teleporter.mustActivateBeforeTeleport}, followRules={teleporter.followRules}");
+                        ModLog.Debug($"[MapCursorState] Teleporter: mustActivateBeforeTeleport={teleporter.mustActivateBeforeTeleport}, followRules={teleporter.followRules}");
                     var invObj = target.drama as InteractableInventoryObject;
                     if (invObj == null) invObj = target.GetComponent<InteractableInventoryObject>();
                     if (invObj != null)
-                        MelonLogger.Msg($"[MapCursorState] Container: empty={invObj.empty}, isActive={invObj.isActive}, isLocked={invObj.isLocked}");
+                        ModLog.Debug($"[MapCursorState] Container: empty={invObj.empty}, isActive={invObj.isActive}, isLocked={invObj.isLocked}");
 
                     // Add "Interact" (Poked) first if available
                     if (interactions.ContainsKey("Poked") && interactions["Poked"] == 1)
@@ -1841,7 +1796,7 @@ namespace Wasteland2AccessibilityMod.States
                                     DisplayName = "Use " + itemDisplayName,
                                     ASIName = "useItem_auto"
                                 });
-                                MelonLogger.Msg($"[MapCursorState] Added Use {itemDisplayName} option for {targetName}");
+                                ModLog.Debug($"[MapCursorState] Added Use {itemDisplayName} option for {targetName}");
                                 goto doneItemCheck; // Only need one matching item option
                             }
                         }
@@ -1899,7 +1854,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 // Only one action — execute immediately
                 var option = contextMenuOptions[0];
-                MelonLogger.Msg($"[MapCursorState] Single action for {targetName}: {option.DisplayName}");
+                ModLog.Debug($"[MapCursorState] Single action for {targetName}: {option.DisplayName}");
                 contextMenuActive = false;
                 contextMenuOptions.Clear();
                 ExecuteInteraction(target, option.ASIName);
@@ -1913,7 +1868,7 @@ namespace Wasteland2AccessibilityMod.States
             string announcement = targetName + ". " + contextMenuOptions[0].DisplayName +
                 ". " + contextMenuOptions.Count + " options";
             ScreenReaderManager.SpeakInterrupt(announcement);
-            MelonLogger.Msg($"[MapCursorState] Context menu for {targetName}: {contextMenuOptions.Count} options");
+            ModLog.Debug($"[MapCursorState] Context menu for {targetName}: {contextMenuOptions.Count} options");
         }
 
         private bool HandleContextMenuInput()
@@ -2085,7 +2040,7 @@ namespace Wasteland2AccessibilityMod.States
 
             string announcement = header + ". " + contextMenuOptions[0].DisplayName + ". " + pcs.Count + " party members";
             ScreenReaderManager.SpeakInterrupt(announcement);
-            MelonLogger.Msg($"[MapCursorState] PC selection menu: {header} ({pcs.Count} PCs)");
+            ModLog.Debug($"[MapCursorState] PC selection menu: {header} ({pcs.Count} PCs)");
         }
 
         private void OpenTargetableSelectionMenu(List<Targetable> targets, List<string> names,
@@ -2111,7 +2066,7 @@ namespace Wasteland2AccessibilityMod.States
 
             string announcement = header + ". " + contextMenuOptions[0].DisplayName + ". " + targets.Count + " targets";
             ScreenReaderManager.SpeakInterrupt(announcement);
-            MelonLogger.Msg($"[MapCursorState] Target selection menu: {header} ({targets.Count} targets)");
+            ModLog.Debug($"[MapCursorState] Target selection menu: {header} ({targets.Count} targets)");
         }
 
         private void ExecuteInteraction(InteractableNexus target, string asiName)
@@ -2158,7 +2113,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (target.drama != null)
                 {
-                    MelonLogger.Msg($"[MapCursorState] Examining: {name}");
+                    ModLog.Debug($"[MapCursorState] Examining: {name}");
                     ScreenReaderManager.SpeakInterrupt("Examining " + name);
                     Drama.ExamineDrama(target.drama, pc, dontExecute: false);
                 }
@@ -2166,7 +2121,7 @@ namespace Wasteland2AccessibilityMod.States
                     (target.skobExamine.difficulty == SkillLevelCategory.None ||
                      target.skobExamine.perceived))
                 {
-                    MelonLogger.Msg($"[MapCursorState] Examining (description): {name}");
+                    ModLog.Debug($"[MapCursorState] Examining (description): {name}");
                     ScreenReaderManager.SpeakInterrupt("Examining " + name);
 
                     if (MonoBehaviourSingleton<InputManager>.HasInstance())
@@ -2218,13 +2173,13 @@ namespace Wasteland2AccessibilityMod.States
                 displayAction = "Using " + asiName + " on";
             }
 
-            MelonLogger.Msg($"[MapCursorState] {displayAction} {name}");
+            ModLog.Debug($"[MapCursorState] {displayAction} {name}");
             ScreenReaderManager.SpeakInterrupt(displayAction + " " + name);
 
             // Check if interaction is blocked (e.g. perception-gated objects)
             if (target.drama.bInstigateBlocked)
             {
-                MelonLogger.Msg($"[MapCursorState] Interaction blocked on {name} (bInstigateBlocked=true)");
+                ModLog.Debug($"[MapCursorState] Interaction blocked on {name} (bInstigateBlocked=true)");
                 ScreenReaderManager.SpeakInterrupt("Cannot interact with " + name);
                 if (isRealSkillASI)
                     UseASIManager.SetActiveASIName(null);
@@ -2274,7 +2229,7 @@ namespace Wasteland2AccessibilityMod.States
 
             string subject = inputManager.isPartyGrouped ? "party" : GetPCDisplayName(pc);
             ScreenReaderManager.SpeakInterrupt("Moving " + subject + ", " + tileDist + (tileDist == 1 ? " tile" : " tiles"));
-            MelonLogger.Msg($"[MapCursorState] Moving {subject} to cursor position {cursorPosition}");
+            ModLog.Debug($"[MapCursorState] Moving {subject} to cursor position {cursorPosition}");
         }
 
         // --- Camera ---
@@ -2344,7 +2299,7 @@ namespace Wasteland2AccessibilityMod.States
                 cursorPosition = new Vector3(naturalX * TileCoordinateSystem.SquareSize, worldPos.y, naturalZ * TileCoordinateSystem.SquareSize);
             }
 
-            MelonLogger.Msg($"[JumpToSelected] target={selected.name} worldPos={worldPos} naturalTile=({naturalX},{naturalZ}) nodeFound={(naturalTileNode != null)} cursorGridId={cursorGridId} cursorPos={cursorPosition}");
+            ModLog.Debug($"[JumpToSelected] target={selected.name} worldPos={worldPos} naturalTile=({naturalX},{naturalZ}) nodeFound={(naturalTileNode != null)} cursorGridId={cursorGridId} cursorPos={cursorPosition}");
             LogTileFinderForTarget(selected);
 
             SnapCameraToCursor();
@@ -2372,7 +2327,7 @@ namespace Wasteland2AccessibilityMod.States
             bool onTile = dx <= TILE_MATCH_RADIUS && dz <= TILE_MATCH_RADIUS;
             bool wallBlocked = IsBlockedByWall(tp);
             bool isDoor = IsDoor(target);
-            MelonLogger.Msg($"[TileTrace] {target.name}: tp={tp}, dx={dx:F2}, dz={dz:F2}, TILE_MATCH_RADIUS={TILE_MATCH_RADIUS}, isVisible={isVis}, fowVisible={fowOk}, fowExplored={fowExplored}, sightedOk={sightedOk}, hasFowRenderer={hasFowRenderer}, hasMob={hasMob}, percGated={percGated}, onTile={onTile}, wallBlocked={wallBlocked}, isDoor={isDoor}, isPC={target.isPC}");
+            ModLog.Debug($"[TileTrace] {target.name}: tp={tp}, dx={dx:F2}, dz={dz:F2}, TILE_MATCH_RADIUS={TILE_MATCH_RADIUS}, isVisible={isVis}, fowVisible={fowOk}, fowExplored={fowExplored}, sightedOk={sightedOk}, hasFowRenderer={hasFowRenderer}, hasMob={hasMob}, percGated={percGated}, onTile={onTile}, wallBlocked={wallBlocked}, isDoor={isDoor}, isPC={target.isPC}");
         }
 
         private void AnnounceDistanceToSelected()
@@ -2653,7 +2608,7 @@ namespace Wasteland2AccessibilityMod.States
                                 ? " active. Target a party member with Enter"
                                 : " active. Target an object with Enter";
                             ScreenReaderManager.SpeakInterrupt(displayName + targetHint);
-                            MelonLogger.Msg("[MapCursorState] Skill activated: " + capturedSkillName);
+                            ModLog.Debug("[MapCursorState] Skill activated: " + capturedSkillName);
                         }
                     });
                 }
@@ -2697,7 +2652,7 @@ namespace Wasteland2AccessibilityMod.States
                             UseASIManager.SetActiveASIItem(capturedItem, capturedPC);
                             UseASIManager.SetActiveASIName("useItem");
                             ScreenReaderManager.SpeakInterrupt(itemName + " ready. Target a party member or object with Enter");
-                            MelonLogger.Msg("[MapCursorState] Item activated: " + itemName);
+                            ModLog.Debug("[MapCursorState] Item activated: " + itemName);
                         }
                     });
                 }
@@ -2861,7 +2816,7 @@ namespace Wasteland2AccessibilityMod.States
                                         ScreenReaderManager.SpeakInterrupt(
                                             "Free aim, " + modeName + " with " + weaponName +
                                             ". Move to target and press Enter to attack");
-                                        MelonLogger.Msg("[MapCursorState] Free aim activated: " +
+                                        ModLog.Debug("[MapCursorState] Free aim activated: " +
                                             modeName + " with " + weaponName);
                                     }
                                 });
@@ -2886,7 +2841,7 @@ namespace Wasteland2AccessibilityMod.States
                                 ScreenReaderManager.SpeakInterrupt(
                                     "Free aim with " + weaponName +
                                     ". Move to target and press Enter to attack");
-                                MelonLogger.Msg("[MapCursorState] Free aim activated: " + weaponName);
+                                ModLog.Debug("[MapCursorState] Free aim activated: " + weaponName);
                             }
                         });
                     }
@@ -2967,7 +2922,7 @@ namespace Wasteland2AccessibilityMod.States
                 OpenPCSelectionMenu(pcsOnTile, $"Use {itemName} on", (pc) =>
                 {
                     string pcName = GetMobName(pc);
-                    MelonLogger.Msg($"[MapCursorState] Using {itemName} on {pcName}");
+                    ModLog.Debug($"[MapCursorState] Using {itemName} on {pcName}");
                     ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {pcName}");
                     MonoBehaviourSingleton<InputManager>.GetInstance().HandleUsableItemClickOnTargetable(pc);
                 });
@@ -2977,7 +2932,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 var pc = pcsOnTile[0];
                 string pcName = GetMobName(pc);
-                MelonLogger.Msg($"[MapCursorState] Using {itemName} on {pcName}");
+                ModLog.Debug($"[MapCursorState] Using {itemName} on {pcName}");
                 ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {pcName}");
                 inputManager.HandleUsableItemClickOnTargetable(pc);
                 return;
@@ -2989,7 +2944,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (mob is PC) continue;
                 if (mob.mobState == Mob.MobState.DEAD) continue;
                 string mobName = GetMobName(mob);
-                MelonLogger.Msg($"[MapCursorState] Using {itemName} on {mobName}");
+                ModLog.Debug($"[MapCursorState] Using {itemName} on {mobName}");
                 ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {mobName}");
                 inputManager.HandleUsableItemClickOnTargetable(mob);
                 return;
@@ -3025,7 +2980,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (nexus.drama != null)
                 {
                     string name = GetInteractableName(nexus) ?? nexus.name;
-                    MelonLogger.Msg($"[MapCursorState] Using {itemName} on {name} (no Targetable, using drama fallback)");
+                    ModLog.Debug($"[MapCursorState] Using {itemName} on {name} (no Targetable, using drama fallback)");
                     ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {name}");
                     InputManager.PrepareUseItemActions(nexus.transform, nexus.drama, null, false);
                     return;
@@ -3034,7 +2989,7 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            MelonLogger.Msg($"[MapCursorState] Using {itemName} on {targetName}");
+            ModLog.Debug($"[MapCursorState] Using {itemName} on {targetName}");
             ScreenReaderManager.SpeakInterrupt($"Using {itemName} on {targetName}");
             inputManager.HandleUsableItemClickOnTargetable(targetable);
         }
@@ -3057,7 +3012,7 @@ namespace Wasteland2AccessibilityMod.States
                 OpenPCSelectionMenu(pcsOnTile, $"{skillName} on", (pc) =>
                 {
                     string pcName = GetMobName(pc);
-                    MelonLogger.Msg($"[MapCursorState] Using {asiCapture} on {pcName}");
+                    ModLog.Debug($"[MapCursorState] Using {asiCapture} on {pcName}");
                     ScreenReaderManager.SpeakInterrupt($"Using {skillCapture} on {pcName}");
                     MonoBehaviourSingleton<InputManager>.GetInstance().HandleSkillClick(pc.transform, doubleClick: false);
                 });
@@ -3067,7 +3022,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 var pc = pcsOnTile[0];
                 string pcName = GetMobName(pc);
-                MelonLogger.Msg($"[MapCursorState] Using {activeASI} on {pcName}");
+                ModLog.Debug($"[MapCursorState] Using {activeASI} on {pcName}");
                 ScreenReaderManager.SpeakInterrupt($"Using {skillName} on {pcName}");
                 inputManager.HandleSkillClick(pc.transform, doubleClick: false);
                 return;
@@ -3079,7 +3034,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (mob is PC) continue;
                 if (mob.mobState == Mob.MobState.DEAD) continue;
                 string mobName = GetMobName(mob);
-                MelonLogger.Msg($"[MapCursorState] Using {activeASI} on {mobName}");
+                ModLog.Debug($"[MapCursorState] Using {activeASI} on {mobName}");
                 ScreenReaderManager.SpeakInterrupt($"Using {skillName} on {mobName}");
                 inputManager.HandleSkillClick(mob.transform, doubleClick: false);
                 return;
@@ -3090,7 +3045,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (nexus == null || nexus.drama == null) continue;
                 string name = GetInteractableName(nexus) ?? nexus.name;
-                MelonLogger.Msg($"[MapCursorState] Using {activeASI} on {name}");
+                ModLog.Debug($"[MapCursorState] Using {activeASI} on {name}");
                 ScreenReaderManager.SpeakInterrupt($"Using {skillName} on {name}");
                 inputManager.HandleSkillClick(nexus.transform, doubleClick: false);
                 return;
@@ -3221,13 +3176,13 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     bool canAttackHere = false;
                     try { canAttackHere = pc.CanAttack(target, true, false); }
-                    catch (Exception) { }
+                    catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] melee CanAttack check failed: {ex.Message}"); }
 
                     if (!canAttackHere)
                     {
                         bool isAttackable = false;
                         try { isAttackable = pc.IsAttackableTarget(target, false); }
-                        catch (Exception) { }
+                        catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] IsAttackableTarget check failed: {ex.Message}"); }
 
                         if (isAttackable && TryFindAttackDestination(pc, target))
                         {
@@ -3239,7 +3194,7 @@ namespace Wasteland2AccessibilityMod.States
                             // cursor messages in Highlight.cs:572-588.
                             bool sightBlocked = false;
                             try { sightBlocked = !pc.TargetVisible(target); }
-                            catch (Exception) { }
+                            catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] melee TargetVisible check failed: {ex.Message}"); }
 
                             if (sightBlocked)
                             {
@@ -3267,7 +3222,7 @@ namespace Wasteland2AccessibilityMod.States
                             return;
                         }
                     }
-                    catch (Exception) { }
+                    catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] ranged TargetVisible check failed: {ex.Message}"); }
 
                     float distance = Vector3.Distance(pc.transform.position, target.transform.position);
                     float additionalHitRange = 0f;
@@ -3275,7 +3230,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (targetMob != null)
                     {
                         try { additionalHitRange = targetMob.GetAdditionalHitRange(); }
-                        catch (Exception) { }
+                        catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] GetAdditionalHitRange failed: {ex.Message}"); }
                     }
                     float attackRange = pc.stats.GetAttackRange();
                     if (distance - additionalHitRange > attackRange)
@@ -3324,11 +3279,11 @@ namespace Wasteland2AccessibilityMod.States
                     if (critChance > 0)
                         chanceInfo += ", " + critChance + "% crit";
                 }
-                catch (Exception) { }
+                catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] attack hit/crit chance failed: {ex.Message}"); }
 
                 string verb = willMoveAndAttack ? "Moving to attack " : "Attacking ";
                 ScreenReaderManager.SpeakInterrupt(verb + targetName + " with " + weapon + modeInfo + chanceInfo);
-                MelonLogger.Msg("[MapCursorState] Attack command: " + verb + targetName + " with " + weapon + modeInfo + chanceInfo);
+                ModLog.Debug("[MapCursorState] Attack command: " + verb + targetName + " with " + weapon + modeInfo + chanceInfo);
 
                 // Clear attack ASI
                 UseASIManager.SetActiveASIName(null);
@@ -3375,8 +3330,10 @@ namespace Wasteland2AccessibilityMod.States
                 }
                 return false;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                // Don't let a pathing/navmesh failure read back as "can't reach" — surface it.
+                MelonLogger.Warning($"[MapCursorState] TryFindAttackDestination failed (reporting as unreachable): {ex.Message}");
                 return false;
             }
         }
@@ -3397,6 +3354,7 @@ namespace Wasteland2AccessibilityMod.States
 
         private void OpenPartyMemberInfo(PC pc)
         {
+            partyInfoPc = pc;
             partyInfoLines.Clear();
             BuildPartyMemberInfo(pc);
 
@@ -3415,66 +3373,22 @@ namespace Wasteland2AccessibilityMod.States
 
         private void BuildPartyMemberInfo(PC pc)
         {
-            // --- Health ---
-            float maxHP = pc.stats.GetMaxHP();
-            float hpPercent = maxHP > 0 ? (pc.curHP / maxHP) * 100f : 0;
-            string healthLine = "Health: " + Mathf.RoundToInt(pc.curHP) + " of " + Mathf.RoundToInt(maxHP)
-                + " (" + hpPercent.ToString("F0") + "%)";
-
-            if (pc.healthState != PC.HealthState.Healthy)
-                healthLine += ", " + pc.healthState.ToString();
-
-            partyInfoLines.Add(healthLine);
-
-            // --- Level / XP ---
-            try
-            {
-                string xpLine = CharacterAnnouncementHelper.BuildXPAnnouncement(pc);
-                if (!string.IsNullOrEmpty(xpLine))
-                    partyInfoLines.Add(xpLine);
-            }
-            catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] BuildPartyMemberInfo XP section failed: {ex.Message}"); }
-
-            // --- Weapon ---
-            try
-            {
-                var weaponInstance = pc.pcStats.GetWeaponInstance();
-                if (weaponInstance != null && weaponInstance.template != null)
-                {
-                    string weaponName = UITextExtractor.CleanText(
-                        Language.Localize(weaponInstance.template.displayName, false, false, string.Empty));
-                    string weaponLine = "Weapon: " + weaponName;
-
-                    var ranged = weaponInstance as ItemInstance_WeaponRanged;
-                    if (ranged != null)
-                    {
-                        weaponLine += ", " + ranged.GetAmmoCount() + " of " + ranged.GetClipSize() + " ammo";
-                    }
-                    partyInfoLines.Add(weaponLine);
-                }
-            }
-            catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] BuildPartyMemberInfo weapon section failed: {ex.Message}"); }
-
-            // --- Status Effects ---
-            try
-            {
-                if (pc.template != null && pc.template.statusEffects != null
-                    && pc.template.statusEffects.Count > 0)
-                {
-                    foreach (var effect in pc.template.statusEffects)
-                    {
-                        string line = Helpers.StatusEffectHelper.BuildEffectLine(effect);
-                        if (!string.IsNullOrEmpty(line))
-                            partyInfoLines.Add(line);
-                    }
-                }
-            }
-            catch (Exception ex) { MelonLogger.Warning($"[MapCursorState] BuildPartyMemberInfo status effects section failed: {ex.Message}"); }
+            // Shared builder (exploration context: shows Level/XP instead of AP/Stance).
+            partyInfoLines.AddRange(CharacterAnnouncementHelper.BuildPartyMemberInfoLines(pc, false));
         }
 
         private string FormatPartyInfoLine(int index)
         {
-            if (index < 0 || index >= partyInfoLines.Count) return "";
+            // Re-read live from the PC handle: HP/status can change while the panel is open
+            // during exploration, so a frozen string would announce stale numbers.
+            if (partyInfoPc != null)
+            {
+                partyInfoLines.Clear();
+                partyInfoLines.AddRange(CharacterAnnouncementHelper.BuildPartyMemberInfoLines(partyInfoPc, false));
+            }
+            if (partyInfoLines.Count == 0) return "";
+            if (index < 0) index = 0;
+            if (index >= partyInfoLines.Count) index = partyInfoLines.Count - 1;
             return partyInfoLines[index] + ", " + (index + 1) + " of " + partyInfoLines.Count;
         }
 

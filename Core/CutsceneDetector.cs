@@ -37,7 +37,7 @@ namespace Wasteland2AccessibilityMod.Core
                 em.Subscribe(typeof(EventInfo_MovieStarted), OnMovieStarted);
                 em.Subscribe(typeof(EventInfo_MovieEnded), OnMovieEnded);
                 subscribed = true;
-                MelonLogger.Msg("[CutsceneDetector] Subscribed to movie events");
+                ModLog.Debug("[CutsceneDetector] Subscribed to movie events");
             }
             catch (Exception ex)
             {
@@ -48,13 +48,13 @@ namespace Wasteland2AccessibilityMod.Core
         private static void OnMovieStarted(EventInfoBase e)
         {
             isMoviePlaying = true;
-            MelonLogger.Msg("[CutsceneDetector] Movie started — mod input bypassed");
+            ModLog.Debug("[CutsceneDetector] Movie started — mod input bypassed");
         }
 
         private static void OnMovieEnded(EventInfoBase e)
         {
             isMoviePlaying = false;
-            MelonLogger.Msg("[CutsceneDetector] Movie ended — mod input resumed");
+            ModLog.Debug("[CutsceneDetector] Movie ended — mod input resumed");
         }
     }
 }

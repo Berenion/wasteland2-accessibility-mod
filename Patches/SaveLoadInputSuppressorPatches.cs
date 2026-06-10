@@ -35,7 +35,7 @@ namespace Wasteland2AccessibilityMod.Patches
             }
             if (GenericMenuState.blockUIInput)
             {
-                MelonLogger.Msg("[SaveLoadScreen] Blocked native OnSaveClicked");
+                ModLog.Debug("[SaveLoadScreen] Blocked native OnSaveClicked");
                 return false;
             }
             return true;
@@ -55,7 +55,7 @@ namespace Wasteland2AccessibilityMod.Patches
             }
             if (GenericMenuState.blockUIInput)
             {
-                MelonLogger.Msg("[SaveLoadScreen] Blocked native OnLoadClicked");
+                ModLog.Debug("[SaveLoadScreen] Blocked native OnLoadClicked");
                 return false;
             }
             return true;
@@ -71,7 +71,7 @@ namespace Wasteland2AccessibilityMod.Patches
             if (GenericMenuState.blockUIInput &&
                 (buttonName == "Attack Current Target" || buttonName == "Controller A"))
             {
-                MelonLogger.Msg($"[SaveLoadScreen] Blocked native OnButtonDown({buttonName})");
+                ModLog.Debug($"[SaveLoadScreen] Blocked native OnButtonDown({buttonName})");
                 return false;
             }
             return true;

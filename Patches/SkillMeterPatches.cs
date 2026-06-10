@@ -28,7 +28,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 var meter = Traverse.Create(__instance).Field("meter").GetValue();
                 if (meter == null) return;
 
-                MelonLogger.Msg("[SkillMeter] Announcing wait hint");
+                ModLog.Debug("[SkillMeter] Announcing wait hint");
                 ScreenReaderManager.Speak("please wait");
             }
             catch (System.Exception ex)

@@ -148,7 +148,7 @@ namespace Wasteland2AccessibilityMod.States
                             cachedSaveLoadScreen.nameInput.value = editingOriginalValue;
                         }
                     }
-                    MelonLogger.Msg("[GenericMenuState] Exited editing (Escape)");
+                    ModLog.Debug("[GenericMenuState] Exited editing (Escape)");
                     ScreenReaderManager.SpeakInterrupt("Cancelled");
                     return true;
                 }
@@ -157,7 +157,7 @@ namespace Wasteland2AccessibilityMod.States
                     isEditingTextField = false;
                     string value = cachedSaveLoadScreen != null && cachedSaveLoadScreen.nameInput != null
                         ? cachedSaveLoadScreen.nameInput.value : "";
-                    MelonLogger.Msg($"[GenericMenuState] Exited editing (Enter), value='{value}'");
+                    ModLog.Debug($"[GenericMenuState] Exited editing (Enter), value='{value}'");
                     ScreenReaderManager.SpeakInterrupt(!string.IsNullOrEmpty(value) ? $"Saving as {value}" : "Confirmed");
 
                     // Sync nameInput.value through the public setter so OnSaveClicked reads
@@ -226,7 +226,7 @@ namespace Wasteland2AccessibilityMod.States
                             ScreenReaderManager.SpeakInterrupt(currentValue[currentValue.Length - 1].ToString());
                         else
                             ScreenReaderManager.SpeakInterrupt("empty");
-                        MelonLogger.Msg($"[GenericMenuState] Save name edited: '{currentValue}'");
+                        ModLog.Debug($"[GenericMenuState] Save name edited: '{currentValue}'");
                     }
                 }
 
@@ -241,7 +241,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (currentTop != cachedTopScreen)
             {
-                MelonLogger.Msg($"[GenericMenuState] Top screen changed: {(cachedTopScreen != null ? cachedTopScreen.name : "null")} -> {(currentTop != null ? currentTop.name : "null")}");
+                ModLog.Debug($"[GenericMenuState] Top screen changed: {(cachedTopScreen != null ? cachedTopScreen.name : "null")} -> {(currentTop != null ? currentTop.name : "null")}");
                 ReinitializeForScreen(currentTop);
             }
 
@@ -453,7 +453,7 @@ namespace Wasteland2AccessibilityMod.States
                 menuName = FormatCamelCase(menuName);
             }
 
-            MelonLogger.Msg($"[GenericMenuState] Menu: {menuName}");
+            ModLog.Debug($"[GenericMenuState] Menu: {menuName}");
             ScreenReaderManager.SpeakInterrupt(menuName);
         }
 
@@ -512,7 +512,7 @@ namespace Wasteland2AccessibilityMod.States
 
             // Announce the new tab
             string tabName = GetActiveTabName(cachedOptionsMenu);
-            MelonLogger.Msg($"[GenericMenuState] Switched to tab: {tabName}");
+            ModLog.Debug($"[GenericMenuState] Switched to tab: {tabName}");
             ScreenReaderManager.SpeakInterrupt($"Options, {tabName}");
 
             // Select first control in new tab after a short delay
@@ -545,7 +545,7 @@ namespace Wasteland2AccessibilityMod.States
             if (method != null)
             {
                 method.Invoke(cachedOptionsMenu, new object[] { null });
-                MelonLogger.Msg($"[GenericMenuState] Called {methodName}");
+                ModLog.Debug($"[GenericMenuState] Called {methodName}");
             }
             else
             {
@@ -566,7 +566,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (current == null)
             {
-                MelonLogger.Msg("[GenericMenuState] ForceAnnounce: No selection");
+                ModLog.Debug("[GenericMenuState] ForceAnnounce: No selection");
                 return;
             }
 
@@ -576,7 +576,7 @@ namespace Wasteland2AccessibilityMod.States
                 lastSelectedObject = current;
                 lastAnnouncedText = announcement;
                 ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[GenericMenuState] Initial announcement: {announcement}");
+                ModLog.Debug($"[GenericMenuState] Initial announcement: {announcement}");
             }
         }
 
@@ -600,7 +600,7 @@ namespace Wasteland2AccessibilityMod.States
                 optionsControlIndex = 0;
                 UICamera.selectedObject = optionsControls[0];
                 lastSelectedObject = optionsControls[0];
-                MelonLogger.Msg($"[GenericMenuState] Selected first control: {optionsControls[0].name} (of {optionsControls.Count})");
+                ModLog.Debug($"[GenericMenuState] Selected first control: {optionsControls[0].name} (of {optionsControls.Count})");
                 return;
             }
 
@@ -616,7 +616,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 if (!isInteractive)
                 {
-                    MelonLogger.Msg($"[GenericMenuState] Selected '{UICamera.selectedObject.name}' not interactive, clearing");
+                    ModLog.Debug($"[GenericMenuState] Selected '{UICamera.selectedObject.name}' not interactive, clearing");
                     UICamera.selectedObject = null;
                 }
             }
@@ -637,7 +637,7 @@ namespace Wasteland2AccessibilityMod.States
 
                     UICamera.selectedObject = bk.gameObject;
                     lastSelectedObject = bk.gameObject;
-                    MelonLogger.Msg($"[GenericMenuState] Auto-selected: {bk.gameObject.name}");
+                    ModLog.Debug($"[GenericMenuState] Auto-selected: {bk.gameObject.name}");
                     break;
                 }
             }
@@ -645,7 +645,7 @@ namespace Wasteland2AccessibilityMod.States
             if (UICamera.selectedObject != null)
             {
                 lastSelectedObject = UICamera.selectedObject;
-                MelonLogger.Msg($"[GenericMenuState] Final selection: {UICamera.selectedObject.name}");
+                ModLog.Debug($"[GenericMenuState] Final selection: {UICamera.selectedObject.name}");
             }
         }
 
@@ -678,9 +678,9 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     optionsControls = buttons;
                     optionsControlIndex = 0;
-                    MelonLogger.Msg($"[GenericMenuState] Built button list from UIGrid: {buttons.Count} buttons");
+                    ModLog.Debug($"[GenericMenuState] Built button list from UIGrid: {buttons.Count} buttons");
                     for (int i = 0; i < buttons.Count; i++)
-                        MelonLogger.Msg($"  [{i}] {buttons[i].name}");
+                        ModLog.Debug($"  [{i}] {buttons[i].name}");
                     return;
                 }
             }
@@ -756,9 +756,9 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             optionsControlIndex = 0;
-            MelonLogger.Msg($"[GenericMenuState] Built SaveLoad control list: {optionsControls.Count} controls");
+            ModLog.Debug($"[GenericMenuState] Built SaveLoad control list: {optionsControls.Count} controls");
             for (int i = 0; i < optionsControls.Count; i++)
-                MelonLogger.Msg($"  [{i}] {optionsControls[i].name}");
+                ModLog.Debug($"  [{i}] {optionsControls[i].name}");
         }
 
         // ========== Skill Use Menu Control List ==========
@@ -787,9 +787,9 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             optionsControlIndex = 0;
-            MelonLogger.Msg($"[GenericMenuState] Built SkillUseMenu control list: {optionsControls.Count} options");
+            ModLog.Debug($"[GenericMenuState] Built SkillUseMenu control list: {optionsControls.Count} options");
             for (int i = 0; i < optionsControls.Count; i++)
-                MelonLogger.Msg($"  [{i}] {optionsControls[i].name}");
+                ModLog.Debug($"  [{i}] {optionsControls[i].name}");
         }
 
         // ========== Options Menu Control List ==========
@@ -831,7 +831,7 @@ namespace Wasteland2AccessibilityMod.States
                     optionsControls.Add(child.gameObject);
                 }
 
-                MelonLogger.Msg($"[GenericMenuState] Built control list from UIGrid: {optionsControls.Count} controls");
+                ModLog.Debug($"[GenericMenuState] Built control list from UIGrid: {optionsControls.Count} controls");
             }
             else
             {
@@ -843,13 +843,13 @@ namespace Wasteland2AccessibilityMod.States
                         optionsControls.Add(c.gameObject);
                     }
                 }
-                MelonLogger.Msg($"[GenericMenuState] Built control list from OPT_* scan: {optionsControls.Count} controls");
+                ModLog.Debug($"[GenericMenuState] Built control list from OPT_* scan: {optionsControls.Count} controls");
             }
 
             // Log the control list
             for (int i = 0; i < optionsControls.Count; i++)
             {
-                MelonLogger.Msg($"  [{i}] {optionsControls[i].name}");
+                ModLog.Debug($"  [{i}] {optionsControls[i].name}");
             }
         }
 
@@ -918,7 +918,7 @@ namespace Wasteland2AccessibilityMod.States
                             valueText = $"{percent} percent";
                         }
                         ScreenReaderManager.SpeakInterrupt(valueText);
-                        MelonLogger.Msg($"[GenericMenuState] Slider adjusted: {optScrollbar.slider.value}");
+                        ModLog.Debug($"[GenericMenuState] Slider adjusted: {optScrollbar.slider.value}");
                         return;
                     }
 
@@ -984,7 +984,7 @@ namespace Wasteland2AccessibilityMod.States
                     lastSelectedObject = optionsControls[newIndex];
                     ScreenReaderManager.SpeakInterrupt(announcement);
                 }
-                MelonLogger.Msg($"[GenericMenuState] Nav to [{newIndex}]: {optionsControls[newIndex].name} - {announcement}");
+                ModLog.Debug($"[GenericMenuState] Nav to [{newIndex}]: {optionsControls[newIndex].name} - {announcement}");
             }
         }
 
@@ -1022,7 +1022,7 @@ namespace Wasteland2AccessibilityMod.States
             dropdown.popupList.value = dropdown.popupList.items[newIndex];
             string val = UITextExtractor.CleanText(dropdown.popupList.value);
             ScreenReaderManager.SpeakInterrupt(val);
-            MelonLogger.Msg($"[GenericMenuState] Dropdown cycled to: {val}");
+            ModLog.Debug($"[GenericMenuState] Dropdown cycled to: {val}");
         }
 
         private int FindCurrentControlIndex()
@@ -1050,7 +1050,7 @@ namespace Wasteland2AccessibilityMod.States
             GameObject current = UICamera.selectedObject;
             if (current == null)
             {
-                MelonLogger.Msg("[GenericMenuState] Navigate: No selection");
+                ModLog.Debug("[GenericMenuState] Navigate: No selection");
                 return;
             }
 
@@ -1062,7 +1062,7 @@ namespace Wasteland2AccessibilityMod.States
 
             if (buttonKeys == null)
             {
-                MelonLogger.Msg($"[GenericMenuState] Navigate: No UIButtonKeys on {current.name}");
+                ModLog.Debug($"[GenericMenuState] Navigate: No UIButtonKeys on {current.name}");
                 current.SendMessage("OnKey", direction, SendMessageOptions.DontRequireReceiver);
                 CheckAndAnnounceSelection();
                 return;
@@ -1091,13 +1091,13 @@ namespace Wasteland2AccessibilityMod.States
 
             if (target == null)
             {
-                MelonLogger.Msg($"[GenericMenuState] Navigate: No target for {direction} from {current.name}");
+                ModLog.Debug($"[GenericMenuState] Navigate: No target for {direction} from {current.name}");
                 return;
             }
 
             if (!target.gameObject.activeInHierarchy)
             {
-                MelonLogger.Msg($"[GenericMenuState] Navigate: Target {target.gameObject.name} not active");
+                ModLog.Debug($"[GenericMenuState] Navigate: Target {target.gameObject.name} not active");
                 return;
             }
 
@@ -1106,7 +1106,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 UICamera.selectedObject = target.gameObject;
                 target.gameObject.SendMessage("OnHover", true, SendMessageOptions.DontRequireReceiver);
-                MelonLogger.Msg($"[GenericMenuState] Navigated to: {target.gameObject.name}");
+                ModLog.Debug($"[GenericMenuState] Navigated to: {target.gameObject.name}");
 
                 // For SaveLoadScreen: entry selection callback only fires in gamepad mode,
                 // so we need to manually select entries during navigation
@@ -1416,7 +1416,7 @@ namespace Wasteland2AccessibilityMod.States
                     method.Invoke(cachedSkillUseMenu, new object[] { current });
                     string name = hotkeyOpt.nameLabel != null
                         ? UITextExtractor.CleanText(hotkeyOpt.nameLabel.text) : current.name;
-                    MelonLogger.Msg($"[GenericMenuState] SkillUseMenu selected: {name}");
+                    ModLog.Debug($"[GenericMenuState] SkillUseMenu selected: {name}");
                     ScreenReaderManager.SpeakInterrupt($"Using {name}");
                 }
                 else
@@ -1447,7 +1447,7 @@ namespace Wasteland2AccessibilityMod.States
                     else
                         saveLoadScreen.OnSaveClicked();
 
-                    MelonLogger.Msg($"[GenericMenuState] SaveLoad activated: {(saveEntry.nameLabel != null ? saveEntry.nameLabel.text : current.name)}");
+                    ModLog.Debug($"[GenericMenuState] SaveLoad activated: {(saveEntry.nameLabel != null ? saveEntry.nameLabel.text : current.name)}");
                 }
                 return;
             }
@@ -1472,7 +1472,7 @@ namespace Wasteland2AccessibilityMod.States
                     {
                         cachedSaveLoadScreen.nameInput.value = "";
                     }
-                    MelonLogger.Msg($"[GenericMenuState] Entered editing mode for save name, original='{editingOriginalValue}'");
+                    ModLog.Debug($"[GenericMenuState] Entered editing mode for save name, original='{editingOriginalValue}'");
                     ScreenReaderManager.SpeakInterrupt("Editing save name. Type a name, then press Enter to save or Escape to cancel.");
                     return;
                 }
@@ -1480,20 +1480,20 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     Patches.SaveLoadScreenSuppressor.AllowNextAction = true;
                     cachedSaveLoadScreen.OnSaveClicked();
-                    MelonLogger.Msg("[GenericMenuState] SaveLoad save button activated");
+                    ModLog.Debug("[GenericMenuState] SaveLoad save button activated");
                     return;
                 }
                 if (cachedSaveLoadScreen.loadButton != null && current == cachedSaveLoadScreen.loadButton.gameObject)
                 {
                     Patches.SaveLoadScreenSuppressor.AllowNextAction = true;
                     cachedSaveLoadScreen.OnLoadClicked();
-                    MelonLogger.Msg("[GenericMenuState] SaveLoad load button activated");
+                    ModLog.Debug("[GenericMenuState] SaveLoad load button activated");
                     return;
                 }
                 if (cachedSaveLoadScreen.closeButton != null && current == cachedSaveLoadScreen.closeButton.gameObject)
                 {
                     CloseMenu();
-                    MelonLogger.Msg("[GenericMenuState] SaveLoad close button activated");
+                    ModLog.Debug("[GenericMenuState] SaveLoad close button activated");
                     return;
                 }
             }
@@ -1511,7 +1511,7 @@ namespace Wasteland2AccessibilityMod.States
                 optCheckbox.checkbox.value = !optCheckbox.checkbox.value;
                 string state = optCheckbox.checkbox.value ? "checked" : "unchecked";
                 ScreenReaderManager.SpeakInterrupt(state);
-                MelonLogger.Msg($"[GenericMenuState] OPT_Checkbox toggled: {current.name} = {optCheckbox.checkbox.value}");
+                ModLog.Debug($"[GenericMenuState] OPT_Checkbox toggled: {current.name} = {optCheckbox.checkbox.value}");
                 return;
             }
 
@@ -1527,7 +1527,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
                 // Cycle to next value on Enter
                 CycleDropdownValue(optDropdown, 1);
-                MelonLogger.Msg($"[GenericMenuState] OPT_Dropdown cycled: {current.name}");
+                ModLog.Debug($"[GenericMenuState] OPT_Dropdown cycled: {current.name}");
                 return;
             }
 
@@ -1560,7 +1560,7 @@ namespace Wasteland2AccessibilityMod.States
                 toggle.value = !toggle.value;
                 string state = toggle.value ? "checked" : "unchecked";
                 ScreenReaderManager.SpeakInterrupt(state);
-                MelonLogger.Msg($"[GenericMenuState] Toggled: {current.name} = {toggle.value}");
+                ModLog.Debug($"[GenericMenuState] Toggled: {current.name} = {toggle.value}");
                 return;
             }
 
@@ -1569,7 +1569,7 @@ namespace Wasteland2AccessibilityMod.States
             if (popupList != null)
             {
                 current.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-                MelonLogger.Msg($"[GenericMenuState] Opened popup: {current.name}");
+                ModLog.Debug($"[GenericMenuState] Opened popup: {current.name}");
                 return;
             }
 
@@ -1586,11 +1586,11 @@ namespace Wasteland2AccessibilityMod.States
                     if (callback != null)
                     {
                         callback.DynamicInvoke(dragDropItem);
-                        MelonLogger.Msg($"[GenericMenuState] Invoked controllerACallback on INV_DragDropItem: {current.name}");
+                        ModLog.Debug($"[GenericMenuState] Invoked controllerACallback on INV_DragDropItem: {current.name}");
                         return;
                     }
                 }
-                MelonLogger.Msg($"[GenericMenuState] INV_DragDropItem has no callback: {current.name}");
+                ModLog.Debug($"[GenericMenuState] INV_DragDropItem has no callback: {current.name}");
                 return;
             }
 
@@ -1604,7 +1604,7 @@ namespace Wasteland2AccessibilityMod.States
 
             // Trigger click
             current.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-            MelonLogger.Msg($"[GenericMenuState] Clicked: {current.name}");
+            ModLog.Debug($"[GenericMenuState] Clicked: {current.name}");
         }
 
         // ========== Close Menu ==========
@@ -1630,7 +1630,7 @@ namespace Wasteland2AccessibilityMod.States
                 EventManager.ignoreNextBack = true;
                 topScreen.Close();
                 ScreenReaderManager.SpeakInterrupt("Closed");
-                MelonLogger.Msg($"[GenericMenuState] Closed: {topScreen.name}");
+                ModLog.Debug($"[GenericMenuState] Closed: {topScreen.name}");
             }
         }
     }

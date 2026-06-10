@@ -53,7 +53,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     LastPrintHadAudio = AudioManager.IsValidAudioID(audioName);
                     if (!LastPrintHadAudio)
                     {
-                        MelonLogger.Msg($"[BubbleTextPrint] Audio ID '{audioName}' not found in audio system — treating as unvoiced");
+                        ModLog.Debug($"[BubbleTextPrint] Audio ID '{audioName}' not found in audio system — treating as unvoiced");
                     }
                 }
                 catch
@@ -73,7 +73,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 textKind == BubbleTextKind.AsciiArtConversation ||
                 textKind == BubbleTextKind.AudioConversation)
             {
-                MelonLogger.Msg($"[BubbleTextPrint] textKind={textKind}, hasAudio={LastPrintHadAudio}, audioName={audioName}");
+                ModLog.Debug($"[BubbleTextPrint] textKind={textKind}, hasAudio={LastPrintHadAudio}, audioName={audioName}");
             }
         }
     }
@@ -113,7 +113,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 // Skip player dialogue - we already read it when hovering on the option
                 if (rangerSay)
                 {
-                    MelonLogger.Msg($"[Conversation] Skipping ranger say (already read on hover): {cleanedText}");
+                    ModLog.Debug($"[Conversation] Skipping ranger say (already read on hover): {cleanedText}");
                     return;
                 }
 
@@ -133,7 +133,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     // No voiceover for this line — speak immediately, no delays needed
                     ScreenReaderManager.SpeakDirect(cleanedText);
-                    MelonLogger.Msg($"[Conversation] No VO — speaking immediately");
+                    ModLog.Debug($"[Conversation] No VO — speaking immediately");
 
                     // If description is showing, prompt to continue
                     bool descriptionShowing = VoiceoverHelper.HasActiveDescriptionBubbles();
@@ -145,7 +145,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 else
                 {
                     // This line has voiceover — wait for it to finish, then read the text
-                    MelonLogger.Msg($"[Conversation] Has VO — waiting for audio to finish");
+                    ModLog.Debug($"[Conversation] Has VO — waiting for audio to finish");
                     MelonCoroutines.Start(SpeakAfterVoiceoverFinishes(cleanedText));
                 }
 
@@ -153,7 +153,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 lastAnnouncedText = cleanedText;
                 lastAnnouncedTime = currentTime;
 
-                MelonLogger.Msg($"[Conversation] {(rangerSay ? "Ranger" : "NPC")}: {cleanedText}");
+                ModLog.Debug($"[Conversation] {(rangerSay ? "Ranger" : "NPC")}: {cleanedText}");
             }
             catch (Exception ex)
             {
@@ -281,7 +281,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 VoiceoverHelper.SpeakWithVoiceoverDelay($"Response option: {announcement}",
                     additionalDelay: 0.5f);
 
-                MelonLogger.Msg($"[Conversation] Button added: {announcement}");
+                ModLog.Debug($"[Conversation] Button added: {announcement}");
             }
             catch (Exception ex)
             {
@@ -302,7 +302,7 @@ namespace Wasteland2AccessibilityMod.Patches
             try
             {
                 // Log button removal (useful for debugging)
-                MelonLogger.Msg($"[Conversation] Button removed: {keywordLabel}");
+                ModLog.Debug($"[Conversation] Button removed: {keywordLabel}");
             }
             catch (Exception ex)
             {
@@ -417,7 +417,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 }
 
                 ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[Conversation] {announcement}");
+                ModLog.Debug($"[Conversation] {announcement}");
             }
             catch (Exception ex)
             {
@@ -580,7 +580,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 // Announce immediately - this is navigation feedback
                 ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[Conversation] Hovering: {announcement}");
+                ModLog.Debug($"[Conversation] Hovering: {announcement}");
             }
             catch (Exception ex)
             {
@@ -600,7 +600,7 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             try
             {
-                MelonLogger.Msg("[Conversation] Options cleared");
+                ModLog.Debug("[Conversation] Options cleared");
             }
             catch (Exception ex)
             {
@@ -634,7 +634,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 }
 
                 VoiceoverHelper.SpeakWithVoiceoverDelay(announcement, additionalDelay: 0.3f);
-                MelonLogger.Msg($"[Conversation] Started: {npcName}");
+                ModLog.Debug($"[Conversation] Started: {npcName}");
             }
             catch (Exception ex)
             {
@@ -655,7 +655,7 @@ namespace Wasteland2AccessibilityMod.Patches
             try
             {
                 ScreenReaderManager.Speak("Conversation ended");
-                MelonLogger.Msg("[Conversation] Ended");
+                ModLog.Debug("[Conversation] Ended");
             }
             catch (Exception ex)
             {

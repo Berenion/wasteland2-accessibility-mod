@@ -236,7 +236,7 @@ namespace Wasteland2AccessibilityMod.States
                     currentIndex = -1;
 
                 AnnounceCurrentItem(interrupt: true);
-                MelonLogger.Msg($"[ShopState] Restored from suspend, zone={currentZone}, index={currentIndex}");
+                ModLog.Debug($"[ShopState] Restored from suspend, zone={currentZone}, index={currentIndex}");
                 return;
             }
 
@@ -269,7 +269,7 @@ namespace Wasteland2AccessibilityMod.States
             if (currentList.Count > 0 && currentIndex < 0)
                 currentIndex = 0;
 
-            MelonLogger.Msg($"[ShopState] Activated, zone={currentZone}, items={currentList.Count}");
+            ModLog.Debug($"[ShopState] Activated, zone={currentZone}, items={currentList.Count}");
         }
 
         public override void OnDeactivated()
@@ -284,7 +284,7 @@ namespace Wasteland2AccessibilityMod.States
             isDirty = false;
             isInfoBrowsing = false;
             cachedVendorScreen = null;
-            MelonLogger.Msg($"[ShopState] Deactivated (suspended zone={suspendedZone}, index={suspendedIndex})");
+            ModLog.Debug($"[ShopState] Deactivated (suspended zone={suspendedZone}, index={suspendedIndex})");
         }
 
         #region Zone Switching
@@ -396,7 +396,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             ClampIndex();
-            MelonLogger.Msg($"[ShopState] Built player item list: {currentList.Count} items (filter={filter})");
+            ModLog.Debug($"[ShopState] Built player item list: {currentList.Count} items (filter={filter})");
         }
 
         private void BuildVendorItemList()
@@ -418,7 +418,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             ClampIndex();
-            MelonLogger.Msg($"[ShopState] Built vendor item list: {currentList.Count} items (filter={filter})");
+            ModLog.Debug($"[ShopState] Built vendor item list: {currentList.Count} items (filter={filter})");
         }
 
         private void AddInventoryItemsToList(Inventory inv, InventoryFilter filter, PC ownerPC, bool isVendor, bool excludeNoDrop)
@@ -512,7 +512,7 @@ namespace Wasteland2AccessibilityMod.States
 
             ClampIndex();
             int itemCount = currentList.Count - 2; // exclude markers
-            MelonLogger.Msg($"[ShopState] Built escrow list: {itemCount} items + 2 markers");
+            ModLog.Debug($"[ShopState] Built escrow list: {itemCount} items + 2 markers");
         }
 
         private void BuildFilterList()
@@ -540,7 +540,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             ClampIndex();
-            MelonLogger.Msg($"[ShopState] Built filter list: {currentList.Count} filters");
+            ModLog.Debug($"[ShopState] Built filter list: {currentList.Count} filters");
         }
 
         private void RebuildCurrentList()
@@ -749,7 +749,7 @@ namespace Wasteland2AccessibilityMod.States
                         return;
                     }
                     // If we couldn't find the grid item, fall through and transfer the whole stack.
-                    MelonLogger.Msg($"[ShopState] No grid item for stackable {itemName}, transferring whole stack");
+                    ModLog.Debug($"[ShopState] No grid item for stackable {itemName}, transferring whole stack");
                 }
 
                 // Unequip if currently equipped on the owning PC
@@ -790,7 +790,7 @@ namespace Wasteland2AccessibilityMod.States
                 else
                     ScreenReaderManager.SpeakInterrupt($"Added {itemName} to sell");
 
-                MelonLogger.Msg($"[ShopState] Moved item to escrow: {itemName}");
+                ModLog.Debug($"[ShopState] Moved item to escrow: {itemName}");
             }
             catch (Exception e)
             {
@@ -847,7 +847,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 string action = entry.IsSelling ? "Removed from sell" : "Removed from buy";
                 ScreenReaderManager.SpeakInterrupt($"{action}: {itemName}");
-                MelonLogger.Msg($"[ShopState] Removed from escrow: {itemName}");
+                ModLog.Debug($"[ShopState] Removed from escrow: {itemName}");
             }
             catch (Exception e)
             {
@@ -914,7 +914,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 int scrap = MonoBehaviourSingleton<Game>.GetInstance().partyCurrency;
                 ScreenReaderManager.SpeakInterrupt($"Trade complete, {scrap} scrap remaining");
-                MelonLogger.Msg("[ShopState] Trade finalized");
+                ModLog.Debug("[ShopState] Trade finalized");
             }
             catch (Exception e)
             {
@@ -933,7 +933,7 @@ namespace Wasteland2AccessibilityMod.States
 
             string filterName = GetFilterButtonName(filterObj);
             ScreenReaderManager.SpeakInterrupt($"Filter: {filterName}");
-            MelonLogger.Msg($"[ShopState] Activated filter: {filterName}");
+            ModLog.Debug($"[ShopState] Activated filter: {filterName}");
         }
 
         private void SellAllJunk()
@@ -950,7 +950,7 @@ namespace Wasteland2AccessibilityMod.States
 
                     int scrap = MonoBehaviourSingleton<Game>.GetInstance().partyCurrency;
                     ScreenReaderManager.SpeakInterrupt($"Sold junk, {scrap} scrap");
-                    MelonLogger.Msg("[ShopState] Sold all junk");
+                    ModLog.Debug("[ShopState] Sold all junk");
                 }
                 catch (Exception e)
                 {
@@ -969,7 +969,7 @@ namespace Wasteland2AccessibilityMod.States
             vendorScreen.OnButtonDown("Back");
 
             hasSuspendedState = false;
-            MelonLogger.Msg("[ShopState] Closed shop");
+            ModLog.Debug("[ShopState] Closed shop");
         }
 
         private void CycleFilter()
@@ -1016,7 +1016,7 @@ namespace Wasteland2AccessibilityMod.States
 
                     string filterName = GetFilterName(newFilter);
                     ScreenReaderManager.SpeakInterrupt($"Filter: {filterName}");
-                    MelonLogger.Msg($"[ShopState] Set filter to {newFilter}");
+                    ModLog.Debug($"[ShopState] Set filter to {newFilter}");
                 }
                 catch (Exception e)
                 {
@@ -1079,7 +1079,7 @@ namespace Wasteland2AccessibilityMod.States
             string name = UITextExtractor.CleanText(
                 Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty));
             ScreenReaderManager.SpeakInterrupt($"Selected {name}");
-            MelonLogger.Msg($"[ShopState] Switched to party member {index + 1}: {name}");
+            ModLog.Debug($"[ShopState] Switched to party member {index + 1}: {name}");
         }
 
         #endregion
@@ -1565,7 +1565,7 @@ namespace Wasteland2AccessibilityMod.States
             if (inventoryContainerFilterField == null)
                 MelonLogger.Warning("[ShopState] Could not find InventoryContainer.filter");
 
-            MelonLogger.Msg("[ShopState] Reflection cache complete");
+            ModLog.Debug("[ShopState] Reflection cache complete");
         }
 
         #endregion

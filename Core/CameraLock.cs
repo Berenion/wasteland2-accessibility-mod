@@ -24,7 +24,7 @@ namespace Wasteland2AccessibilityMod.Core
         public static void Initialize()
         {
             initialized = true;
-            MelonLogger.Msg($"[CameraLock] Initialized - Locked: {IsLocked}");
+            ModLog.Debug($"[CameraLock] Initialized - Locked: {IsLocked}");
         }
 
         /// <summary>
@@ -44,7 +44,7 @@ namespace Wasteland2AccessibilityMod.Core
                 ScreenReaderManager.SpeakInterrupt("Camera unlocked");
             }
 
-            MelonLogger.Msg($"[CameraLock] Toggled - Locked: {IsLocked}");
+            ModLog.Debug($"[CameraLock] Toggled - Locked: {IsLocked}");
         }
 
         /// <summary>
@@ -59,7 +59,7 @@ namespace Wasteland2AccessibilityMod.Core
             if (game.cameraController != null)
             {
                 lockedYRotation = game.cameraController.transform.eulerAngles.y;
-                MelonLogger.Msg($"[CameraLock] Captured rotation: {lockedYRotation}");
+                ModLog.Debug($"[CameraLock] Captured rotation: {lockedYRotation}");
             }
         }
 
@@ -79,7 +79,7 @@ namespace Wasteland2AccessibilityMod.Core
                 game.cameraController.transform.eulerAngles = new Vector3(euler.x, 0f, euler.z);
             }
 
-            MelonLogger.Msg("[CameraLock] Reset to North");
+            ModLog.Debug("[CameraLock] Reset to North");
         }
 
         /// <summary>

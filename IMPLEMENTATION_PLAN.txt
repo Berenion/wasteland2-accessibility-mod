@@ -2,13 +2,20 @@
 WASTELAND 2 ACCESSIBILITY MOD - IMPLEMENTATION PLAN v2.0
 ================================================================================
 
+STATUS: Historical planning document. Records the original architecture and the
+Phase 1-4 build-out. It is NOT the source of truth for setup, versions, or the
+current state-priority values -- those drift over time. For anything you intend
+to act on (install steps, MelonLoader version, build command, priorities), defer
+to README.md and Wasteland2AccessibilityMod/CLAUDE.md, which are kept current.
+
 OVERVIEW
 --------
 This mod provides screen reader accessibility support for Wasteland 2 Director's
 Cut. It uses MelonLoader for mod loading and Harmony for runtime patching of
 game methods. The mod implements a unified input routing system with priority-
 based state management for different game contexts.
-The melonloader log for debugging purposes can be found at "D:\SteamLibrary\steamapps\common\Wasteland 2 Director's Cut\Build\MelonLoader\Latest.log"
+The MelonLoader log for debugging is at "<game-install>\MelonLoader\Latest.log"
+(on a default Steam install: ...\steamapps\common\Wasteland 2 Director's Cut\Build\MelonLoader\Latest.log).
 
 ================================================================================
 TECHNICAL FOUNDATION
@@ -16,7 +23,8 @@ TECHNICAL FOUNDATION
 
 Framework Requirements:
 - .NET Framework 3.5 (Unity 4.x compatibility)
-- MelonLoader 0.6.1+
+- MelonLoader 0.5.7 Open-Beta (PINNED -- do NOT use 0.6.x or newer; they crash
+  Wasteland 2 Director's Cut. See README.md for the exact installer link.)
 - Harmony (included with MelonLoader)
 - Tolk library for screen reader communication
 

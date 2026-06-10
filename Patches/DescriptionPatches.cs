@@ -55,7 +55,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     ? cleanedText
                     : $"{prefix}: {cleanedText}";
 
-                MelonLogger.Msg($"Description text ({textType}): {cleanedText}");
+                ModLog.Debug($"Description text ({textType}): {cleanedText}");
 
                 announcedCount++;
 

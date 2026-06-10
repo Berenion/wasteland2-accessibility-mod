@@ -216,11 +216,11 @@ namespace Wasteland2AccessibilityMod.States
                     AnnounceCurrentOptionQueued();
                 }
 
-                MelonLogger.Msg($"[ConversationState] Activated with {currentOptions.Count} options");
+                ModLog.Debug($"[ConversationState] Activated with {currentOptions.Count} options");
             }
             else
             {
-                MelonLogger.Msg("[ConversationState] Activated in advance mode (Enter to skip)");
+                ModLog.Debug("[ConversationState] Activated in advance mode (Enter to skip)");
             }
         }
 
@@ -379,7 +379,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 MonoBehaviourSingleton<BubbleTextManager>.GetInstance().FlushCurrentBark();
                 ScreenReaderManager.SpeakInterrupt("Skipped");
-                MelonLogger.Msg("[ConversationState] Skipped current dialogue");
+                ModLog.Debug("[ConversationState] Skipped current dialogue");
             }
         }
 
@@ -529,7 +529,7 @@ namespace Wasteland2AccessibilityMod.States
             selectedIndex = 0;
             lastKnownButtonCount = 0;
 
-            MelonLogger.Msg($"[ConversationState] Selected: {opt.KeywordLabel}");
+            ModLog.Debug($"[ConversationState] Selected: {opt.KeywordLabel}");
         }
     }
 }

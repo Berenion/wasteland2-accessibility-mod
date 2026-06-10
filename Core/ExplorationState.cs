@@ -218,7 +218,7 @@ namespace Wasteland2AccessibilityMod.Core
             if (anyStopped)
             {
                 ScreenReaderManager.SpeakInterrupt("Party stopped");
-                MelonLogger.Msg("[ExplorationState] Stopped party movement");
+                ModLog.Debug("[ExplorationState] Stopped party movement");
             }
         }
 
@@ -283,7 +283,7 @@ namespace Wasteland2AccessibilityMod.Core
             string name = UITextExtractor.CleanText(
                 Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty));
             ScreenReaderManager.SpeakInterrupt($"{name}, {index + 1} of {party.Count}");
-            MelonLogger.Msg($"[ExplorationState] Selected party member {index + 1}: {name}");
+            ModLog.Debug($"[ExplorationState] Selected party member {index + 1}: {name}");
         }
 
         private static void InteractWithSelected()
@@ -330,12 +330,12 @@ namespace Wasteland2AccessibilityMod.Core
                     // Check if interaction is blocked (e.g. perception-gated objects)
                     if (nexus.drama.bInstigateBlocked)
                     {
-                        MelonLogger.Msg($"[ExplorationState] Interaction blocked on {nexus.name} (bInstigateBlocked=true)");
+                        ModLog.Debug($"[ExplorationState] Interaction blocked on {nexus.name} (bInstigateBlocked=true)");
                         ScreenReaderManager.SpeakInterrupt("Cannot interact with " + nexus.name);
                         return;
                     }
 
-                    MelonLogger.Msg($"[ExplorationState] Interacting with: {nexus.name}");
+                    ModLog.Debug($"[ExplorationState] Interacting with: {nexus.name}");
                     Drama.CheckInstigate(nexus.drama, pc, false);
                     return;
                 }
@@ -343,7 +343,7 @@ namespace Wasteland2AccessibilityMod.Core
                 if (nexus.skobExamine != null &&
                     nexus.skobExamine.difficulty == SkillLevelCategory.None)
                 {
-                    MelonLogger.Msg($"[ExplorationState] Examining (no difficulty): {nexus.name}");
+                    ModLog.Debug($"[ExplorationState] Examining (no difficulty): {nexus.name}");
                     inputManager.CheckExamineDrama(nexus.transform);
                     return;
                 }
@@ -389,7 +389,7 @@ namespace Wasteland2AccessibilityMod.Core
                     ItemInstance item = member.inventory.inventory.GetInstanceOfTemplate(acceptor.desiredItemTemplate);
                     if (item != null)
                     {
-                        MelonLogger.Msg($"[Accessibility] Using item '{item.template.displayName}' from {member.name} on {nexus.name}");
+                        ModLog.Debug($"[Accessibility] Using item '{item.template.displayName}' from {member.name} on {nexus.name}");
                         ScreenReaderManager.SpeakInterrupt($"Using {item.template.displayName} on {nexus.name}");
 
                         // Set up the use-item ASI state (this sets ASI name to "useItem")
@@ -429,7 +429,7 @@ namespace Wasteland2AccessibilityMod.Core
             if (neededItems.Count > 0)
             {
                 string itemList = string.Join(", ", neededItems.ToArray());
-                MelonLogger.Msg($"[Accessibility] Object {nexus.name} requires items: {itemList}");
+                ModLog.Debug($"[Accessibility] Object {nexus.name} requires items: {itemList}");
                 ScreenReaderManager.SpeakInterrupt($"Requires {itemList}");
             }
 
@@ -446,7 +446,7 @@ namespace Wasteland2AccessibilityMod.Core
                 inputManager.TogglePartyIsGrouped();
 
                 string mode = inputManager.isPartyGrouped ? "grouped" : "ungrouped";
-                MelonLogger.Msg($"Toggle group mode: {mode}");
+                ModLog.Debug($"Toggle group mode: {mode}");
                 ScreenReaderManager.SpeakInterrupt($"Party {mode}");
             }
             catch (System.Exception ex)
@@ -464,7 +464,7 @@ namespace Wasteland2AccessibilityMod.Core
                 int scrap = MonoBehaviourSingleton<Game>.GetInstance().partyCurrency;
                 string announcement = $"{scrap} scrap";
 
-                MelonLogger.Msg($"Announcing party scrap: {scrap}");
+                ModLog.Debug($"Announcing party scrap: {scrap}");
                 ScreenReaderManager.SpeakInterrupt(announcement);
             }
             catch (System.Exception ex)

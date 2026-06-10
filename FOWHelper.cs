@@ -103,7 +103,7 @@ namespace Wasteland2AccessibilityMod
             lastLoadMapRealtime = Time.realtimeSinceStartup;
             sawUnpausedFrameSinceLoadMap = false;
             ClearActivationTracking();
-            MelonLoader.MelonLogger.Msg("[FOWHelper] LoadMap detected — waiting for FOW to converge");
+            ModLog.Debug("[FOWHelper] LoadMap detected — waiting for FOW to converge");
         }
 
         /// <summary>
@@ -152,12 +152,12 @@ namespace Wasteland2AccessibilityMod
                 if (!active)
                 {
                     if (!seenInactive.Contains(nexus))
-                        MelonLogger.Msg($"[ActivationTrack] Recording inactive teleporter: {nexus.name} at {nexus.transform.position}");
+                        ModLog.Debug($"[ActivationTrack] Recording inactive teleporter: {nexus.name} at {nexus.transform.position}");
                     seenInactive.Add(nexus);
                 }
                 else if (seenInactive.Contains(nexus))
                 {
-                    MelonLogger.Msg($"[ActivationTrack] Teleporter activated (inactive→active): {nexus.name} at {nexus.transform.position}");
+                    ModLog.Debug($"[ActivationTrack] Teleporter activated (inactive→active): {nexus.name} at {nexus.transform.position}");
                     recentlyActivated.Add(nexus);
                     seenInactive.Remove(nexus);
                 }
@@ -166,7 +166,7 @@ namespace Wasteland2AccessibilityMod
                     // Teleporter just appeared in the interactables list near the party.
                     // This handles doors that were never in the list while inactive
                     // (SetActive(false) prevented them from registering).
-                    MelonLogger.Msg($"[ActivationTrack] New teleporter near party: {nexus.name} at {nexus.transform.position}");
+                    ModLog.Debug($"[ActivationTrack] New teleporter near party: {nexus.name} at {nexus.transform.position}");
                     recentlyActivated.Add(nexus);
                 }
 
@@ -192,7 +192,7 @@ namespace Wasteland2AccessibilityMod
         public static void MarkAsRecentlyActivated(InteractableNexus nexus)
         {
             if (nexus == null) return;
-            MelonLogger.Msg($"[FOWHelper] Marking nexus as recently activated: {nexus.name}");
+            ModLog.Debug($"[FOWHelper] Marking nexus as recently activated: {nexus.name}");
             recentlyActivated.Add(nexus);
             seenInactive.Remove(nexus);
         }

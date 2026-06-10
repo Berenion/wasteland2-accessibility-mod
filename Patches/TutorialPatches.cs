@@ -64,7 +64,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 // Announce the tutorial
                 ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[Tutorial] {title}: {message}");
+                ModLog.Debug($"[Tutorial] {title}: {message}");
             }
             catch (Exception ex)
             {
@@ -100,7 +100,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
                 // Tutorial is closing
                 ScreenReaderManager.Speak("Tutorial closed");
-                MelonLogger.Msg("[Tutorial] Closed");
+                ModLog.Debug("[Tutorial] Closed");
             }
             catch (Exception ex)
             {
@@ -125,12 +125,12 @@ namespace Wasteland2AccessibilityMod.Patches
                     if (__instance.checkbox.value)
                     {
                         ScreenReaderManager.Speak("Tutorials disabled");
-                        MelonLogger.Msg("[Tutorial] Tutorials disabled");
+                        ModLog.Debug("[Tutorial] Tutorials disabled");
                     }
                     else
                     {
                         ScreenReaderManager.Speak("Tutorials enabled");
-                        MelonLogger.Msg("[Tutorial] Tutorials enabled");
+                        ModLog.Debug("[Tutorial] Tutorials enabled");
                     }
                 }
             }

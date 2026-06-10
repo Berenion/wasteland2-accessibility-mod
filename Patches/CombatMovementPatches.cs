@@ -73,7 +73,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 string announcement = name + " moves from " + FormatCoords(startId)
                     + " to " + FormatCoords(endId);
 
-                MelonLogger.Msg("[CombatMovement] " + announcement);
+                ModLog.Debug("[CombatMovement] " + announcement);
                 HUD_Controller_QueueTextDescription_Patch.CombatLog.Add(announcement);
                 ScreenReaderManager.Speak(announcement);
             }

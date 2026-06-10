@@ -10,12 +10,14 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Entry<bool> useTileDistancesEntry;
         private static MelonPreferences_Entry<bool> conveyElevationEntry;
         private static MelonPreferences_Entry<bool> announceLineOfSightEntry;
+        private static MelonPreferences_Entry<bool> debugLoggingEntry;
 
         public static bool UseClockPositions { get; private set; } = false;
         public static bool ObjectNamesFirst { get; private set; } = false;
         public static bool UseTileDistances { get; private set; } = true;
         public static bool ConveyElevation { get; private set; } = true;
         public static bool AnnounceLineOfSight { get; private set; } = false;
+        public static bool DebugLogging { get; private set; } = false;
 
         public static void Initialize()
         {
@@ -59,10 +61,17 @@ namespace Wasteland2AccessibilityMod
                 "If true, the exploration tile cursor also announces whether the tile is within line of sight of the selected character (clear physics LOS within that character's perception range)."
             );
 
+            debugLoggingEntry = configCategory.CreateEntry(
+                "DebugLogging",
+                false,
+                "Debug Logging",
+                "If true, the mod writes its routine per-announcement / per-navigation traces (ModLog.Debug) to the MelonLoader log. Leave false for normal play so the log stays quiet and real warnings/errors are easy to spot. Turn on only when diagnosing an issue."
+            );
+
             // Load saved preferences
             LoadConfig();
 
-            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}");
+            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Debug logging: {DebugLogging}");
         }
 
         public static void LoadConfig()
@@ -72,6 +81,7 @@ namespace Wasteland2AccessibilityMod
             UseTileDistances = useTileDistancesEntry.Value;
             ConveyElevation = conveyElevationEntry.Value;
             AnnounceLineOfSight = announceLineOfSightEntry.Value;
+            DebugLogging = debugLoggingEntry.Value;
         }
 
         public static void ToggleTileDistances()

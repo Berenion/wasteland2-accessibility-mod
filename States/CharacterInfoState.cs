@@ -193,7 +193,7 @@ namespace Wasteland2AccessibilityMod.States
                         controlIndex = Math.Min(suspendedIndex, controlList.Count - 1);
 
                     AnnounceCurrentControl(interrupt: true);
-                    MelonLogger.Msg($"[CharacterInfoState] Restored from suspend, panel={currentPanel}, index={controlIndex}");
+                    ModLog.Debug($"[CharacterInfoState] Restored from suspend, panel={currentPanel}, index={controlIndex}");
                     return;
                 }
 
@@ -218,7 +218,7 @@ namespace Wasteland2AccessibilityMod.States
             infoLines.Clear();
             logbookDetailMode = false;
             logbookDetailLines.Clear();
-            MelonLogger.Msg($"[CharacterInfoState] Suspended at index={suspendedIndex}");
+            ModLog.Debug($"[CharacterInfoState] Suspended at index={suspendedIndex}");
             base.OnDeactivated();
         }
 
@@ -319,7 +319,7 @@ namespace Wasteland2AccessibilityMod.States
                 hint = ". " + pointsHint + hint;
 
             ScreenReaderManager.SpeakInterrupt($"{panelName}{hint}");
-            MelonLogger.Msg($"[CharacterInfoState] Panel changed to {newPanel}, controls={controlList.Count}");
+            ModLog.Debug($"[CharacterInfoState] Panel changed to {newPanel}, controls={controlList.Count}");
         }
 
         private string GetPanelDisplayName(CharacterInfoMenu.InfoPanel panel)
@@ -382,7 +382,7 @@ namespace Wasteland2AccessibilityMod.States
             foreach (var child in children)
                 controlList.Add(child.gameObject);
 
-            MelonLogger.Msg($"[CharacterInfoState] Attribute controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterInfoState] Attribute controls: {controlList.Count}");
         }
 
         private void BuildSkillControls(CharacterInfoMenu menu)
@@ -409,7 +409,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            MelonLogger.Msg($"[CharacterInfoState] Skill controls ({currentSkillSection}): {controlList.Count}");
+            ModLog.Debug($"[CharacterInfoState] Skill controls ({currentSkillSection}): {controlList.Count}");
         }
 
         private UIGrid GetActiveUnlearnedGrid(CHA_SkillInfoPanel panel)
@@ -455,7 +455,7 @@ namespace Wasteland2AccessibilityMod.States
                 AddGridChildren(menu.traitPanel.traitGrid);
             }
 
-            MelonLogger.Msg($"[CharacterInfoState] Trait controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterInfoState] Trait controls: {controlList.Count}");
         }
 
         private void BuildDossierControls(CharacterInfoMenu menu)
@@ -502,7 +502,7 @@ namespace Wasteland2AccessibilityMod.States
             controlList.Clear(); // No GameObjects for dossier
             controlIndex = dossierLines.Count > 0 ? 0 : -1;
 
-            MelonLogger.Msg($"[CharacterInfoState] Dossier lines: {dossierLines.Count}");
+            ModLog.Debug($"[CharacterInfoState] Dossier lines: {dossierLines.Count}");
         }
 
         private void BuildLogbookControls(CharacterInfoMenu menu)
@@ -519,7 +519,7 @@ namespace Wasteland2AccessibilityMod.States
                     controlList.Add(entry.gameObject);
             }
 
-            MelonLogger.Msg($"[CharacterInfoState] Logbook controls ({GetLogbookSortName()}): {controlList.Count}");
+            ModLog.Debug($"[CharacterInfoState] Logbook controls ({GetLogbookSortName()}): {controlList.Count}");
         }
 
         private void AddDossierLabel(string prefix, UILabel label)
@@ -703,7 +703,7 @@ namespace Wasteland2AccessibilityMod.States
                 lastAnnouncedIndex = controlIndex;
                 if (interrupt) ScreenReaderManager.SpeakInterrupt(announcement);
                 else ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[CharacterInfoState] Announce [{controlIndex}]: {announcement}");
+                ModLog.Debug($"[CharacterInfoState] Announce [{controlIndex}]: {announcement}");
             }
         }
 
@@ -791,7 +791,7 @@ namespace Wasteland2AccessibilityMod.States
                 // Prevent the "Back" event from bleeding into the next frame and opening the pause menu
                 EventManager.ignoreNextBack = true;
                 menu.Close();
-                MelonLogger.Msg("[CharacterInfoState] Closed character info menu");
+                ModLog.Debug("[CharacterInfoState] Closed character info menu");
                 return true;
             }
 
@@ -802,7 +802,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             hasSuspendedState = false; // Don't restore when switching tabs
             CyclePanel(menu, lastPanel, direction);
-            MelonLogger.Msg($"[CharacterInfoState] Switched tab, direction={direction}");
+            ModLog.Debug($"[CharacterInfoState] Switched tab, direction={direction}");
         }
 
         // Cycle order including Dossier. The game's own GoToNextPanel()/GoToPreviousPanel()
@@ -885,7 +885,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(name);
             AnnounceCurrentControl(interrupt: false);
 
-            MelonLogger.Msg($"[CharacterInfoState] Switched to party member {index}: {name}");
+            ModLog.Debug($"[CharacterInfoState] Switched to party member {index}: {name}");
         }
 
         #endregion
@@ -1152,7 +1152,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt($"{sectionName}, {controlList.Count} skills");
             AnnounceCurrentControl(interrupt: false);
 
-            MelonLogger.Msg($"[CharacterInfoState] Skill section: {currentSkillSection}, controls={controlList.Count}");
+            ModLog.Debug($"[CharacterInfoState] Skill section: {currentSkillSection}, controls={controlList.Count}");
         }
 
         private void SwitchUnlearnedCategory(CharacterInfoMenu menu, int direction)
@@ -1194,7 +1194,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt($"{sectionName}");
             AnnounceCurrentControl(interrupt: false);
 
-            MelonLogger.Msg($"[CharacterInfoState] Skill category switched to {currentSkillSection}");
+            ModLog.Debug($"[CharacterInfoState] Skill category switched to {currentSkillSection}");
         }
 
         private void AdjustCurrentSkill(int direction)
@@ -1494,7 +1494,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(
                 $"{entryName}, {logbookDetailLines.Count} detail{(logbookDetailLines.Count == 1 ? "" : "s")}. Up and Down to navigate, Escape to go back");
             AnnounceLogbookDetail(interrupt: false);
-            MelonLogger.Msg($"[CharacterInfoState] Logbook details opened for {currentLogbookEntryName}, {logbookDetailLines.Count} details");
+            ModLog.Debug($"[CharacterInfoState] Logbook details opened for {currentLogbookEntryName}, {logbookDetailLines.Count} details");
         }
 
         private void CloseLogbookDetails()
@@ -1507,7 +1507,7 @@ namespace Wasteland2AccessibilityMod.States
             lastAnnouncedText = null;
             ScreenReaderManager.SpeakInterrupt("Back to entries");
             AnnounceCurrentControl(interrupt: false);
-            MelonLogger.Msg("[CharacterInfoState] Logbook details closed");
+            ModLog.Debug("[CharacterInfoState] Logbook details closed");
         }
 
         private void AnnounceLogbookDetail(bool interrupt = true)
@@ -1559,7 +1559,7 @@ namespace Wasteland2AccessibilityMod.States
                 lastAnnouncedIndex = controlIndex;
                 if (interrupt) ScreenReaderManager.SpeakInterrupt(announcement);
                 else ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[CharacterInfoState] Logbook entry [{controlIndex}]: {announcement}");
+                ModLog.Debug($"[CharacterInfoState] Logbook entry [{controlIndex}]: {announcement}");
             }
         }
 
@@ -1639,7 +1639,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt($"{sortName}, {controlList.Count} entr{(controlList.Count == 1 ? "y" : "ies")}");
             AnnounceCurrentControl(interrupt: false);
 
-            MelonLogger.Msg($"[CharacterInfoState] Logbook category: {currentLogbookSort}, entries={controlList.Count}");
+            ModLog.Debug($"[CharacterInfoState] Logbook category: {currentLogbookSort}, entries={controlList.Count}");
         }
 
         private void ToggleLogbookFlag()
@@ -1700,7 +1700,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(
                 $"{title}, {infoLines.Count} items. Up and Down to navigate, Left and Right for sections, I for description, Escape to close");
             AnnounceInfoLine(interrupt: false);
-            MelonLogger.Msg($"[CharacterInfoState] Stats browser opened: {section}, {infoLines.Count} lines");
+            ModLog.Debug($"[CharacterInfoState] Stats browser opened: {section}, {infoLines.Count} lines");
         }
 
         private void SwitchStatsSection(CharacterInfoMenu menu, int direction)
@@ -1726,7 +1726,7 @@ namespace Wasteland2AccessibilityMod.States
                 ScreenReaderManager.SpeakInterrupt($"{title}, {infoLines.Count} items");
                 AnnounceInfoLine(interrupt: false);
             }
-            MelonLogger.Msg($"[CharacterInfoState] Stats section switched: {currentStatsSection}, {infoLines.Count} lines");
+            ModLog.Debug($"[CharacterInfoState] Stats section switched: {currentStatsSection}, {infoLines.Count} lines");
         }
 
         private static List<string> BuildStatsLinesFor(StatsSection section, PC pc)
@@ -1772,7 +1772,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(
                 $"{title}, {infoLines.Count} items. Up and Down to navigate, Escape to close");
             AnnounceInfoLine(interrupt: false);
-            MelonLogger.Msg($"[CharacterInfoState] Info browser opened: {mode}, {infoLines.Count} lines");
+            ModLog.Debug($"[CharacterInfoState] Info browser opened: {mode}, {infoLines.Count} lines");
         }
 
         private static List<string> BuildInfoLinesFor(InfoMode mode, PC pc, GameObject statObj, Trait trait)
@@ -1809,7 +1809,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(title + " closed");
             lastAnnouncedText = null;
             AnnounceCurrentControl(interrupt: false);
-            MelonLogger.Msg($"[CharacterInfoState] Info browser closed: {prev}");
+            ModLog.Debug($"[CharacterInfoState] Info browser closed: {prev}");
         }
 
         private void AnnounceInfoLine(bool interrupt = true)
@@ -1948,7 +1948,7 @@ namespace Wasteland2AccessibilityMod.States
                 MelonLogger.Warning("[CharacterInfoState] Could not find CharacterInfoMenu.currentPC");
 
             reflectionCached = true;
-            MelonLogger.Msg("[CharacterInfoState] Reflection cached");
+            ModLog.Debug("[CharacterInfoState] Reflection cached");
         }
 
         #endregion

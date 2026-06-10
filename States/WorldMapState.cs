@@ -105,7 +105,7 @@ namespace Wasteland2AccessibilityMod.States
                     SnapCameraToCursor();
             }
 
-            MelonLogger.Msg($"[WorldMapState] Activated on {mapName}, cursorInitialized={cursorInitialized}, mapChanged={mapChanged}");
+            ModLog.Debug($"[WorldMapState] Activated on {mapName}, cursorInitialized={cursorInitialized}, mapChanged={mapChanged}");
         }
 
         public override void OnDeactivated()
@@ -162,7 +162,7 @@ namespace Wasteland2AccessibilityMod.States
                 // Shift+Home: Jump cursor to party position
                 if (Input.GetKeyDown(KeyCode.Home))
                 {
-                    MelonLogger.Msg("[WorldMapState] Shift+Home detected, jumping to party");
+                    ModLog.Debug("[WorldMapState] Shift+Home detected, jumping to party");
                     JumpToParty();
                     return true;
                 }
@@ -170,7 +170,7 @@ namespace Wasteland2AccessibilityMod.States
                 // Shift+End: Announce distance from cursor to party
                 if (Input.GetKeyDown(KeyCode.End))
                 {
-                    MelonLogger.Msg("[WorldMapState] Shift+End detected, announcing distance to party");
+                    ModLog.Debug("[WorldMapState] Shift+End detected, announcing distance to party");
                     AnnounceDistanceToParty();
                     return true;
                 }
@@ -228,13 +228,13 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (Input.GetKeyDown(KeyCode.PageUp))
                 {
-                    MelonLogger.Msg("[WorldMapState] Ctrl+PageUp detected, previous category");
+                    ModLog.Debug("[WorldMapState] Ctrl+PageUp detected, previous category");
                     WorldMapNavigationManager.PreviousCategory(cursorPosition);
                     return true;
                 }
                 if (Input.GetKeyDown(KeyCode.PageDown))
                 {
-                    MelonLogger.Msg("[WorldMapState] Ctrl+PageDown detected, next category");
+                    ModLog.Debug("[WorldMapState] Ctrl+PageDown detected, next category");
                     WorldMapNavigationManager.NextCategory(cursorPosition);
                     return true;
                 }
@@ -243,13 +243,13 @@ namespace Wasteland2AccessibilityMod.States
             {
                 if (Input.GetKeyDown(KeyCode.PageDown))
                 {
-                    MelonLogger.Msg($"[WorldMapState] PageDown detected, cycling next POI. Cursor at {cursorPosition}");
+                    ModLog.Debug($"[WorldMapState] PageDown detected, cycling next POI. Cursor at {cursorPosition}");
                     WorldMapNavigationManager.CycleNext(cursorPosition);
                     return true;
                 }
                 if (Input.GetKeyDown(KeyCode.PageUp))
                 {
-                    MelonLogger.Msg($"[WorldMapState] PageUp detected, cycling previous POI. Cursor at {cursorPosition}");
+                    ModLog.Debug($"[WorldMapState] PageUp detected, cycling previous POI. Cursor at {cursorPosition}");
                     WorldMapNavigationManager.CyclePrevious(cursorPosition);
                     return true;
                 }
@@ -258,7 +258,7 @@ namespace Wasteland2AccessibilityMod.States
             // --- Home: Jump cursor to selected POI ---
             if (Input.GetKeyDown(KeyCode.Home))
             {
-                MelonLogger.Msg("[WorldMapState] Home detected (no shift), jumping to selected POI");
+                ModLog.Debug("[WorldMapState] Home detected (no shift), jumping to selected POI");
                 JumpToSelectedPOI();
                 return true;
             }
@@ -266,7 +266,7 @@ namespace Wasteland2AccessibilityMod.States
             // --- End: Announce distance from cursor to selected POI ---
             if (Input.GetKeyDown(KeyCode.End))
             {
-                MelonLogger.Msg("[WorldMapState] End detected (no shift), announcing distance to selected POI");
+                ModLog.Debug("[WorldMapState] End detected (no shift), announcing distance to selected POI");
                 AnnounceDistanceToSelectedPOI();
                 return true;
             }
@@ -457,7 +457,7 @@ namespace Wasteland2AccessibilityMod.States
 
             lastAnnouncement = "Cursor at party position";
             ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
-            MelonLogger.Msg("[WorldMapState] Jumped cursor to party");
+            ModLog.Debug("[WorldMapState] Jumped cursor to party");
         }
 
         private void JumpToSelectedPOI()
@@ -487,7 +487,7 @@ namespace Wasteland2AccessibilityMod.States
             }
             ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
 
-            MelonLogger.Msg($"[WorldMapState] Jumped cursor to selected POI at {cursorPosition}");
+            ModLog.Debug($"[WorldMapState] Jumped cursor to selected POI at {cursorPosition}");
         }
 
         // --- Distance announcements ---
@@ -629,7 +629,7 @@ namespace Wasteland2AccessibilityMod.States
 
             party.StartMoving();
 
-            MelonLogger.Msg($"[WorldMapState] Moving party to {hit.position}, water cost: {waterCost}");
+            ModLog.Debug($"[WorldMapState] Moving party to {hit.position}, water cost: {waterCost}");
         }
 
         private void StopParty()
@@ -643,7 +643,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 party.StopAndClear();
                 ScreenReaderManager.SpeakInterrupt("Party stopped");
-                MelonLogger.Msg("[WorldMapState] Party stopped");
+                ModLog.Debug("[WorldMapState] Party stopped");
             }
             else
             {
@@ -712,7 +712,7 @@ namespace Wasteland2AccessibilityMod.States
                 closestPOI.OnClick();
                 closestPOI.Instigate();
                 ScreenReaderManager.SpeakInterrupt($"Entering {poiName}");
-                MelonLogger.Msg($"[WorldMapState] Instigating POI: {poiName}");
+                ModLog.Debug($"[WorldMapState] Instigating POI: {poiName}");
             }
             else
             {
@@ -723,7 +723,7 @@ namespace Wasteland2AccessibilityMod.States
                 party.StartMoving();
 
                 ScreenReaderManager.SpeakInterrupt($"Moving to {poiName}, {waterCost} water");
-                MelonLogger.Msg($"[WorldMapState] Pathing to POI: {poiName}, water: {waterCost}");
+                ModLog.Debug($"[WorldMapState] Pathing to POI: {poiName}, water: {waterCost}");
             }
         }
 
@@ -843,7 +843,7 @@ namespace Wasteland2AccessibilityMod.States
             string name = UITextExtractor.CleanText(
                 Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty));
             ScreenReaderManager.SpeakInterrupt($"{name}, {index + 1} of {party.Count}");
-            MelonLogger.Msg($"[WorldMapState] Selected party member {index + 1}: {name}");
+            ModLog.Debug($"[WorldMapState] Selected party member {index + 1}: {name}");
         }
 
         private void SuppressInput()

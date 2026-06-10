@@ -54,7 +54,7 @@ namespace Wasteland2AccessibilityMod
             int count = filteredItems.Count;
             ScreenReaderManager.SpeakInterrupt($"{categoryName}, {count} found");
 
-            MelonLogger.Msg($"[WorldMapNav] Category changed to: {categoryName} ({count} items)");
+            ModLog.Debug($"[WorldMapNav] Category changed to: {categoryName} ({count} items)");
         }
 
         public static void PreviousCategory(Vector3 relativeTo)
@@ -72,14 +72,14 @@ namespace Wasteland2AccessibilityMod
             int count = filteredItems.Count;
             ScreenReaderManager.SpeakInterrupt($"{categoryName}, {count} found");
 
-            MelonLogger.Msg($"[WorldMapNav] Category changed to: {categoryName} ({count} items)");
+            ModLog.Debug($"[WorldMapNav] Category changed to: {categoryName} ({count} items)");
         }
 
         public static void CycleNext(Vector3 relativeTo)
         {
             UpdateFilteredList(relativeTo);
 
-            MelonLogger.Msg($"[WorldMapNav] CycleNext: category={currentCategory}, filteredItems={filteredItems.Count}, relativeTo={relativeTo}");
+            ModLog.Debug($"[WorldMapNav] CycleNext: category={currentCategory}, filteredItems={filteredItems.Count}, relativeTo={relativeTo}");
 
             if (filteredItems.Count == 0)
             {
@@ -184,7 +184,7 @@ namespace Wasteland2AccessibilityMod
             }
 
             lastAnnouncement = $"{name}, {typeName}, {distanceStr}, {direction}{waterInfo}";
-            MelonLogger.Msg($"[WorldMapNav] Announcing: {lastAnnouncement}");
+            ModLog.Debug($"[WorldMapNav] Announcing: {lastAnnouncement}");
             ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
         }
 
@@ -198,7 +198,7 @@ namespace Wasteland2AccessibilityMod
             string severity = level >= 3 ? "lethal" : level == 2 ? "high" : "low";
 
             lastAnnouncement = $"Radiation cloud, level {level} {severity}, {distanceStr}, {direction}";
-            MelonLogger.Msg($"[WorldMapNav] Announcing: {lastAnnouncement}");
+            ModLog.Debug($"[WorldMapNav] Announcing: {lastAnnouncement}");
             ScreenReaderManager.SpeakInterrupt(lastAnnouncement);
         }
 
@@ -234,17 +234,17 @@ namespace Wasteland2AccessibilityMod
             if (WorldMapInput.instance != null)
             {
                 pois = WorldMapInput.instance.pois;
-                MelonLogger.Msg($"[WorldMapNav] AddPOIs: WorldMapInput.instance.pois has {(pois != null ? pois.Length : 0)} entries");
+                ModLog.Debug($"[WorldMapNav] AddPOIs: WorldMapInput.instance.pois has {(pois != null ? pois.Length : 0)} entries");
             }
             else
             {
-                MelonLogger.Msg("[WorldMapNav] AddPOIs: WorldMapInput.instance is null");
+                ModLog.Debug("[WorldMapNav] AddPOIs: WorldMapInput.instance is null");
             }
 
             if (pois == null || pois.Length == 0)
             {
                 pois = Object.FindObjectsOfType(typeof(WorldMapPOI)) as WorldMapPOI[];
-                MelonLogger.Msg($"[WorldMapNav] AddPOIs: FindObjectsOfType found {(pois != null ? pois.Length : 0)} WorldMapPOI objects");
+                ModLog.Debug($"[WorldMapNav] AddPOIs: FindObjectsOfType found {(pois != null ? pois.Length : 0)} WorldMapPOI objects");
             }
 
             if (pois == null) return;
@@ -261,7 +261,7 @@ namespace Wasteland2AccessibilityMod
 
                 filteredItems.Add(poi);
             }
-            MelonLogger.Msg($"[WorldMapNav] AddPOIs: {visibleCount} visible, {categoryMatchCount} matching category {currentCategory}");
+            ModLog.Debug($"[WorldMapNav] AddPOIs: {visibleCount} visible, {categoryMatchCount} matching category {currentCategory}");
         }
 
         private static void AddRadiationClouds(Vector3 relativeTo)

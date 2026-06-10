@@ -104,7 +104,7 @@ namespace Wasteland2AccessibilityMod.Helpers
             }
 
             reflectionCached = true;
-            MelonLogger.Msg("[CharacterAnnouncementHelper] Reflection cached");
+            ModLog.Debug("[CharacterAnnouncementHelper] Reflection cached");
         }
 
         // ========== Control Announcements ==========
@@ -219,7 +219,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                 if (tmpl != null && !string.IsNullOrEmpty(editor.attribute))
                     return 10 - tmpl.GetTraitStatEffect(editor.attribute);
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] GetAttributeMaxValue failed: {ex.Message}"); }
             return 0;
         }
 
@@ -242,7 +242,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                 if (current > baseVal) return "buffed";
                 if (current < baseVal) return "debuffed";
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] GetAttributeBuffState failed: {ex.Message}"); }
             return "";
         }
 
@@ -261,7 +261,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                           - pcStats.GetPCTemplate().GetTraitStatEffect(editor.skillName);
                 return Mathf.Clamp(cap, 0, 10);
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] GetSkillCap failed: {ex.Message}"); }
             return 0;
         }
 
@@ -288,7 +288,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                 if (displayedLevel > xpLevel) return "buffed";
                 if (displayedLevel < xpLevel) return "debuffed";
             }
-            catch { }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] GetSkillState failed: {ex.Message}"); }
             return "";
         }
 

@@ -24,7 +24,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     __instance.selectedInteractable != lastSelectedInteractable)
                 {
                     lastSelectedInteractable = __instance.selectedInteractable;
-                    MelonLogger.Msg($"Controller selected interactable: {__instance.selectedInteractable.name}");
+                    ModLog.Debug($"Controller selected interactable: {__instance.selectedInteractable.name}");
                     // Controller cycling is intentional selection, so pass isFromCycling: true
                     NavigationManager.AnnounceInteractable(__instance.selectedInteractable, isFromCycling: true);
                 }
@@ -48,7 +48,7 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPrefix]
         public static void Prefix(InteractableTeleporter __instance)
         {
-            MelonLogger.Msg($"[Teleporter] Event_ASI_Poked called on {__instance.name}, IgnorePokedEvent={__instance.IgnorePokedEvent}, targetTransform={((__instance.targetTransform != null) ? __instance.targetTransform.name : "NULL")}");
+            ModLog.Debug($"[Teleporter] Event_ASI_Poked called on {__instance.name}, IgnorePokedEvent={__instance.IgnorePokedEvent}, targetTransform={((__instance.targetTransform != null) ? __instance.targetTransform.name : "NULL")}");
         }
     }
 
@@ -58,7 +58,7 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPrefix]
         public static void Prefix(InteractableTeleporter __instance)
         {
-            MelonLogger.Msg($"[Teleporter] Activate called on {__instance.name}, followRules={__instance.followRules}, mustActivateBeforeTeleport={__instance.mustActivateBeforeTeleport}, isActive={__instance.isActive}, isTeleporting={InteractableTeleporter.IsTeleporting()}, targetTransform={((__instance.targetTransform != null) ? __instance.targetTransform.name : "NULL")}");
+            ModLog.Debug($"[Teleporter] Activate called on {__instance.name}, followRules={__instance.followRules}, mustActivateBeforeTeleport={__instance.mustActivateBeforeTeleport}, isActive={__instance.isActive}, isTeleporting={InteractableTeleporter.IsTeleporting()}, targetTransform={((__instance.targetTransform != null) ? __instance.targetTransform.name : "NULL")}");
         }
     }
 
@@ -68,7 +68,7 @@ namespace Wasteland2AccessibilityMod.Patches
         [HarmonyPrefix]
         public static void Prefix(InteractableTeleporter __instance)
         {
-            MelonLogger.Msg($"[Teleporter] DoTeleport started on {__instance.name}, targetTransform={(__instance.targetTransform != null ? __instance.targetTransform.name : "NULL")}, targetPos={(__instance.targetTransform != null ? __instance.targetTransform.position.ToString() : "N/A")}");
+            ModLog.Debug($"[Teleporter] DoTeleport started on {__instance.name}, targetTransform={(__instance.targetTransform != null ? __instance.targetTransform.name : "NULL")}, targetPos={(__instance.targetTransform != null ? __instance.targetTransform.position.ToString() : "N/A")}");
         }
     }
 
@@ -80,7 +80,7 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             try
             {
-                MelonLogger.Msg("[HiddenShortcut] Event_ASI_examine postfix fired");
+                ModLog.Debug("[HiddenShortcut] Event_ASI_examine postfix fired");
 
                 LogDoorState("ShortcutDoor", __instance.ShortcutDoor);
                 LogDoorState("ShortcutDoor2", __instance.ShortcutDoor2);
@@ -99,7 +99,7 @@ namespace Wasteland2AccessibilityMod.Patches
                         foreach (var pc in game.party)
                         {
                             if (pc != null && pc.transform != null)
-                                MelonLogger.Msg($"[HiddenShortcut]   Party member {pc.name} at {pc.transform.position}");
+                                ModLog.Debug($"[HiddenShortcut]   Party member {pc.name} at {pc.transform.position}");
                         }
                     }
                 }
@@ -113,7 +113,7 @@ namespace Wasteland2AccessibilityMod.Patches
                     total++;
                     if (nexus.isVisible) visible++;
                 }
-                MelonLogger.Msg($"[HiddenShortcut] InteractableNexus.interactables: {total} total, {visible} visible");
+                ModLog.Debug($"[HiddenShortcut] InteractableNexus.interactables: {total} total, {visible} visible");
             }
             catch (System.Exception ex)
             {
@@ -133,7 +133,7 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             if (door == null)
             {
-                MelonLogger.Msg($"[HiddenShortcut] {label}: NULL");
+                ModLog.Debug($"[HiddenShortcut] {label}: NULL");
                 return;
             }
 
@@ -152,7 +152,7 @@ namespace Wasteland2AccessibilityMod.Patches
             var teleporter = door.GetComponent<InteractableTeleporter>();
             bool hasTeleporter = teleporter != null;
 
-            MelonLogger.Msg($"[HiddenShortcut] {label}: active={active}, pos={pos}, hasNexus={hasNexus}, nexusVisible={nexusVisible}, nexusHidden={nexusHidden}, fowVisible={fowVisible}, fowExplored={fowExplored}, passesIsVisibleThroughFOW={nearParty}, hasTeleporter={hasTeleporter}");
+            ModLog.Debug($"[HiddenShortcut] {label}: active={active}, pos={pos}, hasNexus={hasNexus}, nexusVisible={nexusVisible}, nexusHidden={nexusHidden}, fowVisible={fowVisible}, fowExplored={fowExplored}, passesIsVisibleThroughFOW={nearParty}, hasTeleporter={hasTeleporter}");
 
             // Check if nexus is in the interactables list
             if (hasNexus)
@@ -162,7 +162,7 @@ namespace Wasteland2AccessibilityMod.Patches
                 {
                     if (n == nexus) { inList = true; break; }
                 }
-                MelonLogger.Msg($"[HiddenShortcut] {label}: inInteractablesList={inList}");
+                ModLog.Debug($"[HiddenShortcut] {label}: inInteractablesList={inList}");
             }
         }
     }

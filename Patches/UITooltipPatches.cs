@@ -32,7 +32,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
             if (!string.IsNullOrEmpty(cleanedText))
             {
-                MelonLogger.Msg($"[Tooltip] {cleanedText}");
+                ModLog.Debug($"[Tooltip] {cleanedText}");
                 // Tooltips should NOT interrupt - they're informational
                 ScreenReaderManager.Speak(cleanedText);
             }
@@ -56,7 +56,7 @@ namespace Wasteland2AccessibilityMod.Patches
 
             if (!string.IsNullOrEmpty(cleanedText))
             {
-                MelonLogger.Msg($"[TextTooltip] {cleanedText}");
+                ModLog.Debug($"[TextTooltip] {cleanedText}");
                 // Tooltips should NOT interrupt - they're informational
                 ScreenReaderManager.Speak(cleanedText);
             }

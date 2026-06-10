@@ -100,7 +100,7 @@ namespace Wasteland2AccessibilityMod.States
                     blockUIInput = true;
                     if (UIInput.selection != null)
                         UIInput.selection.isSelected = false;
-                    MelonLogger.Msg("[CharacterState] Exited editing (Escape)");
+                    ModLog.Debug("[CharacterState] Exited editing (Escape)");
                     ScreenReaderManager.SpeakInterrupt("Cancelled editing");
                     return true;
                 }
@@ -109,7 +109,7 @@ namespace Wasteland2AccessibilityMod.States
                     isEditingTextField = false;
                     blockUIInput = true;
                     string value = UIInput.selection != null ? UIInput.selection.value : "";
-                    MelonLogger.Msg($"[CharacterState] Exited editing (Enter), value='{value}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}");
+                    ModLog.Debug($"[CharacterState] Exited editing (Enter), value='{value}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}");
                     if (UIInput.selection != null)
                         UIInput.selection.isSelected = false;
                     ScreenReaderManager.SpeakInterrupt(!string.IsNullOrEmpty(value) ? $"Confirmed, {value}" : "Confirmed");
@@ -239,7 +239,7 @@ namespace Wasteland2AccessibilityMod.States
             CharacterAnnouncementHelper.EnsureReflectionCached();
 
             reflectionCached = true;
-            MelonLogger.Msg("[CharacterState] Reflection cached");
+            ModLog.Debug("[CharacterState] Reflection cached");
         }
 
         private CharacterScreen.EditorPanel GetCurrentPanelType(CharacterScreen screen)
@@ -325,7 +325,7 @@ namespace Wasteland2AccessibilityMod.States
                 ScreenReaderManager.Speak(announcement);
             else
                 ScreenReaderManager.SpeakInterrupt(announcement);
-            MelonLogger.Msg($"[CharacterState] Panel changed to: {newPanel} ({controlList.Count} controls)");
+            ModLog.Debug($"[CharacterState] Panel changed to: {newPanel} ({controlList.Count} controls)");
 
             // Select first control
             if (controlList.Count > 0)
@@ -490,7 +490,7 @@ namespace Wasteland2AccessibilityMod.States
                 controlList.Add(btn.gameObject);
             }
 
-            MelonLogger.Msg($"[CharacterState] UseDefaultParty controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterState] UseDefaultParty controls: {controlList.Count}");
         }
 
         private void BuildPartyControls(CharacterScreen screen)
@@ -505,7 +505,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            MelonLogger.Msg($"[CharacterState] Party controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterState] Party controls: {controlList.Count}");
         }
 
         private void BuildAddCharacterControls(CharacterScreen screen)
@@ -547,7 +547,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            MelonLogger.Msg($"[CharacterState] AddCharacter controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterState] AddCharacter controls: {controlList.Count}");
         }
 
         private void BuildAttributeControls(CharacterScreen screen)
@@ -573,7 +573,7 @@ namespace Wasteland2AccessibilityMod.States
                 controlList.Add(child.gameObject);
             }
 
-            MelonLogger.Msg($"[CharacterState] Attribute controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterState] Attribute controls: {controlList.Count}");
         }
 
         private void BuildSkillControls(CharacterScreen screen)
@@ -607,7 +607,7 @@ namespace Wasteland2AccessibilityMod.States
                 controlList.Add(child.gameObject);
             }
 
-            MelonLogger.Msg($"[CharacterState] Skill controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterState] Skill controls: {controlList.Count}");
         }
 
         private UIGrid GetActiveSkillGrid(CharacterScreen screen)
@@ -670,7 +670,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            MelonLogger.Msg($"[CharacterState] Trait controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterState] Trait controls: {controlList.Count}");
         }
 
         private void BuildDossierControls(CharacterScreen screen)
@@ -690,15 +690,15 @@ namespace Wasteland2AccessibilityMod.States
             // Flavor panel inputs - add in logical order
             if (flavor != null)
             {
-                MelonLogger.Msg($"[CharacterState] FlavorPanel found: {flavor.name}, active={flavor.gameObject.activeInHierarchy}");
+                ModLog.Debug($"[CharacterState] FlavorPanel found: {flavor.name}, active={flavor.gameObject.activeInHierarchy}");
                 if (flavor.nameInput != null)
                 {
-                    MelonLogger.Msg($"[CharacterState]   nameInput: {flavor.nameInput.name}, active={flavor.nameInput.gameObject.activeInHierarchy}");
+                    ModLog.Debug($"[CharacterState]   nameInput: {flavor.nameInput.name}, active={flavor.nameInput.gameObject.activeInHierarchy}");
                     controlList.Add(flavor.nameInput.gameObject);
                 }
                 if (flavor.ageInput != null)
                 {
-                    MelonLogger.Msg($"[CharacterState]   ageInput: {flavor.ageInput.name}, active={flavor.ageInput.gameObject.activeInHierarchy}");
+                    ModLog.Debug($"[CharacterState]   ageInput: {flavor.ageInput.name}, active={flavor.ageInput.gameObject.activeInHierarchy}");
                     controlList.Add(flavor.ageInput.gameObject);
                 }
                 if (flavor.ethnicityList != null)
@@ -712,7 +712,7 @@ namespace Wasteland2AccessibilityMod.States
             }
             else
             {
-                MelonLogger.Msg("[CharacterState] FlavorPanel is null on dossierPanel!");
+                ModLog.Debug("[CharacterState] FlavorPanel is null on dossierPanel!");
             }
 
             // Portrait and Appearance buttons - find unique labeled buttons not already added
@@ -738,7 +738,7 @@ namespace Wasteland2AccessibilityMod.States
                 controlList.Add(btn.gameObject);
             }
 
-            MelonLogger.Msg($"[CharacterState] Dossier controls: {controlList.Count}");
+            ModLog.Debug($"[CharacterState] Dossier controls: {controlList.Count}");
         }
 
         private Transform FindChildRecursive(Transform parent, string name)
@@ -812,7 +812,7 @@ namespace Wasteland2AccessibilityMod.States
                 lastAnnouncedText = announcement;
                 lastAnnouncedIndex = controlIndex;
                 if (interrupt) ScreenReaderManager.SpeakInterrupt(announcement); else ScreenReaderManager.Speak(announcement);
-                MelonLogger.Msg($"[CharacterState] Announce [{controlIndex}]: {announcement}");
+                ModLog.Debug($"[CharacterState] Announce [{controlIndex}]: {announcement}");
             }
         }
 
@@ -1176,7 +1176,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (onDoneClickedMethod != null)
                 {
                     onDoneClickedMethod.Invoke(screen, new object[] { null });
-                    MelonLogger.Msg("[CharacterState] OnDoneClicked called via N key");
+                    ModLog.Debug("[CharacterState] OnDoneClicked called via N key");
                 }
                 return true;
             }
@@ -1195,7 +1195,7 @@ namespace Wasteland2AccessibilityMod.States
                         if (onBackClickedMethod != null)
                         {
                             onBackClickedMethod.Invoke(screen, null);
-                            MelonLogger.Msg("[CharacterState] OnBackClicked called via Previous button");
+                            ModLog.Debug("[CharacterState] OnBackClicked called via Previous button");
                         }
                         return true;
                     }
@@ -1204,7 +1204,7 @@ namespace Wasteland2AccessibilityMod.States
                         if (onDoneClickedMethod != null)
                         {
                             onDoneClickedMethod.Invoke(screen, new object[] { null });
-                            MelonLogger.Msg("[CharacterState] OnDoneClicked called via Next button");
+                            ModLog.Debug("[CharacterState] OnDoneClicked called via Next button");
                         }
                         return true;
                     }
@@ -1237,7 +1237,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (controlIndex >= 0 && controlIndex < controlList.Count)
                 {
                     controlList[controlIndex].SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-                    MelonLogger.Msg("[CharacterState] Activated button in UseDefaultParty");
+                    ModLog.Debug("[CharacterState] Activated button in UseDefaultParty");
                 }
                 return true;
             }
@@ -1278,7 +1278,7 @@ namespace Wasteland2AccessibilityMod.States
                             // Fallback: send click
                             obj.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
                         }
-                        MelonLogger.Msg("[CharacterState] Party entry clicked");
+                        ModLog.Debug("[CharacterState] Party entry clicked");
                     }
                     else
                     {
@@ -1313,7 +1313,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (partyEntry != null && partyEntry.infoContainer != null && partyEntry.infoContainer.activeInHierarchy)
                     {
                         screen.partyPanel.OnDeleteCharacterClicked(partyEntry.deleteButton != null ? partyEntry.deleteButton.gameObject : controlList[controlIndex]);
-                        MelonLogger.Msg("[CharacterState] Delete character requested");
+                        ModLog.Debug("[CharacterState] Delete character requested");
                     }
                     else
                     {
@@ -1329,7 +1329,7 @@ namespace Wasteland2AccessibilityMod.States
                 if (screen.startPlayingButton != null && screen.startPlayingButton.gameObject.activeInHierarchy && screen.startPlayingButton.isEnabled)
                 {
                     screen.startPlayingButton.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-                    MelonLogger.Msg("[CharacterState] Start playing via S key");
+                    ModLog.Debug("[CharacterState] Start playing via S key");
                 }
                 else
                 {
@@ -1370,7 +1370,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (entry != null)
                     {
                         entry.OnAddClicked(null);
-                        MelonLogger.Msg("[CharacterState] Added premade character");
+                        ModLog.Debug("[CharacterState] Added premade character");
                     }
                 }
                 return true;
@@ -1719,7 +1719,7 @@ namespace Wasteland2AccessibilityMod.States
                         blockUIInput = false;
                         input.isSelected = true;
                         string label = GetInputFieldLabel(obj, input);
-                        MelonLogger.Msg($"[CharacterState] Entered editing mode: label='{label}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}, isSelected={input.isSelected}, blockUIInput={blockUIInput}");
+                        ModLog.Debug($"[CharacterState] Entered editing mode: label='{label}', UIInput.selection={(UIInput.selection != null ? UIInput.selection.name : "null")}, isSelected={input.isSelected}, blockUIInput={blockUIInput}");
                         ScreenReaderManager.SpeakInterrupt($"Editing {label}. Press Enter to confirm or Escape to cancel.");
                     }
                     else
@@ -1854,7 +1854,7 @@ namespace Wasteland2AccessibilityMod.States
             derivedStatsIndex = 0;
             ScreenReaderManager.SpeakInterrupt("Derived stats. Up and Down to navigate, I for description, Escape to close");
             AnnounceDerivedStat(screen, interrupt: false);
-            MelonLogger.Msg("[CharacterState] Derived stats browser opened");
+            ModLog.Debug("[CharacterState] Derived stats browser opened");
         }
 
         private void CloseDerivedStatsBrowser()
@@ -1866,7 +1866,7 @@ namespace Wasteland2AccessibilityMod.States
             // Re-announce current control so user knows where they are
             lastAnnouncedText = null;
             AnnounceCurrentControl(interrupt: false);
-            MelonLogger.Msg("[CharacterState] Derived stats browser closed");
+            ModLog.Debug("[CharacterState] Derived stats browser closed");
         }
 
         private bool HandleDerivedStatsInput(CharacterScreen screen)
@@ -1968,7 +1968,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(
                 $"{title}, {infoLines.Count} items. Up and Down to navigate, Escape to close");
             AnnounceInfoLine(interrupt: false);
-            MelonLogger.Msg($"[CharacterState] Info browser opened: {mode}, {infoLines.Count} lines");
+            ModLog.Debug($"[CharacterState] Info browser opened: {mode}, {infoLines.Count} lines");
         }
 
         private void CloseInfoBrowser()
@@ -1982,7 +1982,7 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(title + " closed");
             lastAnnouncedText = null;
             AnnounceCurrentControl(interrupt: false);
-            MelonLogger.Msg($"[CharacterState] Info browser closed: {prev}");
+            ModLog.Debug($"[CharacterState] Info browser closed: {prev}");
         }
 
         private void AnnounceInfoLine(bool interrupt = true)

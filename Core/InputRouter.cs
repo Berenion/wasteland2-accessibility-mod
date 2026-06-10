@@ -33,7 +33,7 @@ namespace Wasteland2AccessibilityMod.Core
             // Sort by priority descending (highest priority first)
             states.Sort((a, b) => b.Priority.CompareTo(a.Priority));
 
-            MelonLogger.Msg($"[InputRouter] Registered state: {state.Name} (priority {state.Priority})");
+            ModLog.Debug($"[InputRouter] Registered state: {state.Name} (priority {state.Priority})");
         }
 
         /// <summary>

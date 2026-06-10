@@ -53,7 +53,7 @@ namespace Wasteland2AccessibilityMod.Core
                     if (TryPause())
                     {
                         menuSafetyPaused = true;
-                        MelonLogger.Msg("[TacticalPause] Auto-paused for inventory menu safety");
+                        ModLog.Debug("[TacticalPause] Auto-paused for inventory menu safety");
                     }
                 }
             }
@@ -62,7 +62,7 @@ namespace Wasteland2AccessibilityMod.Core
                 if (IsPaused)
                 {
                     Resume();
-                    MelonLogger.Msg("[TacticalPause] Auto-resumed (inventory menu closed)");
+                    ModLog.Debug("[TacticalPause] Auto-resumed (inventory menu closed)");
                 }
                 menuSafetyPaused = false;
             }
@@ -112,14 +112,14 @@ namespace Wasteland2AccessibilityMod.Core
             if (game.IsPaused())
             {
                 ScreenReaderManager.SpeakInterrupt("Still loading, try again");
-                MelonLogger.Msg("[TacticalPause] Refused — game already paused (pauseCounter>0)");
+                ModLog.Debug("[TacticalPause] Refused — game already paused (pauseCounter>0)");
                 return false;
             }
 
             game.Pause();
             IsPaused = true;
             ScreenReaderManager.SpeakInterrupt("Tactical pause");
-            MelonLogger.Msg("[TacticalPause] Paused");
+            ModLog.Debug("[TacticalPause] Paused");
             return true;
         }
 
@@ -131,7 +131,7 @@ namespace Wasteland2AccessibilityMod.Core
             IsPaused = false;
 
             ScreenReaderManager.SpeakInterrupt("Resumed");
-            MelonLogger.Msg("[TacticalPause] Resumed");
+            ModLog.Debug("[TacticalPause] Resumed");
         }
 
         /// <summary>
@@ -149,7 +149,7 @@ namespace Wasteland2AccessibilityMod.Core
 
             IsPaused = false;
             menuSafetyPaused = false;
-            MelonLogger.Msg("[TacticalPause] Force-resumed (context changed)");
+            ModLog.Debug("[TacticalPause] Force-resumed (context changed)");
         }
     }
 }

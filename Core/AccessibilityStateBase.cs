@@ -23,12 +23,12 @@ namespace Wasteland2AccessibilityMod.Core
 
         public virtual void OnActivated()
         {
-            MelonLogger.Msg($"[{GetType().Name}] Activated");
+            ModLog.Debug($"[{GetType().Name}] Activated");
         }
 
         public virtual void OnDeactivated()
         {
-            MelonLogger.Msg($"[{GetType().Name}] Deactivated");
+            ModLog.Debug($"[{GetType().Name}] Deactivated");
         }
     }
 }

@@ -347,7 +347,7 @@ namespace Wasteland2AccessibilityMod.States
             // Also trigger hover for visual feedback
             entry.gameObject.SendMessage("OnHover", true, SendMessageOptions.DontRequireReceiver);
 
-            MelonLogger.Msg($"[MainMenuState] Selected button {index}: {entry.name}");
+            ModLog.Debug($"[MainMenuState] Selected button {index}: {entry.name}");
         }
 
         private void AnnounceButton(int index)
@@ -441,7 +441,7 @@ namespace Wasteland2AccessibilityMod.States
 
             // Trigger click via SendMessage
             entry.gameObject.SendMessage("OnClick", SendMessageOptions.DontRequireReceiver);
-            MelonLogger.Msg($"[MainMenuState] Activated button: {entry.name}");
+            ModLog.Debug($"[MainMenuState] Activated button: {entry.name}");
         }
     }
 }

@@ -166,7 +166,7 @@ namespace Wasteland2AccessibilityMod.States
                 BuildContainerItemList();
                 if (currentList.Count > 0)
                 {
-                    MelonLogger.Msg($"[InventoryState] Late grid population detected, found {currentList.Count} items");
+                    ModLog.Debug($"[InventoryState] Late grid population detected, found {currentList.Count} items");
                     AnnounceCurrentItem(interrupt: false);
                 }
             }
@@ -198,12 +198,12 @@ namespace Wasteland2AccessibilityMod.States
             // But discard it if the context changed (e.g. was character info, now loot popup)
             if (hasSuspendedState && suspendedWasCharacterInfo != isCharacterInfoMenu)
             {
-                MelonLogger.Msg($"[InventoryState] Context changed (charInfo: {suspendedWasCharacterInfo}->{isCharacterInfoMenu}, popup: {suspendedWasPopupInventory}->{isPopupInventoryMenu}), discarding suspended state");
+                ModLog.Debug($"[InventoryState] Context changed (charInfo: {suspendedWasCharacterInfo}->{isCharacterInfoMenu}, popup: {suspendedWasPopupInventory}->{isPopupInventoryMenu}), discarding suspended state");
                 hasSuspendedState = false;
             }
             if (hasSuspendedState && suspendedWasPopupInventory != isPopupInventoryMenu)
             {
-                MelonLogger.Msg($"[InventoryState] Context changed (charInfo: {suspendedWasCharacterInfo}->{isCharacterInfoMenu}, popup: {suspendedWasPopupInventory}->{isPopupInventoryMenu}), discarding suspended state");
+                ModLog.Debug($"[InventoryState] Context changed (charInfo: {suspendedWasCharacterInfo}->{isCharacterInfoMenu}, popup: {suspendedWasPopupInventory}->{isPopupInventoryMenu}), discarding suspended state");
                 hasSuspendedState = false;
             }
             // A different PopupInventoryMenu instance means the user opened a new loot
@@ -216,7 +216,7 @@ namespace Wasteland2AccessibilityMod.States
                 int currentPopupId = GetPopupInstanceId();
                 if (suspendedPopupInstanceId != 0 && currentPopupId != 0 && currentPopupId != suspendedPopupInstanceId)
                 {
-                    MelonLogger.Msg($"[InventoryState] New popup instance (suspended={suspendedPopupInstanceId}, current={currentPopupId}), discarding suspended state");
+                    ModLog.Debug($"[InventoryState] New popup instance (suspended={suspendedPopupInstanceId}, current={currentPopupId}), discarding suspended state");
                     hasSuspendedState = false;
                 }
             }
@@ -239,7 +239,7 @@ namespace Wasteland2AccessibilityMod.States
                     trackedPopupInstanceId = GetPopupInstanceId();
 
                 AnnounceCurrentItem(interrupt: true);
-                MelonLogger.Msg($"[InventoryState] Restored from suspend, zone={currentZone}, index={currentIndex}, items={currentList.Count}");
+                ModLog.Debug($"[InventoryState] Restored from suspend, zone={currentZone}, index={currentIndex}, items={currentList.Count}");
                 return;
             }
 
@@ -265,7 +265,7 @@ namespace Wasteland2AccessibilityMod.States
             if (currentList.Count > 0 && currentIndex >= 0)
                 AnnounceCurrentItem(interrupt: false);
 
-            MelonLogger.Msg($"[InventoryState] Activated, zone={currentZone}, items={currentList.Count}");
+            ModLog.Debug($"[InventoryState] Activated, zone={currentZone}, items={currentList.Count}");
         }
 
         public override void OnDeactivated()
@@ -284,7 +284,7 @@ namespace Wasteland2AccessibilityMod.States
             currentList.Clear();
             isDirty = false;
             isInfoBrowsing = false;
-            MelonLogger.Msg($"[InventoryState] Deactivated (suspended zone={suspendedZone}, index={suspendedIndex})");
+            ModLog.Debug($"[InventoryState] Deactivated (suspended zone={suspendedZone}, index={suspendedIndex})");
         }
 
         #region Context Detection
@@ -545,7 +545,7 @@ namespace Wasteland2AccessibilityMod.States
             var mainPanel = GetINV_MainPanel();
             if (mainPanel == null)
             {
-                MelonLogger.Msg("[InventoryState] Could not find INV_MainPanel");
+                ModLog.Debug("[InventoryState] Could not find INV_MainPanel");
                 return;
             }
 
@@ -567,7 +567,7 @@ namespace Wasteland2AccessibilityMod.States
             if (currentIndex < 0 && currentList.Count > 0)
                 currentIndex = 0;
 
-            MelonLogger.Msg($"[InventoryState] Built equipment list: {currentList.Count} slots");
+            ModLog.Debug($"[InventoryState] Built equipment list: {currentList.Count} slots");
         }
 
         private void BuildBackpackItemList()
@@ -617,7 +617,7 @@ namespace Wasteland2AccessibilityMod.States
             if (currentIndex < 0 && currentList.Count > 0)
                 currentIndex = 0;
 
-            MelonLogger.Msg($"[InventoryState] Built backpack list: {currentList.Count} items");
+            ModLog.Debug($"[InventoryState] Built backpack list: {currentList.Count} items");
         }
 
         private void BuildContainerItemList()
@@ -649,7 +649,7 @@ namespace Wasteland2AccessibilityMod.States
             if (currentIndex < 0 && currentList.Count > 0)
                 currentIndex = 0;
 
-            MelonLogger.Msg($"[InventoryState] Built container item list: {currentList.Count} items");
+            ModLog.Debug($"[InventoryState] Built container item list: {currentList.Count} items");
         }
 
         private void RebuildCurrentList()
@@ -821,7 +821,7 @@ namespace Wasteland2AccessibilityMod.States
                 try
                 {
                     openContextMenuMethod.Invoke(dragDropItem, null);
-                    MelonLogger.Msg("[InventoryState] Opened context menu");
+                    ModLog.Debug("[InventoryState] Opened context menu");
                 }
                 catch (Exception e)
                 {
@@ -849,7 +849,7 @@ namespace Wasteland2AccessibilityMod.States
                 }
                 item.AttemptToEquip(false);
                 isDirty = true;
-                MelonLogger.Msg("[InventoryState] Attempted to equip item");
+                ModLog.Debug("[InventoryState] Attempted to equip item");
             }
             else if (currentZone == NavigationZone.Equipment)
             {
@@ -862,7 +862,7 @@ namespace Wasteland2AccessibilityMod.States
                 {
                     equipped.AttemptToUnequip();
                     isDirty = true;
-                    MelonLogger.Msg("[InventoryState] Attempted to unequip item");
+                    ModLog.Debug("[InventoryState] Attempted to unequip item");
                 }
                 else
                 {
@@ -892,7 +892,7 @@ namespace Wasteland2AccessibilityMod.States
                 ? UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty))
                 : "Item";
             ScreenReaderManager.SpeakInterrupt($"Transferred {itemName}");
-            MelonLogger.Msg($"[InventoryState] Transferred item: {itemName}");
+            ModLog.Debug($"[InventoryState] Transferred item: {itemName}");
         }
 
         private void TakeAll()
@@ -924,7 +924,7 @@ namespace Wasteland2AccessibilityMod.States
             if (charInfoMenu != null)
             {
                 charInfoMenu.Close();
-                MelonLogger.Msg("[InventoryState] Closed character info menu");
+                ModLog.Debug("[InventoryState] Closed character info menu");
             }
         }
 
@@ -937,7 +937,7 @@ namespace Wasteland2AccessibilityMod.States
             if (popupInv != null)
             {
                 popupInv.Close();
-                MelonLogger.Msg("[InventoryState] Closed loot menu");
+                ModLog.Debug("[InventoryState] Closed loot menu");
             }
         }
 
@@ -950,7 +950,7 @@ namespace Wasteland2AccessibilityMod.States
             // skips it). We're on the inventory tab here, so start from Inventory.
             CharacterInfoState.CyclePanel(charInfoMenu, CharacterInfoMenu.InfoPanel.Inventory, direction);
 
-            MelonLogger.Msg($"[InventoryState] Switched tab, direction={direction}");
+            ModLog.Debug($"[InventoryState] Switched tab, direction={direction}");
         }
 
         private bool HandlePartySwitch()
@@ -1011,7 +1011,7 @@ namespace Wasteland2AccessibilityMod.States
             string pcName = UITextExtractor.CleanText(
                 Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty));
             ScreenReaderManager.SpeakInterrupt($"Selected {pcName}");
-            MelonLogger.Msg($"[InventoryState] Switched to party member {index + 1}: {pcName}");
+            ModLog.Debug($"[InventoryState] Switched to party member {index + 1}: {pcName}");
         }
 
         private void SwitchPopupPartyMember(int index)
@@ -1043,7 +1043,7 @@ namespace Wasteland2AccessibilityMod.States
                 ? UITextExtractor.CleanText(Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty))
                 : $"Party member {index + 1}";
             ScreenReaderManager.SpeakInterrupt($"Selected {pcName}");
-            MelonLogger.Msg($"[InventoryState] Popup party switch to {index + 1}: {pcName}");
+            ModLog.Debug($"[InventoryState] Popup party switch to {index + 1}: {pcName}");
         }
 
         private void CycleFilter()
@@ -1084,7 +1084,7 @@ namespace Wasteland2AccessibilityMod.States
 
                     string filterName = GetFilterName(newFilter);
                     ScreenReaderManager.SpeakInterrupt($"Filter: {filterName}");
-                    MelonLogger.Msg($"[InventoryState] Set filter to {newFilter}");
+                    ModLog.Debug($"[InventoryState] Set filter to {newFilter}");
                 }
                 catch (Exception e)
                 {
@@ -1588,7 +1588,7 @@ namespace Wasteland2AccessibilityMod.States
             int currentId = popupInv.GetInstanceID();
             if (trackedPopupInstanceId == 0 || currentId == trackedPopupInstanceId) return;
 
-            MelonLogger.Msg($"[InventoryState] Popup swap detected (old={trackedPopupInstanceId}, new={currentId}), re-announcing");
+            ModLog.Debug($"[InventoryState] Popup swap detected (old={trackedPopupInstanceId}, new={currentId}), re-announcing");
             trackedPopupInstanceId = currentId;
             lastAnnouncedText = null;
             currentZone = NavigationZone.ContainerItems;
@@ -1685,7 +1685,7 @@ namespace Wasteland2AccessibilityMod.States
             if (inventoryContainerSetFilterMethod == null)
                 MelonLogger.Warning("[InventoryState] Could not find InventoryContainer.SetFilter");
 
-            MelonLogger.Msg("[InventoryState] Reflection cached");
+            ModLog.Debug("[InventoryState] Reflection cached");
         }
 
         #endregion
