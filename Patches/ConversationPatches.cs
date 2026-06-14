@@ -37,10 +37,23 @@ namespace Wasteland2AccessibilityMod.Patches
         /// </summary>
         public static BubbleTextKind LastPrintTextKind { get; private set; }
 
-        [HarmonyPostfix]
-        public static void Postfix(BubbleTextKind textKind, string audioName)
+        /// <summary>
+        /// True if the bubble about to emit shows a "click anywhere to continue" prompt —
+        /// i.e. the game is gating the conversation on the player advancing it. Only known
+        /// at emit time (AddClickToContinue runs after Print), so it's set from the
+        /// EmitToTextWindow prefix; the Print postfix leaves it false.
+        /// </summary>
+        public static bool LastPrintHadClickToContinue { get; private set; }
+
+        /// <summary>
+        /// Records the textKind, whether the audio name maps to a real audio file, and
+        /// whether the bubble gates on click-to-continue, so the AddText patch can classify
+        /// the line. Shared by the Print postfix and the EmitToTextWindow prefix.
+        /// </summary>
+        public static void SetMetadata(BubbleTextKind textKind, string audioName, bool hasClickToContinue = false)
         {
             LastPrintTextKind = textKind;
+            LastPrintHadClickToContinue = hasClickToContinue;
             // audioName "__" is a placeholder used when no actual voice file exists
             bool hasAudioName = !string.IsNullOrEmpty(audioName) && audioName.Length > 0 && audioName != "__";
 
@@ -66,6 +79,12 @@ namespace Wasteland2AccessibilityMod.Patches
             {
                 LastPrintHadAudio = false;
             }
+        }
+
+        [HarmonyPostfix]
+        public static void Postfix(BubbleTextKind textKind, string audioName)
+        {
+            SetMetadata(textKind, audioName);
 
             if (textKind == BubbleTextKind.Conversation ||
                 textKind == BubbleTextKind.DescConversation ||
@@ -75,6 +94,30 @@ namespace Wasteland2AccessibilityMod.Patches
             {
                 ModLog.Debug($"[BubbleTextPrint] textKind={textKind}, hasAudio={LastPrintHadAudio}, audioName={audioName}");
             }
+        }
+    }
+
+    // ============================================================================
+    // PATCH 0b: Refresh the per-line metadata from the actual bubble right before it
+    // emits to the conversation window.
+    //
+    // Print() only CREATES the BubbleTextInfo and queues it; the ConversationHUD.AddText
+    // call happens later, from BubbleTextInfo.EmitToTextWindow() when the bubble is shown.
+    // When the game Prints several bubbles before any are emitted (e.g. at conversation
+    // start it Prints the NPC's description bubble AND the first voiced line back-to-back),
+    // the single LastPrint* globals get clobbered by the last Print, so the earlier line's
+    // AddText reads the wrong textKind/audio. EmitToTextWindow calls AddText synchronously,
+    // so setting the metadata from `this` here guarantees AddText sees the correct line.
+    // ============================================================================
+    [HarmonyPatch(typeof(BubbleTextManager.BubbleTextInfo), "EmitToTextWindow")]
+    public class BubbleTextInfo_EmitToTextWindow_Patch
+    {
+        [HarmonyPrefix]
+        public static void Prefix(BubbleTextManager.BubbleTextInfo __instance)
+        {
+            if (__instance == null) return;
+            BubbleTextManager_Print_Patch.SetMetadata(
+                __instance.textKind, __instance.audioName, __instance.hasClickToContinue);
         }
     }
 
@@ -90,6 +133,26 @@ namespace Wasteland2AccessibilityMod.Patches
         // Track last announced text to avoid duplicates
         private static string lastAnnouncedText = "";
         private static float lastAnnouncedTime = 0f;
+
+        // Cancellation token for the voiceover-wait coroutine, mirroring
+        // ConversationState.announcementGeneration. On multi-step dialogue (press Enter
+        // to advance), each new line — or an explicit skip — supersedes the previous
+        // line's pending read so stale subtitles don't fire late / out of order / doubled.
+        private static int speakGeneration = 0;
+
+        // Separate cancellation token for a deferred character/scene description. Kept
+        // distinct from speakGeneration so a description deferred behind a voiced line
+        // doesn't cancel (or get cancelled by) that line's own subtitle read.
+        private static int descriptionGeneration = 0;
+
+        /// <summary>
+        /// Cancels any pending voiceover-wait subtitle read. Called when the player
+        /// skips/advances the current line so the skipped line isn't spoken afterwards.
+        /// </summary>
+        public static void CancelPendingSpeak()
+        {
+            speakGeneration++;
+        }
 
         [HarmonyPostfix]
         public static void Postfix(string p_value, bool isAppend, bool rangerSay)
@@ -124,14 +187,46 @@ namespace Wasteland2AccessibilityMod.Patches
                     return;
                 }
 
-                // Check if this specific line has voiceover audio.
-                // BubbleTextManager.Print() fires just before AddText() in the Drama
-                // pipeline, so LastPrintHadAudio tells us about THIS line.
+                // Check this line's voiceover + bubble kind. BubbleTextManager.Print()
+                // fires just before AddText() in the Drama pipeline, so LastPrintHadAudio /
+                // LastPrintTextKind describe THIS line.
                 bool thisLineHasAudio = BubbleTextManager_Print_Patch.LastPrintHadAudio;
+                BubbleTextKind thisLineKind = BubbleTextManager_Print_Patch.LastPrintTextKind;
+                bool thisLineHasClickToContinue = BubbleTextManager_Print_Patch.LastPrintHadClickToContinue;
+                bool thisLineIsDescription =
+                    thisLineKind == BubbleTextKind.DescConversation ||
+                    thisLineKind == BubbleTextKind.DescPercConversation;
 
-                if (!thisLineHasAudio)
+                if (thisLineIsDescription && thisLineHasClickToContinue)
                 {
-                    // No voiceover for this line — speak immediately, no delays needed
+                    // A description bubble that gates the conversation: the game shows
+                    // "click anywhere to continue" and will NOT start the next (often voiced)
+                    // line until the player advances. That pending voiceover sits BEHIND this
+                    // prompt, so deferring the description "until voiceover finishes" deadlocks —
+                    // the audio never starts and the player is never told they can advance.
+                    // Read it now and announce the prompt. Own generation bump so a later
+                    // line's subtitle read doesn't cancel this.
+                    int gen = ++speakGeneration;
+                    ScreenReaderManager.SpeakDirect(cleanedText);
+                    ScreenReaderManager.SpeakDirect("Press Enter to continue");
+                    ModLog.Debug("[Conversation] Description gates on click-to-continue — read immediately + prompt");
+                }
+                else if (!thisLineHasAudio && thisLineIsDescription &&
+                    (VoiceoverHelper.IsVoiceoverPlaying() || VoiceoverHelper.HasPendingOrActiveVoicedAudio()))
+                {
+                    // An unvoiced character/scene description that arrived while the NPC's
+                    // voiced line is still playing. Speaking it now lands it on top of the
+                    // dialogue ("lands halfway through"). Defer it until the voiceover
+                    // finishes. Uses its own generation, so it neither cancels nor is
+                    // cancelled by the concurrent voiced line's subtitle read.
+                    ModLog.Debug("[Conversation] Description arrived during voiceover — deferring until VO finishes");
+                    int descGen = ++descriptionGeneration;
+                    MelonCoroutines.Start(SpeakDescriptionAfterVoiceover(cleanedText, descGen));
+                }
+                else if (!thisLineHasAudio)
+                {
+                    // No voiceover for this line and nothing voiced playing — speak immediately.
+                    int gen = ++speakGeneration;
                     ScreenReaderManager.SpeakDirect(cleanedText);
                     ModLog.Debug($"[Conversation] No VO — speaking immediately");
 
@@ -144,9 +239,10 @@ namespace Wasteland2AccessibilityMod.Patches
                 }
                 else
                 {
-                    // This line has voiceover — wait for it to finish, then read the text
+                    // This line has voiceover — wait for it to finish, then read the text.
+                    int gen = ++speakGeneration;
                     ModLog.Debug($"[Conversation] Has VO — waiting for audio to finish");
-                    MelonCoroutines.Start(SpeakAfterVoiceoverFinishes(cleanedText));
+                    MelonCoroutines.Start(SpeakAfterVoiceoverFinishes(cleanedText, gen));
                 }
 
                 // Update tracking
@@ -164,14 +260,17 @@ namespace Wasteland2AccessibilityMod.Patches
         /// <summary>
         /// Polls until voiced audio finishes, then speaks the text.
         /// Handles the case where audio hasn't started yet (pending behind other bubble texts).
+        /// Bails without speaking if a newer line or a skip has superseded this read
+        /// (generation mismatch), so stale subtitles don't fire on multi-step dialogue.
         /// </summary>
-        private static IEnumerator SpeakAfterVoiceoverFinishes(string text)
+        private static IEnumerator SpeakAfterVoiceoverFinishes(string text, int generation)
         {
             // Wait until no voiced audio is playing or pending
             float maxWait = 30f; // Safety timeout
             float waited = 0f;
             while (waited < maxWait)
             {
+                if (generation != speakGeneration) yield break;
                 if (!VoiceoverHelper.IsVoiceoverPlaying() && !VoiceoverHelper.HasPendingOrActiveVoicedAudio())
                 {
                     break;
@@ -180,10 +279,52 @@ namespace Wasteland2AccessibilityMod.Patches
                 waited += 0.2f;
             }
 
+            if (generation != speakGeneration) yield break;
+
             // Small extra delay for natural pacing after audio stops
             yield return new WaitForSeconds(0.3f);
 
+            if (generation != speakGeneration) yield break;
+
             ScreenReaderManager.SpeakDirect(text);
+        }
+
+        /// <summary>
+        /// Waits for the active voiceover to finish, then reads a deferred character/scene
+        /// description so it doesn't land on top of the NPC's spoken line. Queued (not
+        /// interrupting), and followed by the "Press Enter to continue" prompt if the
+        /// description bubble is still the one awaiting advance. Bails on a newer description.
+        /// </summary>
+        private static IEnumerator SpeakDescriptionAfterVoiceover(string text, int generation)
+        {
+            float maxWait = 30f; // Safety timeout
+            float waited = 0f;
+            while (waited < maxWait)
+            {
+                if (generation != descriptionGeneration) yield break;
+                if (!VoiceoverHelper.IsVoiceoverPlaying() && !VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+                {
+                    break;
+                }
+                yield return new WaitForSeconds(0.2f);
+                waited += 0.2f;
+            }
+
+            if (generation != descriptionGeneration) yield break;
+
+            // Small extra delay for natural pacing after audio stops
+            yield return new WaitForSeconds(0.3f);
+
+            if (generation != descriptionGeneration) yield break;
+
+            // Queue (don't interrupt the voiced line's own subtitle read if it speaks too)
+            ScreenReaderManager.SpeakDirect(text, false);
+
+            // Prompt to continue if the description is still the bubble awaiting advance.
+            if (Drama.isConversationOn && !Drama.isCutsceneOn && VoiceoverHelper.HasActiveDescriptionBubbles())
+            {
+                ScreenReaderManager.SpeakDirect("Press Enter to continue", false);
+            }
         }
     }
 
