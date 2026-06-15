@@ -18,6 +18,17 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "CharacterInfo";
         public override int Priority => 54;
 
+        public override string GetHelpText()
+        {
+            return "Character info. Tab announces the panel and position, D reads the character summary, " +
+                   "Page Up and Page Down switch tabs, E reads current XP, S opens the stats browser. " +
+                   "On Attributes and Skills: Up and Down move, plus and minus or Enter raise with available points, " +
+                   "I describes, P points remaining; on Skills, F cycles skill categories. " +
+                   "On Traits: Enter or Space toggles if perk points are available, I gives the perk description. " +
+                   "On Dossier: I reads the quirk description or the biography. " +
+                   "On Logbook: Enter or Right opens an entry, F next sort category, X toggles flagged, I reads the source.";
+        }
+
         /// <summary>
         /// When true, the next CharacterInfoMenu.OnEnable should switch to Attributes tab.
         /// Set by CharacterInfoPatches when C key opens the menu.

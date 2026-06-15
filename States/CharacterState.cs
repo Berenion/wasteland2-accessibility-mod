@@ -18,6 +18,18 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "Character";
         public override int Priority => 53;
 
+        public override string GetHelpText()
+        {
+            return "Character creation. Tab announces the panel and position. N is Next or Done, Escape is Back. " +
+                   "On Attributes and Skills: Up and Down move, plus and minus adjust, Enter enters edit mode, " +
+                   "I describes, P points remaining, F switches between Attributes and Skills, " +
+                   "D opens the Derived Stats browser; on Skills, Left and Right switch category. " +
+                   "On Traits: Enter or Space toggles, I gives a browsable description. " +
+                   "On Dossier and Flavor: Left and Right cycle a dropdown value or toggle gender, " +
+                   "Enter on a text field starts editing. On party panels: D announces the character summary, " +
+                   "R reads the biography on Add Character.";
+        }
+
         // Navigation state
         private List<GameObject> controlList = new List<GameObject>();
         private int controlIndex = -1;

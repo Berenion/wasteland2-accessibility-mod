@@ -19,6 +19,14 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "Shop";
         public override int Priority => 50;
 
+        public override string GetHelpText()
+        {
+            return "Shop. Left and Right cycle four zones: Player Inventory, Escrow, Vendor Inventory, Filters. " +
+                   "Up and Down move within a zone. Enter buys, sells, or moves depending on the zone. " +
+                   "I opens the item info browser, R reads the description, S announces your scrap, " +
+                   "J sells all junk, F cycles the filter. Quantity dialogs announce the total price as you adjust.";
+        }
+
         /// <summary>
         /// When true, managed navigation is active and patch-based announcements should be suppressed.
         /// </summary>

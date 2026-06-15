@@ -14,6 +14,16 @@ namespace Wasteland2AccessibilityMod.Core
         public override string Name => "Exploration";
         public override int Priority => 10;
 
+        public override string GetHelpText()
+        {
+            return "Exploration scanner. Page Up and Page Down cycle nearby interactables, " +
+                   "Ctrl Page Up and Ctrl Page Down cycle category, Enter interacts with the current item, " +
+                   "equals toggles direction format, K toggles announcement order, apostrophe announces party scrap, " +
+                   "Backspace stops party movement. Always on: F1 to F7 select party members, F10 toggles camera lock, " +
+                   "Space toggles tactical pause, I opens character and inventory, R answers the radio, " +
+                   "G toggles group mode, Escape opens the pause menu.";
+        }
+
         public override bool IsActive
         {
             get

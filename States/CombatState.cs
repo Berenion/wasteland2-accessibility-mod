@@ -19,6 +19,18 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "Combat";
         public override int Priority => 45;
 
+        public override string GetHelpText()
+        {
+            return "Combat, turn-based. The cursor jumps to the active actor each turn. " +
+                   "Arrows move the cursor one step, Shift Left and Shift Right change the step size, " +
+                   "Ctrl plus an arrow moves until blocked. The right bracket key moves the actor to the cursor, costing AP. " +
+                   "Tab opens the actions menu, T the initiative tracker, L the combat log. " +
+                   "Enter on a hostile opens target actions, Enter on an ally opens their info. " +
+                   "Page Up and Page Down cycle combatants; Home jumps to the selected combatant, Shift Home to the current actor. " +
+                   "Backslash gives a detailed tile readout, K toggles announcement order, Y toggles line of sight, " +
+                   "F toggles camera follow. I opens inventory on your turn. Space ends your turn.";
+        }
+
         // Reflection cache
         private static FieldInfo curActorField;
         private static FieldInfo combatMapField;

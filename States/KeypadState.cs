@@ -15,6 +15,12 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "Keypad";
         public override int Priority => 58;
 
+        public override string GetHelpText()
+        {
+            return "Keypad. Type digits zero to nine, top row or numpad, up to eight. " +
+                   "Backspace deletes the last digit, C clears, Enter submits, Escape cancels.";
+        }
+
         // Set while this state is active so the OnGUI suppressor patch can block
         // the keypad's native key handling and avoid double-entry.
         public static bool Active = false;

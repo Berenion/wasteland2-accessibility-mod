@@ -12,6 +12,17 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "WorldMap";
         public override int Priority => 20;
 
+        public override string GetHelpText()
+        {
+            return "World map. Arrows move the review cursor, Shift Left and Shift Right change the step size. " +
+                   "Page Up and Page Down cycle visible POIs, Ctrl Page Up and Ctrl Page Down cycle category. " +
+                   "Home jumps the cursor to the selected POI, Shift Home to the party, End gives distance and direction. " +
+                   "The right bracket key orders the party to the cursor, Enter interacts with a POI, Backspace stops the party. " +
+                   "Space gives a cursor summary, W reads water supply, Shift W estimates the water cost to the cursor, " +
+                   "F toggles camera follow, R answers the radio, I opens character and inventory, Escape opens the pause menu. " +
+                   "F1 to F7 select party members.";
+        }
+
         // Review cursor
         private Vector3 cursorPosition;
         private bool cursorInitialized;

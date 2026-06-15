@@ -20,6 +20,16 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "Inventory";
         public override int Priority => 51;
 
+        public override string GetHelpText()
+        {
+            return "Inventory. Up and Down move within a zone, Left and Right switch Equipment and Backpack, " +
+                   "or switch container when looting. Enter opens the item menu, E quick-equips or unequips. " +
+                   "Tab reads the full item info, I opens the info browser, R reads the flavor description, " +
+                   "F cycles the filter, C gives a context summary. " +
+                   "When looting: T takes all, G distributes across the party, F1 to F7 choose the destination ranger. " +
+                   "Page Up and Page Down switch character-info tabs.";
+        }
+
         /// <summary>
         /// When true, managed navigation is active and patch-based announcements should be suppressed.
         /// </summary>

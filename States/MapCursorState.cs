@@ -21,6 +21,19 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "MapCursor";
         public override int Priority => 30;
 
+        public override string GetHelpText()
+        {
+            return "Exploration. Two cursors run at once. " +
+                   "Grid cursor: arrows move one step, Shift Left and Shift Right change the step size, " +
+                   "Ctrl plus an arrow moves until blocked, Tab opens the actions menu, Enter opens the tile context menu, " +
+                   "the right bracket key orders the ranger to walk to the cursor, backslash scans the tile, X examines, " +
+                   "Home jumps to the selected interactable, Shift Home jumps to the party leader, F toggles camera follow. " +
+                   "Scanner: Page Up and Page Down cycle nearby interactables, Ctrl Page Up and Ctrl Page Down cycle category, " +
+                   "Enter interacts. Always on: F1 to F7 select party members, F10 toggles camera lock, " +
+                   "Space toggles tactical pause, I opens character and inventory, R answers the radio, " +
+                   "G toggles group mode, Escape opens the pause menu.";
+        }
+
         // Grid state
         private static FieldInfo fullMapField;
         private Dictionary<Vector3, CombatAStarNode> fullMap;

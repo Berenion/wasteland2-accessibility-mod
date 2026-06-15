@@ -30,5 +30,16 @@ namespace Wasteland2AccessibilityMod.Core
         {
             ModLog.Debug($"[{GetType().Name}] Deactivated");
         }
+
+        /// <summary>
+        /// Default control help. States override this with context-specific keys.
+        /// The baseline keys listed here hold in nearly every list and menu.
+        /// </summary>
+        public virtual string GetHelpText()
+        {
+            return "Baseline keys: Up and Down move between items, Enter activates or confirms, " +
+                   "Escape closes or goes back, Home and End jump to first and last, " +
+                   "backslash repeats the last announcement.";
+        }
     }
 }

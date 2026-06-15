@@ -24,6 +24,12 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "KeywordEntry";
         public override int Priority => 72;
 
+        public override string GetHelpText()
+        {
+            return "Keyword entry. Type the secret keyword or password, Enter submits, " +
+                   "Backspace deletes the last character, Escape cancels.";
+        }
+
         /// <summary>
         /// Set while this state owns input. Checked by the UIInput Harmony patches
         /// (see CharacterScreenPatches) so the modal's own UIInput doesn't also capture keys.

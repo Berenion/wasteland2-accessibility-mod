@@ -46,5 +46,12 @@ namespace Wasteland2AccessibilityMod.Core
         /// Use for cleanup.
         /// </summary>
         void OnDeactivated();
+
+        /// <summary>
+        /// Spoken control help for this context. Read aloud when the player
+        /// presses the global help key (Shift+/) while this is the topmost
+        /// active state. Should summarise the keys that matter here.
+        /// </summary>
+        string GetHelpText();
     }
 }

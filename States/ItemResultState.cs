@@ -22,6 +22,11 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "ItemResult";
         public override int Priority => 56;
 
+        public override string GetHelpText()
+        {
+            return "Result popup. It lists what the character received. Press Enter or Escape to close.";
+        }
+
         private PopupItemResultMenu cachedMenu;
 
         public override bool IsActive

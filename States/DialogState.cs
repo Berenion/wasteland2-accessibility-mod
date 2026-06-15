@@ -17,6 +17,16 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "Dialog";
         public override int Priority => 70;
 
+        public override string GetHelpText()
+        {
+            return "Modal dialog. For Yes or No and OK or Cancel, Left or Up is previous, " +
+                   "Right or Down is next, Enter activates. " +
+                   "Difficulty selection: Left and Right change difficulty, Up and Down switch Play and Back. " +
+                   "Quantity prompt: Left and Right change by one, Page Down and Page Up by ten, " +
+                   "Home for the minimum, End for the maximum, Up and Down switch OK and Cancel. " +
+                   "Tutorial popups: Enter continues; the full text reads when it appears.";
+        }
+
         private int selectedButtonIndex = 0;
         private readonly List<DialogButton> buttons = new List<DialogButton>();
         private string currentDialogId = "";
