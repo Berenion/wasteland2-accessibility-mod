@@ -2,7 +2,7 @@ using MelonLoader;
 using Wasteland2AccessibilityMod.Core;
 using Wasteland2AccessibilityMod.States;
 
-[assembly: MelonInfo(typeof(Wasteland2AccessibilityMod.AccessibilityMod), "Wasteland 2 Accessibility Mod", "0.7.0", "AccessibilityModTeam")]
+[assembly: MelonInfo(typeof(Wasteland2AccessibilityMod.AccessibilityMod), "Wasteland 2 Accessibility Mod", Wasteland2AccessibilityMod.AccessibilityMod.Version, "AccessibilityModTeam")]
 [assembly: MelonGame("inXile Entertainment", "Wasteland 2 Director's Cut")]
 
 namespace Wasteland2AccessibilityMod
@@ -13,10 +13,16 @@ namespace Wasteland2AccessibilityMod
     /// </summary>
     public class AccessibilityMod : MelonMod
     {
+        /// <summary>
+        /// Single source of truth for the mod version. Used by the MelonInfo
+        /// attribute, the startup banner, and the spoken launch announcement.
+        /// </summary>
+        public const string Version = "0.7.0";
+
         public override void OnInitializeMelon()
         {
             MelonLogger.Msg("===========================================");
-            MelonLogger.Msg("Wasteland 2 Accessibility Mod v0.7.0 (beta)");
+            MelonLogger.Msg($"Wasteland 2 Accessibility Mod v{Version} (beta)");
             MelonLogger.Msg("===========================================");
             MelonLogger.Msg("Features:");
             MelonLogger.Msg("  - Screen reader support for UI navigation");
@@ -36,6 +42,8 @@ namespace Wasteland2AccessibilityMod
             MelonLogger.Msg("  M - Toggle map cursor mode");
             MelonLogger.Msg("  G - Toggle group mode");
             MelonLogger.Msg("  T - Initiative/turn order (in combat)");
+            MelonLogger.Msg("  Shift+S - Accessibility settings menu");
+            MelonLogger.Msg("  Shift+/ - Read controls for current context");
             MelonLogger.Msg("===========================================");
 
             // Initialize screen reader support
@@ -55,6 +63,7 @@ namespace Wasteland2AccessibilityMod
             InputRouter.Register(new ExplorationState());  // Priority 10 - exploration cycling
 
             // Phase 2: Menu/dialog states
+            InputRouter.Register(new SettingsMenuState()); // Priority 90 - modal mod-settings menu (Shift+S)
             InputRouter.Register(new KeywordEntryState()); // Priority 72 - conversation custom-keyword/password text box
             InputRouter.Register(new DialogState());       // Priority 70 - modal dialogs (highest menu priority)
             InputRouter.Register(new MainMenuState());     // Priority 60 - main menu navigation

@@ -17,6 +17,14 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "GenericMenu";
         public override int Priority => 55;
 
+        public override string GetHelpText()
+        {
+            return "Menu. Up and Down move, Enter activates, Escape closes. " +
+                   "Left and Right adjust the focused control, Tab moves to the next element, " +
+                   "Page Up and Page Down switch Options tabs, Delete removes the selected save. " +
+                   "In the save-name field, type a name, Enter saves, Escape cancels and restores the prior name.";
+        }
+
         // Track the last selected object to detect changes
         private GameObject lastSelectedObject = null;
         private string lastAnnouncedText = null;
@@ -53,8 +61,18 @@ namespace Wasteland2AccessibilityMod.States
         private static readonly FieldInfo saveGameListEntrySaveTimeField =
             typeof(SaveGameListEntry).GetField("saveTime", BindingFlags.NonPublic | BindingFlags.Instance);
 
-        // Text field editing mode (SaveLoadScreen name input)
-        private bool isEditingTextField = false;
+        // Text field editing mode (SaveLoadScreen name input).
+        // Backed by a static so InputRouter can tell when a save-name field is being
+        // typed into and avoid hijacking the keystroke for the global settings hotkey.
+        // Only one GenericMenuState instance is ever registered, so the static mirror
+        // is unambiguous.
+        private static bool s_isEditingTextField = false;
+        public static bool IsEditingTextField => s_isEditingTextField;
+        private bool isEditingTextField
+        {
+            get => s_isEditingTextField;
+            set => s_isEditingTextField = value;
+        }
         private string editingOriginalValue = "";
 
         /// <summary>
@@ -298,12 +316,13 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
-            // Handle Tab for next element
-            if (Input.GetKeyDown(KeyCode.Tab))
-            {
-                Navigate(KeyCode.Tab);
-                return true;
-            }
+            // Tab is intentionally NOT handled here. It used to move to the "next
+            // element", but in menus without an indexed control list it followed
+            // selectOnRight ?? selectOnDown, so it jumped somewhere different from the
+            // arrow keys — "Tab reads something different from the arrow cursor". Up/Down
+            // already cover navigation, so Tab as a move key was redundant and confusing.
+            // (Other screens keep Tab for non-navigation roles: item info, panel/position,
+            // combat actions menu.)
 
             // Home / End jump to first / last option (indexed control-list menus only)
             if (Input.GetKeyDown(KeyCode.Home) && optionsControls != null && optionsControls.Count > 0)
@@ -943,7 +962,7 @@ namespace Wasteland2AccessibilityMod.States
                 newIndex = optionsControlIndex - 1;
                 if (newIndex < 0) { newIndex = optionsControls.Count - 1; wrapped = true; } // Wrap
             }
-            else if (direction == KeyCode.DownArrow || direction == KeyCode.Tab)
+            else if (direction == KeyCode.DownArrow)
             {
                 newIndex = optionsControlIndex + 1;
                 if (newIndex >= optionsControls.Count) { newIndex = 0; wrapped = true; } // Wrap
@@ -1083,9 +1102,6 @@ namespace Wasteland2AccessibilityMod.States
                     break;
                 case KeyCode.RightArrow:
                     target = buttonKeys.selectOnRight;
-                    break;
-                case KeyCode.Tab:
-                    target = buttonKeys.selectOnRight ?? buttonKeys.selectOnDown ?? buttonKeys.selectOnUp ?? buttonKeys.selectOnLeft;
                     break;
             }
 

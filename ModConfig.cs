@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using MelonLoader;
 
 namespace Wasteland2AccessibilityMod
@@ -18,6 +20,48 @@ namespace Wasteland2AccessibilityMod
         public static bool ConveyElevation { get; private set; } = true;
         public static bool AnnounceLineOfSight { get; private set; } = false;
         public static bool DebugLogging { get; private set; } = false;
+
+        /// <summary>
+        /// One boolean mod setting, described in menu-friendly terms. Drives the
+        /// in-game accessibility settings menu (SettingsMenuState): it reads the
+        /// current value for navigation read-out and flips it on toggle without
+        /// speaking (the menu announces). The standalone quick-toggle hotkeys keep
+        /// their own custom phrasing via the public Toggle* methods below.
+        /// </summary>
+        public sealed class Setting
+        {
+            private readonly Func<bool> get;
+            private readonly Action flip;
+            private readonly string onText;
+            private readonly string offText;
+
+            public string Label { get; }
+
+            public Setting(string label, Func<bool> get, Action flip, string onText, string offText)
+            {
+                Label = label;
+                this.get = get;
+                this.flip = flip;
+                this.onText = onText;
+                this.offText = offText;
+            }
+
+            public bool Value => get();
+
+            /// <summary>The current value as spoken text, e.g. "clock positions" / "tiles" / "on".</summary>
+            public string ValueText => get() ? onText : offText;
+
+            /// <summary>Navigation read-out, e.g. "Distance units, tiles".</summary>
+            public string Describe() => $"{Label}, {ValueText}";
+
+            /// <summary>Flip the value and persist it. Does not speak — the caller announces.</summary>
+            public void Toggle() => flip();
+        }
+
+        /// <summary>
+        /// All toggleable settings, in menu display order. Built in Initialize().
+        /// </summary>
+        public static List<Setting> Settings { get; private set; } = new List<Setting>();
 
         public static void Initialize()
         {
@@ -71,6 +115,17 @@ namespace Wasteland2AccessibilityMod
             // Load saved preferences
             LoadConfig();
 
+            // Build the menu-facing settings list (order = menu display order)
+            Settings = new List<Setting>
+            {
+                new Setting("Direction format", () => UseClockPositions, FlipClockPositions, "clock positions", "cardinal directions"),
+                new Setting("Tile announcement order", () => ObjectNamesFirst, FlipObjectNamesFirst, "object names first", "coordinates first"),
+                new Setting("Distance units", () => UseTileDistances, FlipTileDistances, "tiles", "meters"),
+                new Setting("Elevation announcements", () => ConveyElevation, FlipConveyElevation, "on", "off"),
+                new Setting("Line of sight announcements", () => AnnounceLineOfSight, FlipLineOfSight, "on", "off"),
+                new Setting("Debug logging", () => DebugLogging, FlipDebugLogging, "on", "off"),
+            };
+
             MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Debug logging: {DebugLogging}");
         }
 
@@ -84,12 +139,57 @@ namespace Wasteland2AccessibilityMod
             DebugLogging = debugLoggingEntry.Value;
         }
 
-        public static void ToggleTileDistances()
+        // ===== No-speech flips (flip value + persist). Shared by the quick-toggle
+        // hotkeys (which then speak their own phrasing) and the settings menu (which
+        // announces via Setting.Describe). =====
+
+        private static void FlipClockPositions()
+        {
+            UseClockPositions = !UseClockPositions;
+            useClockPositionsEntry.Value = UseClockPositions;
+            configCategory.SaveToFile();
+        }
+
+        private static void FlipObjectNamesFirst()
+        {
+            ObjectNamesFirst = !ObjectNamesFirst;
+            objectNamesFirstEntry.Value = ObjectNamesFirst;
+            configCategory.SaveToFile();
+        }
+
+        private static void FlipTileDistances()
         {
             UseTileDistances = !UseTileDistances;
             useTileDistancesEntry.Value = UseTileDistances;
             configCategory.SaveToFile();
+        }
 
+        private static void FlipConveyElevation()
+        {
+            ConveyElevation = !ConveyElevation;
+            conveyElevationEntry.Value = ConveyElevation;
+            configCategory.SaveToFile();
+        }
+
+        private static void FlipLineOfSight()
+        {
+            AnnounceLineOfSight = !AnnounceLineOfSight;
+            announceLineOfSightEntry.Value = AnnounceLineOfSight;
+            configCategory.SaveToFile();
+        }
+
+        private static void FlipDebugLogging()
+        {
+            DebugLogging = !DebugLogging;
+            debugLoggingEntry.Value = DebugLogging;
+            configCategory.SaveToFile();
+        }
+
+        // ===== Quick-toggle hotkeys: flip + speak custom phrasing. =====
+
+        public static void ToggleTileDistances()
+        {
+            FlipTileDistances();
             string mode = UseTileDistances ? "tiles" : "meters";
             MelonLogger.Msg($"Distance units changed to: {mode}");
             ScreenReaderManager.SpeakInterrupt($"Distance in {mode}");
@@ -97,20 +197,15 @@ namespace Wasteland2AccessibilityMod
 
         public static void ToggleClockPositions()
         {
-            UseClockPositions = !UseClockPositions;
-            useClockPositionsEntry.Value = UseClockPositions;
-            configCategory.SaveToFile();
-
+            FlipClockPositions();
             string format = UseClockPositions ? "clock positions" : "cardinal directions";
             MelonLogger.Msg($"Direction format changed to: {format}");
             ScreenReaderManager.SpeakInterrupt($"Using {format}");
         }
+
         public static void ToggleObjectNamesFirst()
         {
-            ObjectNamesFirst = !ObjectNamesFirst;
-            objectNamesFirstEntry.Value = ObjectNamesFirst;
-            configCategory.SaveToFile();
-
+            FlipObjectNamesFirst();
             string mode = ObjectNamesFirst ? "object names first" : "coordinates first";
             MelonLogger.Msg($"Tile announcement order changed to: {mode}");
             ScreenReaderManager.SpeakInterrupt($"Using {mode}");
@@ -118,10 +213,7 @@ namespace Wasteland2AccessibilityMod
 
         public static void ToggleConveyElevation()
         {
-            ConveyElevation = !ConveyElevation;
-            conveyElevationEntry.Value = ConveyElevation;
-            configCategory.SaveToFile();
-
+            FlipConveyElevation();
             string mode = ConveyElevation ? "on" : "off";
             MelonLogger.Msg($"Convey elevation changed to: {mode}");
             ScreenReaderManager.SpeakInterrupt($"Elevation announcements {mode}");
@@ -129,10 +221,7 @@ namespace Wasteland2AccessibilityMod
 
         public static void ToggleLineOfSight()
         {
-            AnnounceLineOfSight = !AnnounceLineOfSight;
-            announceLineOfSightEntry.Value = AnnounceLineOfSight;
-            configCategory.SaveToFile();
-
+            FlipLineOfSight();
             string mode = AnnounceLineOfSight ? "on" : "off";
             MelonLogger.Msg($"Line of sight announcements changed to: {mode}");
             ScreenReaderManager.SpeakInterrupt($"Line of sight announcements {mode}");
