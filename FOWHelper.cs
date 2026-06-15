@@ -213,7 +213,9 @@ namespace Wasteland2AccessibilityMod
         ///
         /// 2. Teleporters whose destination is far away and in unexplored fog —
         ///    avoids revealing paths the party hasn't discovered. Runtime-
-        ///    activated teleporters (perception-revealed ShortcutDoors) bypass.
+        ///    activated teleporters (perception-revealed ShortcutDoors) bypass,
+        ///    as do normal pokable "door" teleporters the party can already see
+        ///    and walk up to (cave entrances, building doors).
         /// </summary>
         public static bool IsPerceptionGated(InteractableNexus nexus)
         {
@@ -232,6 +234,17 @@ namespace Wasteland2AccessibilityMod
                 if (teleporter != null && teleporter.targetTransform != null)
                 {
                     if (recentlyActivated.Contains(nexus))
+                        return false;
+
+                    // A teleporter the party can already see and walk up to — a
+                    // normal pokable "door" like the Snarly Cave entrances or any
+                    // building door — is something a sighted player sees and uses,
+                    // so reveal it regardless of where it leads. IsVisibleToSighted
+                    // (checked before this method at every call site) has already
+                    // confirmed the door's own position is in explored fog. The
+                    // destination filter below only guards blocked/passive shortcut
+                    // teleporters whose far end is still unexplored.
+                    if (!teleporter.blockPoke && !teleporter.bInstigateBlocked)
                         return false;
 
                     Vector3 destPos = teleporter.targetTransform.position;
