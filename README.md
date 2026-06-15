@@ -52,7 +52,9 @@ To confirm it loaded, open <game>\MelonLoader\Latest.log and look for a "Wastela
 
 Configuration
 
-The mod writes <game>\UserData\Wasteland2Accessibility.cfg on first run. Edit it directly or use the in-game toggles; changes save automatically.
+The mod writes <game>\UserData\Wasteland2Accessibility.cfg on first run. Edit it directly, use the in-game settings menu (Shift+S), or use the per-setting quick toggles; changes save automatically.
+
+The settings menu (Shift+S, available anywhere) lists every setting below as a navigable on/off list: Up and Down move, Enter or Left/Right toggle the focused setting, Escape closes. The single-key quick toggles still work if you prefer them.
 
 - UseClockPositions (default off): speak directions as clock positions ("3 o'clock") instead of compass names. Toggle in-game with =.
 - ObjectNamesFirst (default off): lead tile announcements with the object name instead of the coordinate. Toggle with K.
@@ -78,6 +80,8 @@ Baseline keys are the same in nearly every list and menu. The sections below lis
 - Escape: close, cancel, or go back.
 - Home / End: first / last item.
 - Backslash: repeat the last announcement.
+- Shift+/ (the ? key): read back the controls for whatever screen or cursor you are in. The numpad slash works too (Shift+numpad-/), for layouts where slash is only on the numpad.
+- Shift+S: open the accessibility settings menu (a navigable on/off list of every mod setting). Works anywhere; Shift+S or Escape closes it.
 - F1 to F7: select party member 1 to 7.
 The grid and combat cursors reassign Home, End, Tab, and Backslash; this is noted where it applies.
 
@@ -101,7 +105,7 @@ Keypad (safes, doors, terminals):
 - Backspace: delete the last digit. C: clear. Enter: submit. Escape: cancel.
 
 Generic menus (pause, options, save and load):
-- Baseline, plus Left / Right to move within the focused control, Tab for the next element, PgUp / PgDn to switch Options tabs, Delete to delete the selected save.
+- Baseline, plus Left / Right to move within the focused control, PgUp / PgDn to switch Options tabs, Delete to delete the selected save.
 - Save-name field: Enter saves, Escape cancels and restores the prior name; typing and Backspace work, and the last character typed is spoken.
 
 Exploration runs two cursors at once: the scanner cycles nearby interactables, and the grid cursor moves tile by tile.
