@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <!-- Pure helper unit tests only. We do NOT reference the mod assembly (it needs Unity /
+         MelonLoader). Instead we link the individual Unity-free source files under test, so
+         these tests build and run with just the .NET SDK. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Source under test: the pure, Unity-free helpers, linked rather than referenced. -->
+    <Compile Include="..\UITextExtractor.CleanText.cs" Link="SourceUnderTest\UITextExtractor.CleanText.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+</Project>
