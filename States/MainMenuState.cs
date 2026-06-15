@@ -17,6 +17,15 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "MainMenu";
         public override int Priority => 60;
 
+        public override string GetHelpText()
+        {
+            return "Main menu. Up and Down move between entries, Enter activates the focused entry.";
+        }
+
+        // Speak the "mod loaded + version" line once per session, the first
+        // time the player reaches the main menu (not buried mid-load).
+        private static bool announcedVersion = false;
+
         // Track the last selected object to detect external changes
         private GameObject lastSelectedObject = null;
 
@@ -138,13 +147,23 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            // Announce the menu when it becomes active
-            ScreenReaderManager.SpeakInterrupt("Main Menu. Use Up and Down arrows to navigate, Enter to select.");
+            // Announce the menu when it becomes active. On the very first main-menu
+            // reach this session, prepend the mod-loaded + version line so a reporter
+            // can always be asked which build they're on.
+            string intro = "Main Menu. Use Up and Down arrows to navigate, Enter to select.";
+            if (!announcedVersion)
+            {
+                announcedVersion = true;
+                intro = $"Wasteland 2 Accessibility Mod version {AccessibilityMod.Version} loaded. " + intro;
+            }
+            ScreenReaderManager.SpeakInterrupt(intro);
 
-            // Announce current selection after a brief delay
+            // Announce the current selection. Queue it (interrupt: false) so it follows
+            // the intro instead of clobbering it - otherwise the version/hint line is cut
+            // off and the user only hears the focused button name.
             if (currentIndex >= 0 && currentIndex < menuButtons.Count)
             {
-                AnnounceButton(currentIndex);
+                AnnounceButton(currentIndex, interrupt: false);
             }
         }
 
@@ -350,7 +369,7 @@ namespace Wasteland2AccessibilityMod.States
             ModLog.Debug($"[MainMenuState] Selected button {index}: {entry.name}");
         }
 
-        private void AnnounceButton(int index)
+        private void AnnounceButton(int index, bool interrupt = true)
         {
             if (index < 0 || index >= menuButtons.Count) return;
 
@@ -384,7 +403,14 @@ namespace Wasteland2AccessibilityMod.States
                 announcement += $", {positionInEnabled} of {enabledCount}";
             }
 
-            ScreenReaderManager.SpeakInterrupt(announcement);
+            if (interrupt)
+            {
+                ScreenReaderManager.SpeakInterrupt(announcement);
+            }
+            else
+            {
+                ScreenReaderManager.Speak(announcement);
+            }
         }
 
         private int FindCurrentSelectionIndex()
