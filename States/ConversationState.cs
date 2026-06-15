@@ -18,6 +18,14 @@ namespace Wasteland2AccessibilityMod.States
         public override string Name => "Conversation";
         public override int Priority => 52;
 
+        public override string GetHelpText()
+        {
+            return "Conversation. Up and Down move through the options, Enter selects. " +
+                   "While the speaker is still talking, Enter skips the voiceover instead of selecting. " +
+                   "Skill-check options announce the required level and whether you pass; " +
+                   "goodbye options announce as ends conversation.";
+        }
+
         /// <summary>
         /// When true, passive ConversationPatches should not announce
         /// button additions or hover events (this state handles announcements).
@@ -30,6 +38,9 @@ namespace Wasteland2AccessibilityMod.States
 
         // Used to cancel pending queued announcements when user navigates manually
         private static int announcementGeneration = 0;
+
+        // Throttle for the "loading, please wait" cue during the pre-input dead zone.
+        private float lastLoadingAnnounceTime = -10f;
 
         // Reflection cache
         private static FieldInfo buttonListField;
@@ -89,6 +100,21 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
+        /// <summary>
+        /// True while a conversation is on but the game is not yet ready for input or
+        /// advance (DramaGUI.waitState == None) — the "loading" dead zone right after
+        /// landing/conversation start where arrows and Enter would otherwise be silent.
+        /// </summary>
+        private bool IsConversationLoading
+        {
+            get
+            {
+                if (!Drama.isConversationOn) return false;
+                if (!MonoBehaviourSingleton<ConversationHUD>.HasInstance()) return false;
+                return DramaGUI.waitState == DramaGUI.WaitState.None;
+            }
+        }
+
         public override bool IsActive
         {
             get
@@ -100,12 +126,22 @@ namespace Wasteland2AccessibilityMod.States
                     MonoBehaviourSingleton<GUIManager>.GetInstance().IsVendorScreenOpen())
                     return false;
 
-                return IsInAdvanceMode || IsInInputMode;
+                return IsInAdvanceMode || IsInInputMode || IsConversationLoading;
             }
         }
 
         public override bool HandleInput()
         {
+            // Whenever options aren't being shown (advance / loading / between sets), clear the
+            // option tracking so the NEXT option set re-announces its first entry. The state now
+            // stays active through the loading/None gap, so OnActivated no longer fires between
+            // successive option sets to do this reset for us.
+            if (!IsInInputMode)
+            {
+                selectedIndex = -1;
+                lastKnownButtonCount = 0;
+            }
+
             // === Advance mode: voiceover/text playing, Enter to skip ===
             if (IsInAdvanceMode)
             {
@@ -123,6 +159,29 @@ namespace Wasteland2AccessibilityMod.States
                     InputSuppressor.ShouldSuppressUINavigation = true;
                 }
 
+                return false;
+            }
+
+            // === Loading dead zone: conversation is on but not yet ready (waitState None) ===
+            // Right after landing the game spends a moment setting up the conversation. Without
+            // this, arrows/Enter are silent and feel broken. Tell the player to wait and swallow
+            // the keys so they don't leak to the game.
+            if (IsConversationLoading)
+            {
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) ||
+                    Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
+                    Input.GetKeyDown(KeyCode.Home) || Input.GetKeyDown(KeyCode.End))
+                {
+                    float now = Time.time;
+                    if (now - lastLoadingAnnounceTime > 1.5f)
+                    {
+                        lastLoadingAnnounceTime = now;
+                        ScreenReaderManager.SpeakInterrupt("Loading, please wait");
+                    }
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    return true;
+                }
                 return false;
             }
 
@@ -201,12 +260,12 @@ namespace Wasteland2AccessibilityMod.States
         public override void OnActivated()
         {
             IsManagingNavigation = true;
-            selectedIndex = 0;
             lastKnownButtonCount = 0;
 
             // Only refresh options if in input mode (buttons exist)
             if (IsInInputMode)
             {
+                selectedIndex = 0;
                 RefreshOptions();
 
                 if (currentOptions.Count > 0)
@@ -220,7 +279,12 @@ namespace Wasteland2AccessibilityMod.States
             }
             else
             {
-                ModLog.Debug("[ConversationState] Activated in advance mode (Enter to skip)");
+                // Activated in advance or loading mode. Leave selectedIndex < 0 so that when
+                // input mode is later reached *without* a fresh OnActivated (the state now
+                // stays active through the loading/None gap), HandleInput's "new options
+                // appeared" branch announces the first option.
+                selectedIndex = -1;
+                ModLog.Debug("[ConversationState] Activated in advance/loading mode (Enter to skip / wait)");
             }
         }
 
@@ -378,6 +442,9 @@ namespace Wasteland2AccessibilityMod.States
             if (MonoBehaviourSingleton<BubbleTextManager>.HasInstance())
             {
                 MonoBehaviourSingleton<BubbleTextManager>.GetInstance().FlushCurrentBark();
+                // Cancel any pending voiceover-wait read for the line we're skipping, so it
+                // doesn't speak late over the next line on multi-step dialogue.
+                Patches.ConversationHUD_AddText_Patch.CancelPendingSpeak();
                 ScreenReaderManager.SpeakInterrupt("Skipped");
                 ModLog.Debug("[ConversationState] Skipped current dialogue");
             }
