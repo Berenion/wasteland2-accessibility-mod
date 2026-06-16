@@ -130,10 +130,8 @@ namespace Wasteland2AccessibilityMod.Helpers
                 else
                     parts.Add($"{name}, {value}");
 
-                // Buffed/debuffed (compare current pcStats value vs template base)
-                string buffState = GetAttributeBuffState(editor);
-                if (!string.IsNullOrEmpty(buffState))
-                    parts.Add(buffState);
+                // Buffed/debuffed, naming *why* and always giving the magnitude.
+                AppendAttributeBuffClause(parts, editor);
 
                 // Textual rating from descriptionLabel ("Excellent" / "Good" / "Average" / "Poor")
                 if (editor.descriptionLabel != null && !string.IsNullOrEmpty(editor.descriptionLabel.text))
@@ -174,10 +172,24 @@ namespace Wasteland2AccessibilityMod.Helpers
                 else
                     parts.Add($"{name}, level {value}");
 
-                // Buffed / debuffed / unlearned
+                // Buffed / debuffed / unlearned, naming the source for direct skill
+                // modifiers. A skill can also be debuffed indirectly (its cap drops when
+                // the associated attribute is debuffed); that has no flat source here, so
+                // BuildStatSourceClause returns "" and we fall back to the bare word.
                 string state = GetSkillState(editor);
                 if (!string.IsNullOrEmpty(state))
-                    parts.Add(state);
+                {
+                    if (state == "buffed" || state == "debuffed")
+                    {
+                        var tmpl = GetSkillEditorPcStats(editor)?.GetPCTemplate();
+                        string sources = BuildStatSourceClause(tmpl, editor.skillName, state == "debuffed");
+                        parts.Add(string.IsNullOrEmpty(sources) ? state : $"{state} by {sources}");
+                    }
+                    else
+                    {
+                        parts.Add(state);
+                    }
+                }
 
                 parts.Add("skill");
                 return string.Join(", ", parts.ToArray());
@@ -224,26 +236,57 @@ namespace Wasteland2AccessibilityMod.Helpers
         }
 
         /// <summary>
-        /// Returns "buffed" / "debuffed" / "" depending on whether the attribute's current
-        /// value (pcStats with bonuses) differs from the template base value.
+        /// Appends a "buffed by X" / "debuffed by X" clause for an attribute when the game has
+        /// modified it. Detection is by the value label's colour — exactly what the game itself
+        /// displays (CHA_AttributeEditor.SetAttribute sets valueLabel.color to GUIManager's
+        /// buffed/debuffed colour), so it can never disagree with the on-screen state and needs
+        /// no PC/template lookup. The magnitude/source is enrichment: name the flat source(s)
+        /// from the live PC when we can, else fall back to the numeric delta. If neither can be
+        /// resolved we still announce the bare "buffed"/"debuffed" word from the colour.
         /// </summary>
-        private static string GetAttributeBuffState(CHA_AttributeEditor editor)
+        private static void AppendAttributeBuffClause(List<string> parts, CHA_AttributeEditor editor)
         {
             try
             {
-                var tmpl = GetAttributeEditorPcTemplate(editor);
-                if (tmpl == null || string.IsNullOrEmpty(editor.attribute)) return "";
-                var pc = MonoBehaviourSingleton<Game>.HasInstance()
-                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
-                    : null;
-                if (pc == null || pc.pcStats == null) return "";
-                int current = pc.pcStats.GetAttribute(editor.attribute);
-                int baseVal = tmpl.GetAttribute(editor.attribute);
-                if (current > baseVal) return "buffed";
-                if (current < baseVal) return "debuffed";
+                if (string.IsNullOrEmpty(editor.attribute)) return;
+
+                // 1. Authoritative detection: the colour the game painted the value.
+                string word = null;
+                bool wantNegative = false;
+                if (editor.valueLabel != null)
+                {
+                    Color c = editor.valueLabel.color;
+                    if (c == GUIManager.debuffedTextColor) { word = "debuffed"; wantNegative = true; }
+                    else if (c == GUIManager.buffedTextColor) { word = "buffed"; wantNegative = false; }
+                }
+                if (word == null) return;   // not modified
+
+                // 2. Enrichment: named source(s) from the live PC, else numeric magnitude.
+                string sources = "";
+                int delta = 0;
+                var editorTmpl = GetAttributeEditorPcTemplate(editor);
+                PC pc = editorTmpl != null ? editorTmpl.GetPC() : null;
+                if (pc == null || pc.pcStats == null)
+                {
+                    pc = MonoBehaviourSingleton<Game>.HasInstance()
+                        ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                        : null;
+                }
+                if (pc != null && pc.pcStats != null)
+                {
+                    PCTemplate liveTmpl = pc.pcStats.GetPCTemplate();
+                    if (liveTmpl != null)
+                    {
+                        delta = pc.pcStats.GetAttribute(editor.attribute) - liveTmpl.GetAttribute(editor.attribute);
+                        sources = BuildStatSourceClause(liveTmpl, editor.attribute, wantNegative);
+                    }
+                }
+                if (string.IsNullOrEmpty(sources) && delta != 0)
+                    sources = Mathf.Abs(delta).ToString();   // numeric fallback when no flat source is nameable
+
+                parts.Add(string.IsNullOrEmpty(sources) ? word : $"{word} by {sources}");
             }
-            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] GetAttributeBuffState failed: {ex.Message}"); }
-            return "";
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] AppendAttributeBuffClause failed: {ex.Message}"); }
         }
 
         /// <summary>
@@ -292,6 +335,127 @@ namespace Wasteland2AccessibilityMod.Helpers
             return "";
         }
 
+        /// <summary>
+        /// Names the active sources moving a stat in the given direction so a
+        /// "debuffed"/"buffed" announcement can explain *why*. Scans the same three
+        /// modifier sources PCStats.RecalculateAllStats sums — status effects,
+        /// equipment, and active traits — for any flat contribution to <paramref name="statName"/>.
+        /// Returns e.g. "Radiation Sickness minus 2, Leather Armor minus 1", or "" when
+        /// no concrete flat source is found (e.g. the debuff comes from a trait percent
+        /// modifier or, for skills, an attribute-cap drop the game applies separately).
+        /// </summary>
+        /// <param name="wantNegative">true to list debuff sources (negative), false for buffs (positive).</param>
+        public static string BuildStatSourceClause(PCTemplate template, string statName, bool wantNegative)
+        {
+            if (template == null || string.IsNullOrEmpty(statName)) return "";
+            var sources = new List<string>();
+
+            // --- Status effects (radiation, injuries, drugs, etc.) ---
+            try
+            {
+                if (template.statusEffects != null)
+                {
+                    foreach (var eff in template.statusEffects)
+                    {
+                        if (eff == null || eff.statEffects == null) continue;
+                        int amt = 0;
+                        foreach (var se in eff.statEffects)
+                            if (se != null && se.statName == statName) amt += se.amount;
+                        if (Wants(amt, wantNegative))
+                            sources.Add(FormatStatSource(EffectDisplayName(eff), amt));
+                    }
+                }
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildStatSourceClause status-effect section failed: {ex.Message}"); }
+
+            // --- Equipment (armor/weapon penalties or bonuses) ---
+            try
+            {
+                if (template.equipment != null)
+                {
+                    for (int i = 0; i < template.equipment.Length; i++)
+                    {
+                        // Slots 9 and 10 are skipped by GetEquipmentBonus itself.
+                        if (i == 9 || i == 10) continue;
+                        var eq = template.equipment[i];
+                        if (eq == null) continue;
+                        int bonus = eq.GetBonus(statName);
+                        if (Wants(bonus, wantNegative))
+                            sources.Add(FormatStatSource(EquipmentDisplayName(eq), bonus));
+                    }
+                }
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildStatSourceClause equipment section failed: {ex.Message}"); }
+
+            // --- Active traits / quirks ---
+            try
+            {
+                var traits = template.GetActiveTraits();
+                if (traits != null)
+                {
+                    foreach (var t in traits)
+                    {
+                        if (t == null) continue;
+                        int amt = t.GetStat(statName);
+                        if (Wants(amt, wantNegative))
+                            sources.Add(FormatStatSource(TraitDisplayName(t), amt));
+                    }
+                }
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] BuildStatSourceClause trait section failed: {ex.Message}"); }
+
+            return string.Join(", ", sources.ToArray());
+        }
+
+        private static bool Wants(int amount, bool wantNegative)
+        {
+            if (amount == 0) return false;
+            return wantNegative ? amount < 0 : amount > 0;
+        }
+
+        private static string FormatStatSource(string name, int amount)
+        {
+            if (string.IsNullOrEmpty(name)) name = "unknown source";
+            string sign = amount > 0 ? "plus" : "minus";
+            return $"{name} {sign} {Math.Abs(amount)}";
+        }
+
+        private static string EffectDisplayName(StatusEffect eff)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(eff.displayName))
+                {
+                    string n = UITextExtractor.CleanText(Language.Localize(eff.displayName, false, false, string.Empty));
+                    if (!string.IsNullOrEmpty(n)) return n;
+                }
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] EffectDisplayName failed: {ex.Message}"); }
+            return eff != null ? eff.name : null;
+        }
+
+        private static string EquipmentDisplayName(ItemInstance_Equipment eq)
+        {
+            try
+            {
+                if (eq.template != null && !string.IsNullOrEmpty(eq.template.displayName))
+                    return UITextExtractor.CleanText(Language.Localize(eq.template.displayName, false, false, string.Empty));
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] EquipmentDisplayName failed: {ex.Message}"); }
+            return null;
+        }
+
+        private static string TraitDisplayName(Trait t)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(t.displayName))
+                    return UITextExtractor.CleanText(Language.Localize(t.displayName, false, false, string.Empty));
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CharacterAnnouncementHelper] TraitDisplayName failed: {ex.Message}"); }
+            return null;
+        }
+
         public static string GetTraitEditorAnnouncement(CHA_TraitEditor editor)
         {
             EnsureReflectionCached();
@@ -313,6 +477,13 @@ namespace Wasteland2AccessibilityMod.Helpers
                     parts.Add(availability);
                 else
                     parts.Add(isChecked ? "selected" : "not selected");
+
+                // Inline the short effects text so a quirk reads as "Name, available, +1
+                // Intelligence, quirk" — the player can tell what it does without pressing I
+                // (which still opens the full breakdown for the longer details).
+                string inlineEffects = GetTraitInlineEffects(trait);
+                if (!string.IsNullOrEmpty(inlineEffects))
+                    parts.Add(inlineEffects);
 
                 parts.Add("quirk");
                 return string.Join(", ", parts.ToArray());
@@ -344,6 +515,35 @@ namespace Wasteland2AccessibilityMod.Helpers
             if (editor.nameLabel != null && !string.IsNullOrEmpty(editor.nameLabel.text) && string.IsNullOrEmpty(name))
                 name = UITextExtractor.CleanText(editor.nameLabel.text);
             return string.IsNullOrEmpty(name) ? "Unknown trait" : name;
+        }
+
+        /// <summary>
+        /// Short, one-line effects text for a trait/quirk, spoken inline on its navigation
+        /// announcement. Prefers the concise effectsDescription (the mechanical summary,
+        /// e.g. "+1 to Intelligence"); falls back to the flavour description. Newlines are
+        /// flattened so it stays a single spoken clause. Returns "" for the "no quirk"
+        /// placeholder or when neither field is set.
+        /// </summary>
+        private static string GetTraitInlineEffects(Trait trait)
+        {
+            if (trait == null) return "";
+            try
+            {
+                string text = "";
+                if (!string.IsNullOrEmpty(trait.effectsDescription))
+                    text = UITextExtractor.CleanText(
+                        Language.Localize(trait.effectsDescription, false, false, string.Empty));
+                if (string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(trait.description))
+                    text = UITextExtractor.CleanText(
+                        Language.Localize(trait.description, false, false, string.Empty));
+                if (string.IsNullOrEmpty(text)) return "";
+                return text.Replace("\r\n", " ").Replace("\n", " ").Trim();
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[CharacterAnnouncementHelper] Error building inline trait effects: {ex.Message}");
+                return "";
+            }
         }
 
         /// <summary>

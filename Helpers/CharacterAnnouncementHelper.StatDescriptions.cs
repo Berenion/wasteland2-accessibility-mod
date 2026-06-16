@@ -69,15 +69,24 @@ namespace Wasteland2AccessibilityMod.Helpers
                 string name = UITextExtractor.CleanText(Language.Localize(baseStat.displayName, false, false, string.Empty));
                 string fullDesc = UITextExtractor.CleanText(Language.Localize(baseStat.description, false, false, string.Empty));
 
-                lines.Add(name);
-                if (!string.IsNullOrEmpty(levelText))
-                    lines.Add(levelText);
-                if (!string.IsNullOrEmpty(shortDesc) && shortDesc != name)
-                    lines.Add(shortDesc);
-                if (!string.IsNullOrEmpty(fullDesc))
-                    lines.Add(fullDesc);
+                // Combine the short header fields (name, level, rating) into one opening
+                // line instead of three separate one-word lines, e.g. "Coordination, 6, Good".
+                var header = new List<string> { name };
+                if (!string.IsNullOrEmpty(levelText)) header.Add(levelText);
+                if (!string.IsNullOrEmpty(shortDesc) && shortDesc != name) header.Add(shortDesc);
+                lines.Add(string.Join(", ", header.ToArray()));
 
-                // Each ", "-separated section from the game's preview becomes its own line
+                // Split the full description block into individually-browsable sentences
+                // instead of one large line the player has to absorb in a single read.
+                if (!string.IsNullOrEmpty(fullDesc))
+                    AppendSentences(lines, fullDesc);
+
+                // What this stat already gives at its current level (e.g. "+5% Hit, +1 AP"),
+                // so the player can hear the per-level effect rather than infer it.
+                string currentEffects = BuildCurrentLevelPreview(characteristicName, currentLevel, isAttribute, isSkill);
+                AppendSplit(lines, currentEffects);
+
+                // Each ", "-separated section from the game's +1 preview becomes its own line
                 string preview = BuildNextLevelPreview(characteristicName, currentLevel, isAttribute, isSkill);
                 AppendSplit(lines, preview);
 
@@ -125,6 +134,39 @@ namespace Wasteland2AccessibilityMod.Helpers
                 if (string.IsNullOrEmpty(p)) continue;
                 lines.Add(p);
             }
+        }
+
+        /// <summary>
+        /// Splits a prose description block into one line per sentence so the player can
+        /// browse it Up/Down instead of hearing one long uninterrupted read. Sentence
+        /// boundaries are "period/question/exclamation followed by whitespace"; a short
+        /// single-sentence description stays as one line.
+        /// </summary>
+        private static void AppendSentences(List<string> lines, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            string flat = text.Replace("\r\n", " ").Replace("\n", " ").Trim();
+            if (flat.Length == 0) return;
+
+            var current = new System.Text.StringBuilder();
+            for (int i = 0; i < flat.Length; i++)
+            {
+                char c = flat[i];
+                current.Append(c);
+                bool isTerminator = c == '.' || c == '!' || c == '?';
+                bool nextIsSpace = i + 1 >= flat.Length || char.IsWhiteSpace(flat[i + 1]);
+                // Avoid splitting on a decimal point like "1.6" (digit on both sides).
+                bool decimalPoint = c == '.' && i > 0 && char.IsDigit(flat[i - 1])
+                                    && i + 1 < flat.Length && char.IsDigit(flat[i + 1]);
+                if (isTerminator && nextIsSpace && !decimalPoint)
+                {
+                    string sentence = current.ToString().Trim();
+                    if (sentence.Length > 0) lines.Add(sentence);
+                    current.Length = 0;
+                }
+            }
+            string tail = current.ToString().Trim();
+            if (tail.Length > 0) lines.Add(tail);
         }
 
         // ========== Description Panel Previews ==========
@@ -177,12 +219,40 @@ namespace Wasteland2AccessibilityMod.Helpers
         /// </summary>
         private static string BuildNextLevelPreview(string statName, int currentLevel, bool isAttribute, bool isSkill)
         {
+            int nextLevel = Mathf.Clamp(currentLevel + 1, 1, 10);
+            // Skills carry the level in the label (the game's header is stripped); attributes
+            // keep the game's own "<Attribute> Level N" header, which it builds correctly.
+            return BuildLevelPreview(statName, nextLevel, isAttribute, isSkill,
+                isSkill ? $"Next level {nextLevel}" : "Next level");
+        }
+
+        /// <summary>
+        /// Returns the effects the stat already grants at its current level (e.g.
+        /// "At level 6: +5% Hit, +1 AP"), built the same way as the +1 preview but at the
+        /// current level. Lets the player hear the concrete per-level effect instead of
+        /// inferring it from the "what increases when this increases" prose.
+        /// </summary>
+        private static string BuildCurrentLevelPreview(string statName, int currentLevel, bool isAttribute, bool isSkill)
+        {
+            int level = Mathf.Clamp(currentLevel, 1, 10);
+            return BuildLevelPreview(statName, level, isAttribute, isSkill, $"At level {level}");
+        }
+
+        /// <summary>
+        /// Shared core: invokes the description panel's BuildAttrUnlockString /
+        /// BuildSkillUnlockString at an explicit level, cleans the result into a
+        /// comma-joined delta list, and prefixes the given label ("<label>: ...").
+        /// Returns "" when nothing applies. The skill path strips the game's "[b]...[/b]"
+        /// header (whose level the game wrongly recomputes from the party leader); the
+        /// attribute path keeps the game's correctly-built header.
+        /// </summary>
+        private static string BuildLevelPreview(string statName, int level, bool isAttribute, bool isSkill, string label)
+        {
             try
             {
                 var panel = FindAnyDescriptionPanel();
                 if (panel == null) return "";
 
-                int nextLevel = Mathf.Clamp(currentLevel + 1, 1, 10);
                 string raw = "";
 
                 if (isAttribute)
@@ -190,21 +260,15 @@ namespace Wasteland2AccessibilityMod.Helpers
                     if (descPanelBuildAttrUnlockMethod == null) return "";
                     var attr = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetAttribute(statName);
                     if (attr == null) return "";
-                    raw = descPanelBuildAttrUnlockMethod.Invoke(panel, new object[] { attr, nextLevel }) as string;
+                    raw = descPanelBuildAttrUnlockMethod.Invoke(panel, new object[] { attr, level }) as string;
                 }
                 else if (isSkill)
                 {
                     if (descPanelBuildSkillUnlockMethod == null) return "";
                     var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(statName);
                     if (skill == null) return "";
-                    raw = descPanelBuildSkillUnlockMethod.Invoke(panel, new object[] { skill, nextLevel }) as string;
+                    raw = descPanelBuildSkillUnlockMethod.Invoke(panel, new object[] { skill, level }) as string;
 
-                    // The game's BuildSkillUnlockString prefixes a "<Skill> Level N" header whose
-                    // level it recomputes from the party leader (GetFirstSelectedPC), ignoring the
-                    // level we pass in — so for any non-leader ranger that header shows the wrong
-                    // level (e.g. "Level 1" while this ranger is actually at level 4). Strip the
-                    // "[b]...[/b]" header here; the delta lines after it are computed from the level
-                    // we passed and stay correct. We supply the right level via our own label below.
                     if (!string.IsNullOrEmpty(raw))
                     {
                         int headerEnd = raw.IndexOf("[/b]");
@@ -218,9 +282,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                 while (clean.Contains(", , ")) clean = clean.Replace(", , ", ", ");
                 clean = clean.Trim(',', ' ');
                 if (string.IsNullOrEmpty(clean)) return "";
-                // Skills carry the level in our label (the game header was stripped above); attributes
-                // keep the game's own "<Attribute> Level N" header, which it builds correctly.
-                return (isSkill ? $"Next level {nextLevel}: " : "Next level: ") + clean;
+                return label + ": " + clean;
             }
             catch (Exception ex)
             {
