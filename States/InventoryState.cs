@@ -111,31 +111,31 @@ namespace Wasteland2AccessibilityMod.States
                 if (guiManager.IsItemInfoScreenOpen()) return false;
 
                 // Yield when ModItemMenu (weapon mod attachment popup) is open
-                var modItemMenu = UnityEngine.Object.FindObjectOfType<ModItemMenu>();
+                var modItemMenu = Helpers.SceneQueryCache.Find<ModItemMenu>();
                 if (modItemMenu != null && modItemMenu.gameObject.activeInHierarchy) return false;
 
                 // Yield when ModalMessageMenu is open (e.g. mod confirmation dialog)
                 // This ensures inventory rebuilds after the dialog closes and items are consumed
-                var modalMenu = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
+                var modalMenu = Helpers.SceneQueryCache.Find<ModalMessageMenu>();
                 if (modalMenu != null && modalMenu.gameObject.activeInHierarchy) return false;
 
                 // Yield when the field-strip result popup is open (ItemResultState handles it).
                 // Otherwise this state re-activates the same frame the popup opens and its
                 // OnActivated announcement interrupts the strip result. On close, we re-activate
                 // and re-announce the focused item, which is the desired feedback.
-                var resultMenu = UnityEngine.Object.FindObjectOfType<PopupItemResultMenu>();
+                var resultMenu = Helpers.SceneQueryCache.Find<PopupItemResultMenu>();
                 if (resultMenu != null && resultMenu.gameObject.activeInHierarchy) return false;
 
                 // Check for PopupInventoryMenu (loot containers) FIRST — loot takes priority
                 // because CharacterInfoMenu can coexist and would shadow the popup check
-                var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+                var popupInv = Helpers.SceneQueryCache.Find<PopupInventoryMenu>();
                 if (popupInv != null && popupInv.gameObject.activeInHierarchy)
                 {
                     return true;
                 }
 
                 // Check for CharacterInfoMenu with inventory panel active
-                var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+                var charInfoMenu = Helpers.SceneQueryCache.Find<CharacterInfoMenu>();
                 if (charInfoMenu != null && charInfoMenu.gameObject.activeInHierarchy)
                 {
                     var chaInvPanel = charInfoMenu.GetComponentInChildren<CHA_InventoryPanel>();

@@ -269,7 +269,7 @@ namespace Wasteland2AccessibilityMod.States
             // some callers (e.g. PassphraseInventoryObject_Sturdy.OnKeypadEnter) create the
             // modal via CreateMessageMenu() without calling AddScreen, so the modal never
             // appears in GUIManager.screens even though it is visible and interactive.
-            var modal = UnityEngine.Object.FindObjectOfType<ModalMessageMenu>();
+            var modal = Helpers.SceneQueryCache.Find<ModalMessageMenu>();
             // ModalInputMenu (custom-keyword / password text entry) is owned by KeywordEntryState,
             // which needs higher priority for typing. Don't treat it as a generic yes/no modal.
             if (modal is ModalInputMenu) return false;
@@ -294,13 +294,13 @@ namespace Wasteland2AccessibilityMod.States
 
         private bool IsTutorialPopupMenuOpen()
         {
-            var popup = UnityEngine.Object.FindObjectOfType<TutorialPopupMenu>();
+            var popup = Helpers.SceneQueryCache.Find<TutorialPopupMenu>();
             return popup != null && popup.gameObject.activeInHierarchy;
         }
 
         private bool IsPOIPanelOpen()
         {
-            var panel = UnityEngine.Object.FindObjectOfType<HUD_POIPanel>();
+            var panel = Helpers.SceneQueryCache.Find<HUD_POIPanel>();
             return panel != null && panel.gameObject.activeInHierarchy && !panel.isClosing;
         }
 

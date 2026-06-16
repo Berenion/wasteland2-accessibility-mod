@@ -81,12 +81,12 @@ namespace Wasteland2AccessibilityMod.Core
                 return false;
 
             // Loot containers (most dangerous — player standing over a body)
-            var popupInv = Object.FindObjectOfType<PopupInventoryMenu>();
+            var popupInv = Helpers.SceneQueryCache.Find<PopupInventoryMenu>();
             if (popupInv != null && popupInv.gameObject.activeInHierarchy)
                 return true;
 
             // Player inventory / character info screen
-            var charInfo = Object.FindObjectOfType<CharacterInfoMenu>();
+            var charInfo = Helpers.SceneQueryCache.Find<CharacterInfoMenu>();
             if (charInfo != null && charInfo.gameObject.activeInHierarchy)
                 return true;
 

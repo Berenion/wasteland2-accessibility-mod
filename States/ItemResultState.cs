@@ -33,7 +33,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             get
             {
-                var menu = UnityEngine.Object.FindObjectOfType<PopupItemResultMenu>();
+                var menu = Helpers.SceneQueryCache.Find<PopupItemResultMenu>();
                 return menu != null && menu.gameObject.activeInHierarchy;
             }
         }

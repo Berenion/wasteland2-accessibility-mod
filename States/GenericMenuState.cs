@@ -4,6 +4,7 @@ using System.Reflection;
 using MelonLoader;
 using UnityEngine;
 using Wasteland2AccessibilityMod.Core;
+using Wasteland2AccessibilityMod.Helpers;
 
 namespace Wasteland2AccessibilityMod.States
 {
@@ -104,17 +105,17 @@ namespace Wasteland2AccessibilityMod.States
                     return false;
 
                 // Active when ModItemMenu (weapon mod attachment popup) is open, even over inventory
-                var modItemMenu = UnityEngine.Object.FindObjectOfType<ModItemMenu>();
+                var modItemMenu = SceneQueryCache.Find<ModItemMenu>();
                 bool modItemMenuOpen = modItemMenu != null && modItemMenu.gameObject.activeInHierarchy;
 
                 // Not active when CharacterInfoMenu (in-game) inventory is showing (unless an overlay like ItemInfoMenu is open)
-                var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+                var charInfoMenu = SceneQueryCache.Find<CharacterInfoMenu>();
                 if (charInfoMenu != null && charInfoMenu.gameObject.activeInHierarchy
                     && !guiManager.IsItemInfoScreenOpen() && !modItemMenuOpen)
                     return false;
 
                 // Not active when PopupInventoryMenu is showing (unless an overlay like ItemInfoMenu is open)
-                var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+                var popupInv = SceneQueryCache.Find<PopupInventoryMenu>();
                 if (popupInv != null && popupInv.gameObject.activeInHierarchy
                     && !guiManager.IsItemInfoScreenOpen() && !modItemMenuOpen)
                     return false;
@@ -1144,7 +1145,7 @@ namespace Wasteland2AccessibilityMod.States
 
         private GUIScreen FindTopScreen()
         {
-            GUIScreen[] screens = UnityEngine.Object.FindObjectsOfType<GUIScreen>();
+            GUIScreen[] screens = SceneQueryCache.GUIScreens();
             foreach (var screen in screens)
             {
                 if (screen == null || !screen.gameObject.activeInHierarchy) continue;

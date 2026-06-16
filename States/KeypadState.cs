@@ -35,7 +35,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             get
             {
-                var menu = UnityEngine.Object.FindObjectOfType<KeypadMenu>();
+                var menu = Helpers.SceneQueryCache.Find<KeypadMenu>();
                 return menu != null && menu.gameObject.activeInHierarchy;
             }
         }

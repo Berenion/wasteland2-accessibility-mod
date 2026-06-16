@@ -98,7 +98,7 @@ namespace Wasteland2AccessibilityMod.States
                 // Yield to GenericMenuState when an overlay screen is open
                 if (guiManager.IsItemInfoScreenOpen()) return false;
 
-                var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+                var charInfoMenu = Helpers.SceneQueryCache.Find<CharacterInfoMenu>();
                 if (charInfoMenu == null || !charInfoMenu.gameObject.activeInHierarchy)
                     return false;
 
