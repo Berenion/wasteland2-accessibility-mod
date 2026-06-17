@@ -82,23 +82,69 @@ namespace Wasteland2AccessibilityMod.States
         {
             get
             {
-                if (!Drama.isConversationOn) return false;
-                if (!MonoBehaviourSingleton<ConversationHUD>.HasInstance()) return false;
-                if (DramaGUI.waitState != DramaGUI.WaitState.ForInput) return false;
+                if (!Drama.isConversationOn ||
+                    !MonoBehaviourSingleton<ConversationHUD>.HasInstance() ||
+                    DramaGUI.waitState != DramaGUI.WaitState.ForInput)
+                {
+                    descBlockedSince = -1f;
+                    return false;
+                }
 
                 var hud = MonoBehaviourSingleton<ConversationHUD>.GetInstance();
-                if (hud == null) return false;
+                if (hud == null)
+                {
+                    descBlockedSince = -1f;
+                    return false;
+                }
 
                 // Don't activate while "Click to Continue" is showing
-                if (hud.clickToContinue != null && hud.clickToContinue.activeSelf) return false;
+                if (hud.clickToContinue != null && hud.clickToContinue.activeSelf)
+                {
+                    descBlockedSince = -1f;
+                    return false;
+                }
 
-                // Don't activate while description bubble text is active (1-frame race fix)
-                if (VoiceoverHelper.HasActiveDescriptionBubbles()) return false;
+                if (GetButtonCount() == 0)
+                {
+                    descBlockedSince = -1f;
+                    return false;
+                }
 
-                int count = GetButtonCount();
-                return count > 0;
+                // A lingering description bubble normally means the brief window before the
+                // game's "click to continue" prompt appears (BubbleTextManager.Update() sets
+                // it a frame after the buttons are created). Hold off briefly so we don't grab
+                // input mid-description — if a real click-to-continue arrives, the guard above
+                // takes over. But some dramas (e.g. tamed-animal interactions) leave a
+                // decorative description bubble up for the entire input wait with no
+                // click-to-continue ever coming; don't block forever in that case.
+                if (VoiceoverHelper.HasActiveDescriptionBubbles())
+                {
+                    if (descBlockedSince < 0f) descBlockedSince = Time.time;
+                    if (Time.time - descBlockedSince < DescriptionBubbleGraceSeconds) return false;
+                }
+                else
+                {
+                    descBlockedSince = -1f;
+                }
+
+                return true;
             }
         }
+
+        /// <summary>
+        /// How long IsInInputMode tolerates a lingering description bubble before activating
+        /// anyway. Long enough to cover the few-frame button/click-to-continue race, short
+        /// enough that decorative bubbles (tamed-animal "stares back at you") don't lock out
+        /// navigation. See IsInInputMode.
+        /// </summary>
+        private const float DescriptionBubbleGraceSeconds = 0.5f;
+
+        /// <summary>
+        /// Time (Time.time) at which the otherwise-ready input mode first found a description
+        /// bubble blocking it; -1 when not currently blocked. Reset on any frame the ready
+        /// condition isn't met, so the grace only counts continuous blocking.
+        /// </summary>
+        private float descBlockedSince = -1f;
 
         /// <summary>
         /// True while a conversation is on but the game is not yet ready for input or
