@@ -129,6 +129,10 @@ namespace Wasteland2AccessibilityMod.States
                 if (topScreen is KeypadMenu)
                     return false;
 
+                // Not active for the Snake Easter-egg computer - ComputerGameState sonifies it
+                if (topScreen is ComputerMenu)
+                    return false;
+
                 // Active when any other menu is on top (including submenus over MainMenu)
                 return true;
             }

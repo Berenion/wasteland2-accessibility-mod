@@ -145,6 +145,25 @@ namespace Wasteland2AccessibilityMod.Patches
         // doesn't cancel (or get cancelled by) that line's own subtitle read.
         private static int descriptionGeneration = 0;
 
+        // How long the voiceover-wait coroutines tolerate a *pending* voiced bubble (one
+        // tagged AudioConversation with a valid audio ID) that never actually starts
+        // playing before giving up and reading the subtitle anyway.
+        //
+        // Many Director's Cut lines — and every line when the player has no voice audio —
+        // are tagged with a valid audioName but produce no real playback (PlayAudio returns
+        // null, audioRef is never set). HasPendingOrActiveVoicedAudio() reports those as
+        // "pending" forever because it keys off the audioName, not actual playback, and that
+        // includes the line's OWN displayed bubble. Without a cap the read wedged until the
+        // player advanced and the bubble was destroyed — so each line was spoken one step
+        // late ("reads the last line; the new line is silent until you advance").
+        //
+        // Real audio is created synchronously the same Update frame the bubble emits
+        // (BubbleTextManager.Update -> PlayAudio), so a genuinely voiced line is "playing"
+        // within a frame or two — far inside this grace. Keep it short enough that an
+        // unvoiced line reads promptly, long enough to bridge the gap between one clip
+        // ending and the next pending clip starting on truly voiced multi-line dialogue.
+        private const float PendingAudioStartGraceSeconds = 0.6f;
+
         /// <summary>
         /// Cancels any pending voiceover-wait subtitle read. Called when the player
         /// skips/advances the current line so the skipped line isn't spoken afterwards.
@@ -265,13 +284,26 @@ namespace Wasteland2AccessibilityMod.Patches
         /// </summary>
         private static IEnumerator SpeakAfterVoiceoverFinishes(string text, int generation)
         {
-            // Wait until no voiced audio is playing or pending
+            // Wait until no voiced audio is playing or pending. A bubble that is only
+            // *pending* (tagged voiced but never actually plays) is tolerated for at most
+            // PendingAudioStartGraceSeconds, then we read the subtitle anyway — see the
+            // const's comment for why (avoids the one-line-late wedge on unvoiced dialogue).
             float maxWait = 30f; // Safety timeout
             float waited = 0f;
+            float pendingWaited = 0f;
             while (waited < maxWait)
             {
                 if (generation != speakGeneration) yield break;
-                if (!VoiceoverHelper.IsVoiceoverPlaying() && !VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+                if (VoiceoverHelper.IsVoiceoverPlaying())
+                {
+                    pendingWaited = 0f; // real audio playing — reset the pending grace
+                }
+                else if (VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+                {
+                    pendingWaited += 0.2f;
+                    if (pendingWaited >= PendingAudioStartGraceSeconds) break;
+                }
+                else
                 {
                     break;
                 }
@@ -299,10 +331,20 @@ namespace Wasteland2AccessibilityMod.Patches
         {
             float maxWait = 30f; // Safety timeout
             float waited = 0f;
+            float pendingWaited = 0f;
             while (waited < maxWait)
             {
                 if (generation != descriptionGeneration) yield break;
-                if (!VoiceoverHelper.IsVoiceoverPlaying() && !VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+                if (VoiceoverHelper.IsVoiceoverPlaying())
+                {
+                    pendingWaited = 0f; // real audio playing — reset the pending grace
+                }
+                else if (VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+                {
+                    pendingWaited += 0.2f;
+                    if (pendingWaited >= PendingAudioStartGraceSeconds) break;
+                }
+                else
                 {
                     break;
                 }
