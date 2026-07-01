@@ -42,7 +42,7 @@ Installing
 
 The release archive mirrors the game's Build folder, so the quickest path is to extract it straight into your Wasteland 2 Build directory after MelonLoader is installed: the mod DLL and Tolk.dll land in the right places. In full:
 
-1. Install MelonLoader 0.5.7. Use MelonLoader.Installer.exe from the 0.5.7 release linked above, not the latest installer (the latest one pulls a newer MelonLoader that crashes). Point it at the folder holding WL2.exe and install. On Steam that folder is ...\steamapps\common\Wasteland 2 Director's Cut\Build\ . If a newer MelonLoader is already installed and the game crashes on launch, delete version.dll, dobby.dll, and the MelonLoader folder from the game directory first, then install 0.5.7.
+1. Install MelonLoader 0.5.7. Use MelonLoader.Installer.exe from the 0.5.7 release linked above, not the latest installer (the latest one pulls a newer MelonLoader that crashes). Point it at the folder holding WL2.exe and install. The installer does not find Wasteland 2 on its own, so use its game selector to browse to WL2.exe yourself rather than waiting for it to appear in a list. On Steam that folder is ...\steamapps\common\Wasteland 2 Director's Cut\Build\ . If a newer MelonLoader is already installed and the game crashes on launch, delete version.dll, dobby.dll, and the MelonLoader folder from the game directory first, then install 0.5.7.
 2. Copy Wasteland2AccessibilityMod.dll into <game>\Mods\ . MelonLoader creates the Mods folder on first launch.
 3. Copy Tolk.dll next to WL2.exe, not into Mods. NVDA users: also put nvdaControllerClient64.dll there.
 4. Start your screen reader, then launch the game.

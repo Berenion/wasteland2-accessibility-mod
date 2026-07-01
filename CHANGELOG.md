@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.7.5-beta] — 2026-07-01
+
+Follow-up to the first public beta: a new settings/help layer, richer announcements, and a batch of fixes from beta feedback.
+
+### Added
+- **Accessibility settings menu** (`Shift+S`) — a modal, navigable on/off list of every mod setting, available anywhere.
+- **Help key** (`Shift+/`) — reads back the controls for the current screen or cursor, with per-context text. Accepts the numpad slash too.
+- Global help/settings hotkeys that work across contexts.
+- Screen-reader support for the weapon field-strip result popup.
+- A loading cue during the conversation pre-input dead zone, so the wait before options appear is no longer silent.
+
+### Changed
+- Enriched buff/debuff and stat announcements in the character screen.
+- Inventory and shop item-info browsers now share one full item-info block, so both read the same detail.
+- Voiced-dialogue handling adds a grace cap for lines that are pending but never play, so announcements aren't held indefinitely.
+- Robustness pass: surface errors instead of swallowing them, de-duplicate repeated announcements, and quiet routine logging.
+- Docs: Tolk.dll is now bundled in the release archive; controls consolidated and hotkey/version references corrected.
+
+### Fixed
+- Menu input lag caused by per-frame scene scans (now cached).
+- Tamed-animal conversation options were not navigable.
+- Main-menu version announcement was being clobbered by focus.
+- Funeral intro now reads the NPC description and the click-to-continue prompt.
+- Pokable door teleporters are revealed regardless of destination fog.
+- Invisible scripting triggers are filtered out of interactable announcements and on-tile lookups.
+- Menu wrap cues, `Home`/`End` coverage, and start-up and scanner behavior.
+
 ## [0.7.0-beta] — 2026-05-28
 
 First public beta of the rewritten accessibility mod. The earlier Xbox-controller-default release has been superseded entirely; this is a different mod sharing only the name.
