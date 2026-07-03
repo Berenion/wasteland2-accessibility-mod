@@ -227,6 +227,9 @@ namespace Wasteland2AccessibilityMod.Core
 
             if (anyStopped)
             {
+                // We speak the confirmation here; keep the auto monitor from echoing it
+                // when it sees the poll-detected stop a moment later.
+                PartyStopMonitor.SuppressNextStop();
                 ScreenReaderManager.SpeakInterrupt("Party stopped");
                 ModLog.Debug("[ExplorationState] Stopped party movement");
             }

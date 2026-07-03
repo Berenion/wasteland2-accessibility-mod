@@ -109,6 +109,9 @@ namespace Wasteland2AccessibilityMod
 
             // Track whether FOW has had an unpaused frame to converge since last LoadMap
             FOWHelper.Tick();
+
+            // Announce when the party finishes an ordered move (exploration / world map)
+            PartyStopMonitor.Tick();
         }
 
         public override void OnDeinitializeMelon()

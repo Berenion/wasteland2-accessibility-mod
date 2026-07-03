@@ -12,6 +12,7 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Entry<bool> useTileDistancesEntry;
         private static MelonPreferences_Entry<bool> conveyElevationEntry;
         private static MelonPreferences_Entry<bool> announceLineOfSightEntry;
+        private static MelonPreferences_Entry<bool> announcePartyStoppedEntry;
         private static MelonPreferences_Entry<bool> debugLoggingEntry;
 
         public static bool UseClockPositions { get; private set; } = false;
@@ -19,6 +20,7 @@ namespace Wasteland2AccessibilityMod
         public static bool UseTileDistances { get; private set; } = true;
         public static bool ConveyElevation { get; private set; } = true;
         public static bool AnnounceLineOfSight { get; private set; } = false;
+        public static bool AnnouncePartyStopped { get; private set; } = true;
         public static bool DebugLogging { get; private set; } = false;
 
         /// <summary>
@@ -105,6 +107,13 @@ namespace Wasteland2AccessibilityMod
                 "If true, the exploration tile cursor also announces whether the tile is within line of sight of the selected character (clear physics LOS within that character's perception range)."
             );
 
+            announcePartyStoppedEntry = configCategory.CreateEntry(
+                "AnnouncePartyStopped",
+                true,
+                "Announce Party Stopped",
+                "If true, announces when the party finishes an ordered move and comes to rest during exploration or on the world map. When party members move separately (ungrouped), the member that stopped is named."
+            );
+
             debugLoggingEntry = configCategory.CreateEntry(
                 "DebugLogging",
                 false,
@@ -123,10 +132,11 @@ namespace Wasteland2AccessibilityMod
                 new Setting("Distance units", () => UseTileDistances, FlipTileDistances, "tiles", "meters"),
                 new Setting("Elevation announcements", () => ConveyElevation, FlipConveyElevation, "on", "off"),
                 new Setting("Line of sight announcements", () => AnnounceLineOfSight, FlipLineOfSight, "on", "off"),
+                new Setting("Party stopped notification", () => AnnouncePartyStopped, FlipPartyStopped, "on", "off"),
                 new Setting("Debug logging", () => DebugLogging, FlipDebugLogging, "on", "off"),
             };
 
-            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Debug logging: {DebugLogging}");
+            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Party stopped: {AnnouncePartyStopped}, Debug logging: {DebugLogging}");
         }
 
         public static void LoadConfig()
@@ -136,6 +146,7 @@ namespace Wasteland2AccessibilityMod
             UseTileDistances = useTileDistancesEntry.Value;
             ConveyElevation = conveyElevationEntry.Value;
             AnnounceLineOfSight = announceLineOfSightEntry.Value;
+            AnnouncePartyStopped = announcePartyStoppedEntry.Value;
             DebugLogging = debugLoggingEntry.Value;
         }
 
@@ -175,6 +186,13 @@ namespace Wasteland2AccessibilityMod
         {
             AnnounceLineOfSight = !AnnounceLineOfSight;
             announceLineOfSightEntry.Value = AnnounceLineOfSight;
+            configCategory.SaveToFile();
+        }
+
+        private static void FlipPartyStopped()
+        {
+            AnnouncePartyStopped = !AnnouncePartyStopped;
+            announcePartyStoppedEntry.Value = AnnouncePartyStopped;
             configCategory.SaveToFile();
         }
 

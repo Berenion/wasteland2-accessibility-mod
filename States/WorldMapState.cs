@@ -652,6 +652,9 @@ namespace Wasteland2AccessibilityMod.States
             var agent = party.GetComponent<NavMeshAgent>();
             if (agent != null && agent.hasPath)
             {
+                // We speak the confirmation here; keep the auto monitor from echoing it
+                // when it sees the poll-detected stop a moment later.
+                PartyStopMonitor.SuppressNextStop();
                 party.StopAndClear();
                 ScreenReaderManager.SpeakInterrupt("Party stopped");
                 ModLog.Debug("[WorldMapState] Party stopped");
