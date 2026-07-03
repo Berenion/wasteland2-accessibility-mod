@@ -363,7 +363,72 @@ namespace Wasteland2AccessibilityMod
             return false;
         }
 
+        /// <summary>
+        /// Every scanner-visible interactable right now — all categories plus party
+        /// members — unsorted, applying the same visibility / FOW / perception /
+        /// interaction-surface / looted-container filters the cycling scanner uses.
+        /// Callers order it themselves (e.g. the tile cursor sorts by distance from the
+        /// cursor rather than from the player). Ignores the current category filter on
+        /// purpose: this is the "what's around me" scan, not the cycling view.
+        /// </summary>
+        public static List<InteractableNexus> GetAllVisibleInteractables()
+        {
+            var result = new List<InteractableNexus>();
+            FOWHelper.UpdateActivationTracking();
+
+            AddPartyNexuses(result);
+
+            foreach (var nexus in InteractableNexus.interactables)
+            {
+                if (nexus == null) continue;
+                if (!nexus.isVisible) continue;
+                if (nexus.transform == null) continue;
+                if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) continue;
+                if (FOWHelper.IsPerceptionGated(nexus)) continue;
+                if (!HasInteractionSurface(nexus)) continue;
+                if (IsLootedEmptyContainer(nexus)) continue;
+                result.Add(nexus);
+            }
+
+            return result;
+        }
+
+        /// <summary>Public accessor for an interactable's spoken display name.</summary>
+        public static string GetDisplayName(InteractableNexus nexus)
+        {
+            return nexus == null ? null : GetInteractableName(nexus);
+        }
+
+        /// <summary>
+        /// World position used for distance / direction to an interactable. Prefers the
+        /// instigate point (where the ranger stands to use it); falls back to the transform.
+        /// </summary>
+        public static Vector3 GetNexusPosition(InteractableNexus nexus)
+        {
+            if (nexus == null) return Vector3.zero;
+            Vector3 p = nexus.InstigatePoint;
+            if (p == Vector3.zero && nexus.transform != null) return nexus.transform.position;
+            return p;
+        }
+
         private static void UpdatePartyList(Vector3 playerPos)
+        {
+            AddPartyNexuses(filteredInteractables);
+
+            // Sort by distance
+            filteredInteractables = filteredInteractables
+                .OrderBy(n => Vector3.Distance(n.transform.position, playerPos))
+                .ToList();
+
+            ModLog.Debug($"Filtered party members: {filteredInteractables.Count} found");
+        }
+
+        /// <summary>
+        /// Appends the active party PCs and party followers (as their InteractableNexus)
+        /// to <paramref name="target"/>. They aren't in InteractableNexus.interactables
+        /// while conscious, so both the cycling list and the radius scan pull them here.
+        /// </summary>
+        private static void AddPartyNexuses(List<InteractableNexus> target)
         {
             if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
             var game = MonoBehaviourSingleton<Game>.GetInstance();
@@ -388,7 +453,7 @@ namespace Wasteland2AccessibilityMod
                     }
                     if (nexus != null)
                     {
-                        filteredInteractables.Add(nexus);
+                        target.Add(nexus);
                     }
                 }
             }
@@ -412,17 +477,10 @@ namespace Wasteland2AccessibilityMod
                     }
                     if (nexus != null)
                     {
-                        filteredInteractables.Add(nexus);
+                        target.Add(nexus);
                     }
                 }
             }
-
-            // Sort by distance
-            filteredInteractables = filteredInteractables
-                .OrderBy(n => Vector3.Distance(n.transform.position, playerPos))
-                .ToList();
-
-            ModLog.Debug($"Filtered party members: {filteredInteractables.Count} found");
         }
 
         private static bool MatchesCategory(InteractableNexus nexus, InteractableCategory category)

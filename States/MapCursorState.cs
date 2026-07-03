@@ -27,6 +27,7 @@ namespace Wasteland2AccessibilityMod.States
                    "Grid cursor: arrows move one step, Shift Left and Shift Right change the step size, " +
                    "Ctrl plus an arrow moves until blocked, Tab opens the actions menu, Enter opens the tile context menu, " +
                    "the right bracket key orders the ranger to walk to the cursor, backslash scans the tile, X examines, " +
+                   "L lists everything within the scan radius of the cursor, comma and period shrink and grow that radius, " +
                    "Home jumps to the selected interactable, Shift Home jumps to the party leader, F toggles camera follow. " +
                    "Scanner: Page Up and Page Down cycle nearby interactables, Ctrl Page Up and Ctrl Page Down cycle category, " +
                    "Enter interacts. Always on: F1 to F7 select party members, F10 toggles camera lock, " +
@@ -57,6 +58,15 @@ namespace Wasteland2AccessibilityMod.States
         private const int UNTIL_WALL_MAX_TILES = 100;
         private float lastStepChangeTime = 0f;
         private const float STEP_CHANGE_REPEAT_DELAY = 0.1f;
+
+        // Radius (in tiles) for the "list everything near the cursor" scan (L key),
+        // adjusted with comma / period. Session-scoped like stepSize.
+        private int scanRadius = 10;
+        private const int MIN_SCAN_RADIUS = 2;
+        private const int MAX_SCAN_RADIUS = 40;
+        // Cap on how many distinct names the scan reads before summarising the rest,
+        // so a busy area doesn't produce an unmanageable wall of speech.
+        private const int MAX_SCAN_NAMES = 20;
 
         // Half-diagonal of a grid square — objects within this distance of
         // the node center are considered "on" this tile.
@@ -533,6 +543,25 @@ namespace Wasteland2AccessibilityMod.States
             {
                 WallSonification.Toggle();
                 UpdateWallTones();
+                return true;
+            }
+
+            // L: list every scanner-visible item within the scan radius of the cursor.
+            if (Input.GetKeyDown(KeyCode.L))
+            {
+                AnnounceNearbyScan();
+                return true;
+            }
+
+            // Comma / Period: shrink / grow the scan radius (like Shift+arrows for step size).
+            if (Input.GetKeyDown(KeyCode.Comma))
+            {
+                AdjustScanRadius(-1);
+                return true;
+            }
+            if (Input.GetKeyDown(KeyCode.Period))
+            {
+                AdjustScanRadius(1);
                 return true;
             }
 
@@ -2411,6 +2440,80 @@ namespace Wasteland2AccessibilityMod.States
             string name = UITextExtractor.CleanText(GetPCDisplayName(pc)) ?? "Party";
             string announcement = name + ", " + tileDist + (tileDist == 1 ? " tile " : " tiles ") + direction;
             ScreenReaderManager.SpeakInterrupt(announcement);
+        }
+
+        // --- Nearby scan (L key) ---
+
+        /// <summary>Shrink or grow the scan radius, clamped, and announce the new value.</summary>
+        private void AdjustScanRadius(int delta)
+        {
+            scanRadius = Mathf.Clamp(scanRadius + delta, MIN_SCAN_RADIUS, MAX_SCAN_RADIUS);
+            ScreenReaderManager.SpeakInterrupt($"Scan radius {scanRadius} tiles");
+        }
+
+        /// <summary>
+        /// Reads out every scanner-visible item (interactables, mobs, NPCs, party members)
+        /// within the scan radius of the tile cursor, nearest first. Duplicate names collapse
+        /// into "N Name"; a busy area is capped at MAX_SCAN_NAMES with "and N more".
+        /// </summary>
+        private void AnnounceNearbyScan()
+        {
+            if (!cursorInitialized)
+            {
+                ScreenReaderManager.SpeakInterrupt("Cursor not ready");
+                return;
+            }
+
+            var all = NavigationManager.GetAllVisibleInteractables();
+
+            // Gather items within radius with their tile distance from the cursor.
+            var within = new List<KeyValuePair<InteractableNexus, int>>();
+            foreach (var nexus in all)
+            {
+                if (nexus == null) continue;
+                Vector3 pos = NavigationManager.GetNexusPosition(nexus);
+                int tiles = TileCoordinateSystem.GetTileDistance(cursorPosition, pos);
+                if (tiles > scanRadius) continue;
+                within.Add(new KeyValuePair<InteractableNexus, int>(nexus, tiles));
+            }
+
+            if (within.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt($"Nothing within {scanRadius} tiles of cursor");
+                return;
+            }
+
+            within.Sort((a, b) => a.Value.CompareTo(b.Value)); // nearest first
+
+            // Collapse into "name direction" phrases with counts, keeping first-seen
+            // (nearest) order. Direction is included so two of the same thing in different
+            // directions stay distinct (only same name AND same direction merge).
+            var order = new List<string>();
+            var counts = new Dictionary<string, int>();
+            foreach (var kv in within)
+            {
+                string name = UITextExtractor.CleanText(NavigationManager.GetDisplayName(kv.Key));
+                if (string.IsNullOrEmpty(name)) name = "Object";
+                Vector3 pos = NavigationManager.GetNexusPosition(kv.Key);
+                string dir = DirectionHelper.GetDirectionDescription(cursorPosition, pos);
+                string phrase = string.IsNullOrEmpty(dir) ? name : $"{name} {dir}";
+                if (!counts.ContainsKey(phrase)) { counts[phrase] = 1; order.Add(phrase); }
+                else counts[phrase]++;
+            }
+
+            var parts = new List<string>();
+            int extraGroups = 0;
+            foreach (string phrase in order)
+            {
+                if (parts.Count >= MAX_SCAN_NAMES) { extraGroups++; continue; }
+                parts.Add(counts[phrase] > 1 ? $"{counts[phrase]} {phrase}" : phrase);
+            }
+
+            string body = string.Join(", ", parts.ToArray());
+            if (extraGroups > 0) body += $", and {extraGroups} more";
+
+            ScreenReaderManager.SpeakInterrupt($"{body}, within {scanRadius} tiles of cursor");
+            ModLog.Debug($"[MapCursorState] Scan radius {scanRadius}: {within.Count} items, {order.Count} distinct");
         }
 
         // --- Obstruction Detection ---

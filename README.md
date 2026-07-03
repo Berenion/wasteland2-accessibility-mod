@@ -129,6 +129,7 @@ Exploration, grid cursor:
 - Tab: open the actions menu (skills and usable items) at the cursor.
 - Enter: open the tile's context menu. Or fire/use when a free-aim or item mode is active, or open a single ranger's info if one ranger is on the tile.
 - Backslash: detailed scan of the current tile. X: examine the first examinable object on the tile.
+- L: list every scanner-visible item (interactables, characters, party, loot) within the scan radius of the cursor, nearest first, each with its direction from the cursor. Comma / period: decrease / increase that radius, two to forty tiles (default ten).
 - ]: order the selected ranger to walk to the cursor.
 - Home: jump the cursor to the selected interactable (the one from the scanner). End: distance and direction to it.
 - Shift+Home: jump the cursor to the party leader. Shift+End: distance and direction to the leader.
