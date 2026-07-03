@@ -139,13 +139,21 @@ namespace Wasteland2AccessibilityMod.Core
         }
 
         /// <summary>
-        /// True when a mod text field is currently capturing typed characters (the
-        /// conversation keyword/password box or the save-name field). The global
-        /// settings hotkey defers to these so a typed capital S lands in the field.
+        /// True when a text field is currently capturing typed characters — either one of
+        /// the mod's own fields (conversation keyword/password box, save-name field) or a
+        /// native NGUI input field the game has focused (character rename, etc.). The global
+        /// settings hotkey defers to these so a typed capital S lands in the field instead
+        /// of hijacking the keystroke to open the mod menu.
+        ///
+        /// NGUI tracks the focused input in the static <c>UIInput.selection</c> (set on focus,
+        /// nulled on blur — see UIInput.isSelected), so a non-null value means a game text box
+        /// is live.
         /// </summary>
         private static bool IsTextEntryActive()
         {
-            return KeywordEntryState.blockUIInput || GenericMenuState.IsEditingTextField;
+            return KeywordEntryState.blockUIInput
+                || GenericMenuState.IsEditingTextField
+                || UIInput.selection != null;
         }
 
         /// <summary>

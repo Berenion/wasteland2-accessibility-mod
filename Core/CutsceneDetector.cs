@@ -11,6 +11,15 @@ namespace Wasteland2AccessibilityMod.Core
     ///
     /// Movie state comes from the game's own EventInfo_MovieStarted/Ended events.
     /// Drama cutscene state is read directly from Drama.isCutsceneOn.
+    ///
+    /// Exception: an active conversation is never treated as a bypass cutscene, even
+    /// though many conversations run under cutsceneStart() to freeze party movement
+    /// (e.g. the AZ10_RoadBlock toll shakedown with Spyke Alpha). Those are interactive
+    /// — the player must be able to navigate the response options with the arrow keys —
+    /// so ConversationState has to keep receiving input. Without this carve-out the
+    /// router and the InputSuppressor patches step aside for the whole conversation and
+    /// the dialogue options are unreadable and unnavigable. A real fullscreen movie is
+    /// tracked separately via isMoviePlaying and is unaffected.
     /// </summary>
     public static class CutsceneDetector
     {
@@ -22,7 +31,8 @@ namespace Wasteland2AccessibilityMod.Core
             get
             {
                 EnsureSubscribed();
-                return isMoviePlaying || Drama.isCutsceneOn;
+                if (isMoviePlaying) return true;
+                return Drama.isCutsceneOn && !Drama.isConversationOn;
             }
         }
 
