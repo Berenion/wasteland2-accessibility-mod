@@ -21,7 +21,10 @@ What it does
 
 - Speaks UI, dialogue, combat events, item info, and world objects through NVDA, JAWS, or Windows SAPI (via the Tolk library).
 - Full keyboard navigation in every screen: menus, character creation, inventory, loot, shops, conversations, the world map, combat, and dialogs.
-- A virtual grid cursor for exploration and combat: move tile by tile, hear what is on each tile, and act on it.
+- A virtual grid cursor for exploration and combat: move tile by tile, hear what is on each tile, and act on it. Optionally confine it to walkable ground so it stops at walls.
+- A scanner that cycles nearby interactables by category, plus a nearby-scan key (L) that lists everything within an adjustable radius of the cursor, each with its direction.
+- Optional sound cues when a new item enters the scanner, one per category, with a glossary in the settings menu to learn and preview them.
+- A "party stopped" notification when an ordered move finishes, in exploration and on the world map; ungrouped members are named individually.
 - A world-map review cursor with POI and radiation alerts, water-cost estimates, and POI cycling.
 - Tactical pause (Space) that freezes time outside combat. Auto-pauses for inventory, loot, and vendor screens.
 - Camera rotation lock so "up" stays north (F10 toggles it).

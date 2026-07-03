@@ -17,7 +17,7 @@ namespace Wasteland2AccessibilityMod
         /// Single source of truth for the mod version. Used by the MelonInfo
         /// attribute, the startup banner, and the spoken launch announcement.
         /// </summary>
-        public const string Version = "0.7.5";
+        public const string Version = "0.8.0";
 
         public override void OnInitializeMelon()
         {

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.0-beta] — 2026-07-03
+
+New exploration awareness features (sound cues, nearby scan, movement notifications), a cursor option, and conversation fixes.
+
+### Added
+- **Scanner category sounds** — a short cue plays when a new item enters the exploration scanner, with a distinct sound per category (characters, containers, objects, exits, examine, loot, and a generic cue for miscellaneous). Party members get no cue. Toggle in settings.
+- **Sound glossary** — the last item in the `Shift+S` settings menu opens a preview browser: arrow through each scanner sound to hear it and what it means.
+- **Nearby scan** (`L`) — lists every scanner-visible item within a radius of the grid cursor, nearest first, each with its direction. Comma/period shrink and grow the radius.
+- **Party stopped notification** — announces when the party finishes an ordered move and comes to rest, in exploration and on the world map. Ungrouped members that stop are named individually. Toggle in settings.
+- **Cursor stops at walls** (setting) — optionally confine the exploration grid cursor to walkable ground instead of letting a single step pass onto wall/terrain tiles.
+- The NVDA controller client (`nvdaControllerClient64.dll`) is now bundled in the release archive, so NVDA users get speech without fetching it separately.
+
+### Fixed
+- Cutscene-driven conversations (e.g. the radio-tower toll shakedown) were unreadable and unnavigable — dialogue options now read and arrow-key navigation works during them.
+- Multi-step dialogue no longer says "Loading, please wait" while waiting for the player to advance; arrows say "Press Enter to continue" and Enter advances the line.
+- Attribute debuff sources are announced reliably on the character sheet.
+
 ## [0.7.5-beta] — 2026-07-01
 
 Follow-up to the first public beta: a new settings/help layer, richer announcements, and a batch of fixes from beta feedback.
