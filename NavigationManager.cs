@@ -400,6 +400,25 @@ namespace Wasteland2AccessibilityMod
         }
 
         /// <summary>
+        /// The single category an interactable belongs to for cueing, chosen by priority
+        /// so an item that could match several lands in one bucket. Party (PCs) is reported
+        /// as-is so callers can skip it; everything that matches no named subcategory falls
+        /// through to Misc (the generic bucket). Mirrors how the cycling scanner classifies.
+        /// </summary>
+        public static InteractableCategory GetPrimaryCategory(InteractableNexus nexus)
+        {
+            if (nexus == null) return InteractableCategory.Misc;
+            if (MatchesCategory(nexus, InteractableCategory.Party)) return InteractableCategory.Party;
+            if (MatchesCategory(nexus, InteractableCategory.Characters)) return InteractableCategory.Characters;
+            if (MatchesCategory(nexus, InteractableCategory.Containers)) return InteractableCategory.Containers;
+            if (MatchesCategory(nexus, InteractableCategory.Exits)) return InteractableCategory.Exits;
+            if (MatchesCategory(nexus, InteractableCategory.Objects)) return InteractableCategory.Objects;
+            if (MatchesCategory(nexus, InteractableCategory.Examine)) return InteractableCategory.Examine;
+            if (MatchesCategory(nexus, InteractableCategory.Loot)) return InteractableCategory.Loot;
+            return InteractableCategory.Misc;
+        }
+
+        /// <summary>
         /// World position used for distance / direction to an interactable. Prefers the
         /// instigate point (where the ranger stands to use it); falls back to the transform.
         /// </summary>

@@ -112,6 +112,9 @@ namespace Wasteland2AccessibilityMod
 
             // Announce when the party finishes an ordered move (exploration / world map)
             PartyStopMonitor.Tick();
+
+            // Play a per-category cue when a new item enters the exploration scanner
+            ScannerCueMonitor.Tick();
         }
 
         public override void OnDeinitializeMelon()

@@ -54,13 +54,15 @@ Configuration
 
 The mod writes <game>\UserData\Wasteland2Accessibility.cfg on first run. Edit it directly, use the in-game settings menu (Shift+S), or use the per-setting quick toggles; changes save automatically.
 
-The settings menu (Shift+S, available anywhere) lists every setting below as a navigable on/off list: Up and Down move, Enter or Left/Right toggle the focused setting, Escape closes. The single-key quick toggles still work if you prefer them.
+The settings menu (Shift+S, available anywhere) lists every setting below as a navigable on/off list: Up and Down move, Enter or Left/Right toggle the focused setting, Escape closes. The single-key quick toggles still work if you prefer them. The last item is a sound glossary: press Enter to open it, then Up and Down to hear each scanner category sound and what it means, Enter to replay, Escape to go back.
 
 - UseClockPositions (default off): speak directions as clock positions ("3 o'clock") instead of compass names. Toggle in-game with =.
 - ObjectNamesFirst (default off): lead tile announcements with the object name instead of the coordinate. Toggle with K.
 - UseTileDistances (default on): report distances in tiles when a combat grid is available (one tile is about 1.6 metres); otherwise in metres.
 - ConveyElevation (default on): announce terrain height changes and height relative to the party. Toggle with H.
 - AnnounceLineOfSight (default off): say whether a tile is in sight of the active character (perception in exploration, clear line of fire in combat). Toggle with Y.
+- AnnouncePartyStopped (default on): announce when the party finishes an ordered move and comes to rest, in exploration and on the world map. When members move separately (ungrouped), the one that stopped is named.
+- ScannerCategorySounds (default on): play a short sound cue when a new item enters the exploration scanner, with a distinct sound per category (characters, containers, objects, exits, examine, loot, and a generic cue for miscellaneous). Party members get no cue.
 
 
 Reporting bugs
