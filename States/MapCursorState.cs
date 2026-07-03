@@ -778,7 +778,8 @@ namespace Wasteland2AccessibilityMod.States
                     string reason = IdentifyObstruction(worldPos);
                     return string.IsNullOrEmpty(reason) ? "edge of map" : reason;
                 },
-                snapSingleStepToNode: false);
+                snapSingleStepToNode: false,
+                blockAtObstacles: ModConfig.CursorBlockedByTerrain);
 
             if (!result.Moved)
             {

@@ -14,6 +14,7 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Entry<bool> announceLineOfSightEntry;
         private static MelonPreferences_Entry<bool> announcePartyStoppedEntry;
         private static MelonPreferences_Entry<bool> scannerCategorySoundsEntry;
+        private static MelonPreferences_Entry<bool> cursorBlockedByTerrainEntry;
         private static MelonPreferences_Entry<bool> debugLoggingEntry;
 
         public static bool UseClockPositions { get; private set; } = false;
@@ -23,6 +24,7 @@ namespace Wasteland2AccessibilityMod
         public static bool AnnounceLineOfSight { get; private set; } = false;
         public static bool AnnouncePartyStopped { get; private set; } = true;
         public static bool ScannerCategorySounds { get; private set; } = true;
+        public static bool CursorBlockedByTerrain { get; private set; } = false;
         public static bool DebugLogging { get; private set; } = false;
 
         /// <summary>
@@ -123,6 +125,13 @@ namespace Wasteland2AccessibilityMod
                 "If true, plays a short sound cue when a new item appears in the exploration scanner, with a distinct sound per category (characters, containers, objects, exits, examine, loot, and a generic cue for miscellaneous). Party members have no cue."
             );
 
+            cursorBlockedByTerrainEntry = configCategory.CreateEntry(
+                "CursorBlockedByTerrain",
+                false,
+                "Cursor Stops At Walls",
+                "If true, the exploration grid cursor cannot move onto wall or terrain tiles that have no walkable ground; it stops at them and says what's blocking. If false, the cursor can step onto any tile to inspect it. Moving several tiles at once always stops at walls regardless."
+            );
+
             debugLoggingEntry = configCategory.CreateEntry(
                 "DebugLogging",
                 false,
@@ -143,10 +152,11 @@ namespace Wasteland2AccessibilityMod
                 new Setting("Line of sight announcements", () => AnnounceLineOfSight, FlipLineOfSight, "on", "off"),
                 new Setting("Party stopped notification", () => AnnouncePartyStopped, FlipPartyStopped, "on", "off"),
                 new Setting("Scanner category sounds", () => ScannerCategorySounds, FlipScannerCategorySounds, "on", "off"),
+                new Setting("Cursor stops at walls", () => CursorBlockedByTerrain, FlipCursorBlockedByTerrain, "on", "off"),
                 new Setting("Debug logging", () => DebugLogging, FlipDebugLogging, "on", "off"),
             };
 
-            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Party stopped: {AnnouncePartyStopped}, Scanner sounds: {ScannerCategorySounds}, Debug logging: {DebugLogging}");
+            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Party stopped: {AnnouncePartyStopped}, Scanner sounds: {ScannerCategorySounds}, Cursor stops at walls: {CursorBlockedByTerrain}, Debug logging: {DebugLogging}");
         }
 
         public static void LoadConfig()
@@ -158,6 +168,7 @@ namespace Wasteland2AccessibilityMod
             AnnounceLineOfSight = announceLineOfSightEntry.Value;
             AnnouncePartyStopped = announcePartyStoppedEntry.Value;
             ScannerCategorySounds = scannerCategorySoundsEntry.Value;
+            CursorBlockedByTerrain = cursorBlockedByTerrainEntry.Value;
             DebugLogging = debugLoggingEntry.Value;
         }
 
@@ -211,6 +222,13 @@ namespace Wasteland2AccessibilityMod
         {
             ScannerCategorySounds = !ScannerCategorySounds;
             scannerCategorySoundsEntry.Value = ScannerCategorySounds;
+            configCategory.SaveToFile();
+        }
+
+        private static void FlipCursorBlockedByTerrain()
+        {
+            CursorBlockedByTerrain = !CursorBlockedByTerrain;
+            cursorBlockedByTerrainEntry.Value = CursorBlockedByTerrain;
             configCategory.SaveToFile();
         }
 

@@ -30,6 +30,11 @@ namespace Wasteland2AccessibilityMod.Helpers
         /// <param name="getNode">Resolves a grid id to its walkable node, or null if none.</param>
         /// <param name="describeOffGrid">(gridId, worldPos) => reason a tile is blocked/off-grid.</param>
         /// <param name="snapSingleStepToNode">Single-step only: snap the grid id to the node's id.</param>
+        /// <param name="blockAtObstacles">
+        /// When true, a single step onto a tile with no walkable node is refused (the cursor
+        /// stops at walls/terrain instead of passing through to inspect them). Multi-tile
+        /// moves already stop before the first non-walkable tile regardless.
+        /// </param>
         public static StepResult Step(
             Vector3 cursorGridId,
             Vector3 cursorPosition,
@@ -37,14 +42,16 @@ namespace Wasteland2AccessibilityMod.Helpers
             int tilesToMove,
             Func<Vector3, CombatAStarNode> getNode,
             Func<Vector3, Vector3, string> describeOffGrid,
-            bool snapSingleStepToNode)
+            bool snapSingleStepToNode,
+            bool blockAtObstacles = false)
         {
             Vector3 direction = CardinalDirections.Vectors[directionIndex];
             var result = new StepResult();
 
             // Single-step moves onto the target tile even when it has no walkable node
             // (terrain, cover, wall, or outside the area), so the user can inspect a
-            // blocked tile with the cursor.
+            // blocked tile with the cursor — unless blockAtObstacles confines the cursor
+            // to walkable ground.
             if (tilesToMove <= 1)
             {
                 Vector3 stepGridId = new Vector3(
@@ -60,11 +67,21 @@ namespace Wasteland2AccessibilityMod.Helpers
                 }
                 else
                 {
-                    result.GridId = stepGridId;
-                    result.Position = new Vector3(
+                    Vector3 blockedWorldPos = new Vector3(
                         stepGridId.x * TileCoordinateSystem.SquareSize,
                         cursorPosition.y,
                         stepGridId.z * TileCoordinateSystem.SquareSize);
+
+                    if (blockAtObstacles)
+                    {
+                        // Confined mode: refuse the step and report why.
+                        result.Moved = false;
+                        result.BlockReason = describeOffGrid(stepGridId, blockedWorldPos);
+                        return result;
+                    }
+
+                    result.GridId = stepGridId;
+                    result.Position = blockedWorldPos;
                 }
 
                 result.Moved = true;

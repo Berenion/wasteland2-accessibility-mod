@@ -63,6 +63,7 @@ The settings menu (Shift+S, available anywhere) lists every setting below as a n
 - AnnounceLineOfSight (default off): say whether a tile is in sight of the active character (perception in exploration, clear line of fire in combat). Toggle with Y.
 - AnnouncePartyStopped (default on): announce when the party finishes an ordered move and comes to rest, in exploration and on the world map. When members move separately (ungrouped), the one that stopped is named.
 - ScannerCategorySounds (default on): play a short sound cue when a new item enters the exploration scanner, with a distinct sound per category (characters, containers, objects, exits, examine, loot, and a generic cue for miscellaneous). Party members get no cue.
+- CursorBlockedByTerrain (default off): confine the exploration grid cursor to walkable ground. When on, a single step onto a wall or terrain tile is refused and the obstruction is announced instead of the cursor passing through. Multi-tile moves always stop at walls regardless.
 
 
 Reporting bugs
@@ -126,7 +127,7 @@ Exploration, scanner:
 - Escape: pause menu.
 
 Exploration, grid cursor:
-- Arrows: move one step. Shift+Left / Shift+Right: decrease / increase step size, one to thirty tiles.
+- Arrows: move one step. Shift+Left / Shift+Right: decrease / increase step size, one to thirty tiles. By default a single step can move onto wall/terrain tiles to inspect them; turn on Cursor stops at walls (settings) to confine the cursor to walkable ground.
 - Ctrl+Arrow: move that direction until blocked by terrain.
 - Tab: open the actions menu (skills and usable items) at the cursor.
 - Enter: open the tile's context menu. Or fire/use when a free-aim or item mode is active, or open a single ranger's info if one ranger is on the tile.
