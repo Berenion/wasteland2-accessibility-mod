@@ -199,6 +199,17 @@ namespace Wasteland2AccessibilityMod.States
                     return true;
                 }
 
+                // Arrow/Home/End here mean the player is reaching for options that aren't up
+                // yet — the game is waiting for them to advance the line. Say so instead of
+                // leaving the key silent.
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
+                    Input.GetKeyDown(KeyCode.Home) || Input.GetKeyDown(KeyCode.End))
+                {
+                    SpeakHintThrottled("Press Enter to continue");
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    return true;
+                }
+
                 // Suppress UI navigation during voiceover to prevent interference
                 if (Input.anyKeyDown)
                 {
@@ -208,22 +219,33 @@ namespace Wasteland2AccessibilityMod.States
                 return false;
             }
 
-            // === Loading dead zone: conversation is on but not yet ready (waitState None) ===
-            // Right after landing the game spends a moment setting up the conversation. Without
-            // this, arrows/Enter are silent and feel broken. Tell the player to wait and swallow
-            // the keys so they don't leak to the game.
+            // === waitState == None: either the setup dead zone or a between-lines advance gap ===
+            // Right after landing the game spends a moment setting up the conversation (nothing
+            // shown yet) — that's genuine loading. But multi-step dialogue also sits at
+            // waitState None between lines while a line IS shown and the game waits for the
+            // player to advance (clickToContinue prompt up). Telling the latter "loading, please
+            // wait" is wrong and traps Enter; distinguish them by the click-to-continue prompt.
             if (IsConversationLoading)
             {
-                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) ||
-                    Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
+                bool awaitingAdvance = IsAwaitingAdvance();
+
+                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                {
+                    // A shown line waiting to advance: advance it. Otherwise it's the pre-input
+                    // dead zone — swallow the key and say we're still loading.
+                    if (awaitingAdvance)
+                        SkipCurrentDialogue();
+                    else
+                        SpeakHintThrottled("Loading, please wait");
+                    InputSuppressor.ShouldSuppressGameInput = true;
+                    InputSuppressor.ShouldSuppressUINavigation = true;
+                    return true;
+                }
+
+                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
                     Input.GetKeyDown(KeyCode.Home) || Input.GetKeyDown(KeyCode.End))
                 {
-                    float now = Time.time;
-                    if (now - lastLoadingAnnounceTime > 1.5f)
-                    {
-                        lastLoadingAnnounceTime = now;
-                        ScreenReaderManager.SpeakInterrupt("Loading, please wait");
-                    }
+                    SpeakHintThrottled(awaitingAdvance ? "Press Enter to continue" : "Loading, please wait");
                     InputSuppressor.ShouldSuppressGameInput = true;
                     InputSuppressor.ShouldSuppressUINavigation = true;
                     return true;
@@ -476,6 +498,41 @@ namespace Wasteland2AccessibilityMod.States
             if (selectedIndex < 0 && currentOptions.Count > 0)
             {
                 selectedIndex = 0;
+            }
+        }
+
+        /// <summary>
+        /// True when the game is showing the click-to-continue prompt — i.e. a line is
+        /// displayed and it's waiting for the player to advance (multi-step dialogue),
+        /// as opposed to the pre-input setup dead zone. clickToContinue is a public field
+        /// on ConversationHUD, toggled by BubbleTextManager when a shown bubble carries
+        /// hasClickToContinue.
+        /// </summary>
+        private static bool IsAwaitingAdvance()
+        {
+            if (!MonoBehaviourSingleton<ConversationHUD>.HasInstance()) return false;
+            var hud = MonoBehaviourSingleton<ConversationHUD>.GetInstance();
+            return hud != null && hud.clickToContinue != null && hud.clickToContinue.activeSelf;
+        }
+
+        // Last hint text spoken by SpeakHintThrottled, so switching between the "loading"
+        // and "press Enter" hints speaks immediately instead of being throttled as a repeat.
+        private string lastHintText;
+
+        /// <summary>
+        /// Speak a short repeated conversation hint (loading / press-Enter), throttled to
+        /// once per 1.5s for the same message so holding a key doesn't spam it; a changed
+        /// message speaks right away.
+        /// </summary>
+        private void SpeakHintThrottled(string text)
+        {
+            float now = Time.time;
+            if (text != lastHintText || now - lastLoadingAnnounceTime > 1.5f)
+            {
+                lastLoadingAnnounceTime = now;
+                lastHintText = text;
+                ScreenReaderManager.SpeakInterrupt(text);
+                ModLog.Debug($"[ConversationState] Hint '{text}' (waitState={DramaGUI.waitState}, clickToContinue={IsAwaitingAdvance()})");
             }
         }
 
