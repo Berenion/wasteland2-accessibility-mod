@@ -66,6 +66,7 @@ namespace Wasteland2AccessibilityMod
             InputRouter.Register(new SettingsMenuState()); // Priority 90 - modal mod-settings menu (Shift+S)
             InputRouter.Register(new KeywordEntryState()); // Priority 72 - conversation custom-keyword/password text box
             InputRouter.Register(new DialogState());       // Priority 70 - modal dialogs (highest menu priority)
+            InputRouter.Register(new GameOverState());     // Priority 62 - game-over screen (party wiped) options
             InputRouter.Register(new MainMenuState());     // Priority 60 - main menu navigation
             InputRouter.Register(new ComputerGameState()); // Priority 59 - Snake Easter-egg computer sonification
             InputRouter.Register(new KeypadState());       // Priority 58 - safe/passcode keypad popup

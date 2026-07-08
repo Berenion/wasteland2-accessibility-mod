@@ -133,6 +133,10 @@ namespace Wasteland2AccessibilityMod.States
                 if (topScreen is ComputerMenu)
                     return false;
 
+                // Not active for the game-over screen - GameOverState reads its options
+                if (topScreen is GameOverScreen)
+                    return false;
+
                 // Active when any other menu is on top (including submenus over MainMenu)
                 return true;
             }
@@ -352,7 +356,13 @@ namespace Wasteland2AccessibilityMod.States
             // Handle Enter for activation
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
-                ActivateSelected();
+                // PCDeathScreen is a single-acknowledge screen with no selectable control,
+                // so ActivateSelected has nothing to click. Dismiss it on Enter to match the
+                // announced "Press Escape or Enter to close."
+                if (cachedTopScreen is PCDeathScreen)
+                    CloseMenu();
+                else
+                    ActivateSelected();
                 return true;
             }
 
