@@ -4,7 +4,7 @@
     <TargetFramework>net35</TargetFramework>
     <AssemblyName>Wasteland2AccessibilityMod</AssemblyName>
     <Description>Screen-reader and keyboard accessibility mod for Wasteland 2 Director's Cut</Description>
-    <Version>0.8.0</Version>
+    <Version>0.8.1</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <!-- The unit test project (net9.0) lives under Tests\; keep it out of the mod's net35 build. -->

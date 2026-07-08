@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.1-beta] — 2026-07-08
+
+Cover awareness, plus a batch of exploration and combat fixes.
+
+### Added
+- **Cover scanner category** — the exploration scanner and the combat cursor can now cycle nearby cover positions (short / tall), each with distance and direction. Exploration lists visible cover around the party; combat lists cover within 50 tiles of the acting ranger. `Home` jumps the cursor to the selected cover.
+- **Readable books get the standard item menu** — pressing Enter on a book now opens the usual submenu (Read, Flag as Junk, Drop, Give to) instead of opening the book directly, so books can be dropped or handed to another ranger. Quest-critical (no-drop) books stay protected.
+
+### Fixed
+- Free-aiming at a destructible piece of cover now sends the shot at the cover instead of missing at the ground — for both the combat and exploration cursors.
+- The "cursor stops at walls" option no longer makes containers, doors, and other interactables that sit on obstacle tiles unreachable.
+- The game-over screen's options are now read and selectable; the party-member death screen now closes with Enter as well as Escape.
+- Visible, interactable NPCs are no longer hidden from the exploration scanner.
+
 ## [0.8.0-beta] — 2026-07-03
 
 New exploration awareness features (sound cues, nearby scan, movement notifications), a cursor option, and conversation fixes.
