@@ -779,7 +779,11 @@ namespace Wasteland2AccessibilityMod.States
                     return string.IsNullOrEmpty(reason) ? "edge of map" : reason;
                 },
                 snapSingleStepToNode: false,
-                blockAtObstacles: ModConfig.CursorBlockedByTerrain);
+                blockAtObstacles: ModConfig.CursorBlockedByTerrain,
+                // Even in "cursor stops at walls" mode, still let a single step land on a
+                // tile that holds an interactable (container, door, etc.) — those occupy
+                // obstacle tiles with no walkable node and would otherwise be unreachable.
+                allowBlockedStep: (gridId, worldPos) => HasInteractableAtPosition(worldPos));
 
             if (!result.Moved)
             {
@@ -1285,6 +1289,38 @@ namespace Wasteland2AccessibilityMod.States
         {
             string state = GetInteractableState(nexus);
             return string.IsNullOrEmpty(state) ? baseName : baseName + ", " + state;
+        }
+
+        /// <summary>
+        /// True when a visible, player-interactable object sits on the tile at
+        /// <paramref name="worldPos"/>. Mirrors the visibility / perception / interaction
+        /// filters in <see cref="FindInteractablesOnTile"/> but matches against an arbitrary
+        /// position (not the cursor's current node), and deliberately omits the
+        /// IsBlockedByWall check — the point is to reach obstacle tiles that have no walkable
+        /// node. Used by "cursor stops at walls" mode to still step onto containers/doors.
+        /// </summary>
+        private bool HasInteractableAtPosition(Vector3 worldPos)
+        {
+            FOWHelper.UpdateActivationTracking();
+
+            foreach (var interactable in InteractableNexus.interactables)
+            {
+                if (interactable == null) continue;
+                if (!interactable.isVisible) continue;
+                if (interactable.isPC) continue;
+                if (!FOWHelper.IsVisibleToSighted(interactable.gameObject)) continue;
+                if (FOWHelper.IsPerceptionGated(interactable)) continue;
+                if (!NavigationManager.HasInteractionSurface(interactable)) continue;
+
+                Vector3 p = interactable.transform.position;
+                if (Mathf.Abs(p.x - worldPos.x) <= TILE_MATCH_RADIUS &&
+                    Mathf.Abs(p.z - worldPos.z) <= TILE_MATCH_RADIUS)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private List<InteractableNexus> FindInteractablesOnTile()

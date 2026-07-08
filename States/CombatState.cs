@@ -981,7 +981,13 @@ namespace Wasteland2AccessibilityMod.States
             // to the resolved node and describes blocked tiles via DescribeOffGridTile.
             var result = GridCursorStepper.Step(
                 cursorGridId, cursorPosition, directionIndex, tilesToMove,
-                GetNodeAtGridId, DescribeOffGridTile, snapSingleStepToNode: true);
+                GetNodeAtGridId, DescribeOffGridTile, snapSingleStepToNode: true,
+                blockAtObstacles: ModConfig.CursorBlockedByTerrain,
+                // Same exception as exploration: even when the cursor is confined to
+                // walkable ground, still let a single step land on an obstacle tile that
+                // holds a free-aim target (an alive mob, or a destructible/explosive
+                // object) which has no walkable node of its own.
+                allowBlockedStep: (gridId, worldPos) => HasTargetableAtPosition(worldPos));
 
             if (!result.Moved)
             {
@@ -2487,6 +2493,51 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// True when a free-aim target sits on the tile at <paramref name="worldPos"/>:
+        /// a mob, or a destructible/explosive TargetableObject with hitpoints. Mirrors
+        /// <see cref="FindTargetableOnTile"/> but matches an arbitrary position instead of
+        /// the cursor's current tile. Used so "cursor stops at walls" mode can still land
+        /// on obstacle tiles that hold something worth aiming at (e.g. an explosive barrel
+        /// with no walkable node).
+        /// </summary>
+        private bool HasTargetableAtPosition(Vector3 worldPos)
+        {
+            // Mob on the tile (any state — corpses stay reachable, matching FindMobsOnTile).
+            if (MonoBehaviourSingleton<CombatManager>.HasInstance())
+            {
+                var cm = MonoBehaviourSingleton<CombatManager>.GetInstance();
+                if (cm.mobs != null)
+                {
+                    foreach (var mob in cm.mobs)
+                    {
+                        if (mob == null || mob.gameObject == null) continue;
+                        try
+                        {
+                            Vector3 p = mob.transform.position;
+                            if (Mathf.Abs(p.x - worldPos.x) <= TILE_MATCH_RADIUS &&
+                                Mathf.Abs(p.z - worldPos.z) <= TILE_MATCH_RADIUS)
+                                return true;
+                        }
+                        catch (Exception ex) { MelonLogger.Warning($"[CombatState] HasTargetableAtPosition mob transform check failed: {ex.Message}"); }
+                    }
+                }
+            }
+
+            // Destructible / explosive object on the tile.
+            Collider[] colliders = Physics.OverlapSphere(worldPos, TileCoordinateSystem.SquareSize * 0.75f);
+            foreach (var collider in colliders)
+            {
+                if (collider == null || collider.gameObject == null) continue;
+
+                var targetableObj = collider.GetComponent<TargetableObject>();
+                if (targetableObj == null) targetableObj = collider.GetComponentInParent<TargetableObject>();
+                if (targetableObj != null && targetableObj.hasHitpoints) return true;
+            }
+
+            return false;
         }
 
         // =====================================================================

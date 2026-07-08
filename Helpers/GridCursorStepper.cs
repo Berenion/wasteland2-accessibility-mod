@@ -35,6 +35,12 @@ namespace Wasteland2AccessibilityMod.Helpers
         /// stops at walls/terrain instead of passing through to inspect them). Multi-tile
         /// moves already stop before the first non-walkable tile regardless.
         /// </param>
+        /// <param name="allowBlockedStep">
+        /// (gridId, worldPos) => true if a single step onto a nodeless tile should be
+        /// permitted even in confined mode. Lets the cursor still reach interactables that
+        /// occupy an obstacle tile (containers, doors, etc.) which have no walkable node.
+        /// Only consulted when blockAtObstacles is true; null disables the exception.
+        /// </param>
         public static StepResult Step(
             Vector3 cursorGridId,
             Vector3 cursorPosition,
@@ -43,7 +49,8 @@ namespace Wasteland2AccessibilityMod.Helpers
             Func<Vector3, CombatAStarNode> getNode,
             Func<Vector3, Vector3, string> describeOffGrid,
             bool snapSingleStepToNode,
-            bool blockAtObstacles = false)
+            bool blockAtObstacles = false,
+            Func<Vector3, Vector3, bool> allowBlockedStep = null)
         {
             Vector3 direction = CardinalDirections.Vectors[directionIndex];
             var result = new StepResult();
@@ -72,9 +79,13 @@ namespace Wasteland2AccessibilityMod.Helpers
                         cursorPosition.y,
                         stepGridId.z * TileCoordinateSystem.SquareSize);
 
-                    if (blockAtObstacles)
+                    if (blockAtObstacles &&
+                        (allowBlockedStep == null || !allowBlockedStep(stepGridId, blockedWorldPos)))
                     {
-                        // Confined mode: refuse the step and report why.
+                        // Confined mode: refuse the step and report why — unless the tile
+                        // holds something worth reaching (a container, door, or other
+                        // interactable that occupies an obstacle tile with no walkable node),
+                        // in which case allowBlockedStep lets the cursor land on it.
                         result.Moved = false;
                         result.BlockReason = describeOffGrid(stepGridId, blockedWorldPos);
                         return result;
