@@ -414,6 +414,102 @@ namespace Wasteland2AccessibilityMod.Patches
     }
 
     /// <summary>
+    /// Gives readable items (letters, notes, diaries — all ItemTemplate_BeekersDiary) the
+    /// same context submenu every other item has. The game's OpenContextMenu short-circuits
+    /// for these: it opens the book directly and returns before building any Drop / Junk /
+    /// Give-to buttons, so keyboard users could never drop or hand off a book. This prefix
+    /// intercepts books, builds an ItemInfoMenu with a Read button (the original open-book
+    /// action) plus the standard Junk/Drop options, and skips the original. "Give to..." is
+    /// appended afterward by <see cref="OpenContextMenu_GiveTo_Patch"/> (a postfix, which
+    /// still runs when a prefix skips the original).
+    /// </summary>
+    [HarmonyPatch(typeof(INV_DragDropItem), "OpenContextMenu")]
+    public class OpenContextMenu_ReadableBook_Patch
+    {
+        private static MethodInfo onDropClickedMethod;
+
+        [HarmonyPrefix]
+        public static bool Prefix(INV_DragDropItem __instance)
+        {
+            // Vendor items have their own flow; leave them to the original.
+            if (__instance is VND_DragDropItem) return true;
+
+            ItemInstance item = __instance.GetItem();
+            if (item == null || item.template == null) return true;
+
+            // Only intercept readable books — every other item keeps the original menu.
+            if (!(item.template is ItemTemplate_BeekersDiary)) return true;
+
+            if (!MonoBehaviourSingleton<GUIManager>.HasInstance()) return true;
+            var guiManager = MonoBehaviourSingleton<GUIManager>.GetInstance();
+
+            // Mirror the original's early guards: in each of these cases the original does
+            // NOT open the book, so defer to it rather than building our menu.
+            if (guiManager.IsItemInfoScreenOpen()) return true;
+            CharacterInfoMenu charInfoMenu = NGUITools.FindInParents<CharacterInfoMenu>(__instance.transform);
+            if (charInfoMenu != null && charInfoMenu.HasAllocatedPoints()) return true;
+
+            // Guards passed — here the original would open the book directly. Build the
+            // accessible submenu instead.
+            MonoBehaviourSingleton<TooltipManager>.GetInstance().SetPopup(null);
+
+            ItemInfoMenu menu = guiManager.OpenItemInfoMenu(item, __instance.ownerPC);
+            if (menu == null) return true; // couldn't build ours — fall back to the original
+
+            var template = item.template as ItemTemplate_BeekersDiary;
+            INV_DragDropItem ddi = __instance;
+
+            // Read — the game's normal action for these items.
+            menu.AddButton("Read", () =>
+            {
+                var gm = MonoBehaviourSingleton<GUIManager>.GetInstance();
+                gm.CloseTopMenu();
+                gm.OpenBeekersDiaryMenu(template);
+            });
+
+            // Junk toggle — same gating the game uses for any non-usable item. Unflagging
+            // is always available; flagging respects the item's no-drop flag.
+            if (item.isJunk)
+                menu.AddButton("Not Junk", () => ddi.OnJunkClicked());
+            else if (!item.template.partyNoDrop)
+                menu.AddButton("Flag as Junk", () => ddi.OnJunkClicked());
+
+            // Drop — respects the game's no-drop flag so quest-critical books stay put.
+            if (!item.template.partyNoDrop)
+                menu.AddButton("Drop", () => DropBook(ddi));
+
+            // "Give to..." is appended by OpenContextMenu_GiveTo_Patch after this returns.
+            return false;
+        }
+
+        // Invokes the game's own private OnDropClicked so the book drops to the world
+        // exactly like any other item's Drop button (handles the trade message, inventory
+        // removal, world drop, and tile cleanup).
+        private static void DropBook(INV_DragDropItem ddi)
+        {
+            try
+            {
+                if (onDropClickedMethod == null)
+                    onDropClickedMethod = AccessTools.Method(typeof(INV_DragDropItem), "OnDropClicked");
+
+                if (onDropClickedMethod != null)
+                {
+                    onDropClickedMethod.Invoke(ddi, null);
+                }
+                else
+                {
+                    MelonLogger.Warning("[InventoryPatches] OnDropClicked not found; closing menu without dropping");
+                    MonoBehaviourSingleton<GUIManager>.GetInstance().CloseTopMenu();
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"[InventoryPatches] Book drop failed: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
     /// Adds a "Give to" button to the inventory context menu, enabling keyboard-accessible
     /// item transfers between party members (normally requires drag-and-drop).
     /// </summary>
