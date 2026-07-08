@@ -54,13 +54,20 @@ namespace Wasteland2AccessibilityMod
 
         /// <summary>
         /// Returns true if a sighted player could see/notice this GameObject right now.
-        /// Two branches, both ignore the cached FOWRenderers.isVisible field — Unity
-        /// doesn't run LateUpdate on inactive GameObjects, so any object that gets
-        /// SetActive(false) (NPCs via SleepManager.cs:134, doors/scenery via level-chunk
-        /// culling, etc.) keeps its last mIsVisible value, often the default `true`.
-        ///   1. Mobs (anything with a Mob component): require current vision via
-        ///      FOWSystem.IsVisible. Matches sighted: FOWRenderers disables their
-        ///      renderers entirely outside vision.
+        /// Mirrors the game's own click gate, InputManager.CheckInstigateDrama
+        /// (InputManager.cs:2338): a target is interactable when it has a FOWRenderers
+        /// and that renderer reports visible, OR it has no FOWRenderers and its tile is
+        /// explored.
+        ///   1. Mobs (anything with a Mob component — NPCs, enemies) carry a FOWRenderers
+        ///      added at runtime. The game gates their clicks on FOWRenderers.isVisible,
+        ///      NOT FOWSystem.IsVisible(position); those differ for an NPC that is rendered
+        ///      and clickable at a gate/doorway while its tile isn't lit in the FOW buffer
+        ///      (e.g. door-guard NPCs, pre-recruit companions). So we trust
+        ///      FOWRenderers.isVisible while the GameObject is active (LateUpdate keeps it
+        ///      fresh). The one case that field lies is SetActive(false) NPCs (SleepManager.
+        ///      cs:134, level-chunk culling): LateUpdate never runs, so mIsVisible stays at
+        ///      its stale, often default-true value. For those we fall back to a live
+        ///      FOWSystem.IsVisible query — an inactive object isn't clickable anyway.
         ///   2. Non-mobs (containers, doors, exits, examines, AZ1 Drama quest objects):
         ///      visible iff FOWSystem.IsExplored. These render through the FOWEffect
         ///      post-process at ~20% greyscale in explored fog — dim but technically
@@ -76,7 +83,12 @@ namespace Wasteland2AccessibilityMod
 
             Mob mob = go.GetComponent<Mob>();
             if (mob != null)
+            {
+                FOWRenderers fow = go.GetComponent<FOWRenderers>();
+                if (fow != null && go.activeInHierarchy)
+                    return fow.isVisible;
                 return FOWSystem.instance.IsVisible(go.transform.position);
+            }
 
             return FOWSystem.instance.IsExplored(go.transform.position);
         }
@@ -220,6 +232,19 @@ namespace Wasteland2AccessibilityMod
         public static bool IsPerceptionGated(InteractableNexus nexus)
         {
             if (nexus == null) return false;
+
+            // Mobs (NPCs, enemies) are never perception-gated. The character is standing
+            // in plain sight and must stay selectable so the player can talk to / recruit /
+            // fight them. Some NPCs (Angela Deth, door-guard grenadiers, etc.) carry a
+            // SkillObject_Examine with a difficulty — that is a bonus lore descriptor, NOT
+            // a hidden-until-perceived reward. The game's own click gate
+            // (InputManager.CheckInstigateDrama) blocks interaction only on skob.hidden,
+            // never on !perceived, and mob.isHidden is already handled upstream by
+            // nexus.isVisible. The perception-reward hiding below is meant for inanimate
+            // hidden stashes only; applied to mobs it wrongly makes recruitable/quest NPCs
+            // unselectable.
+            if (nexus.isMob)
+                return false;
 
             SkillObject_Examine skob = nexus.skobExamine;
             if (skob == null && nexus.gameObject != null)
