@@ -3237,20 +3237,13 @@ namespace Wasteland2AccessibilityMod.States
                     return;
                 }
 
-                // No mobs — fall back to destructible objects (barrels, plants, etc.)
-                var objTargets = new List<Targetable>();
-                var objNames = new List<string>();
-                foreach (var nexus in FindInteractablesOnTile())
-                {
-                    if (nexus == null || nexus.gameObject == null) continue;
-                    var targetObj = nexus.gameObject.GetComponent<TargetableObject>();
-                    if (targetObj == null) continue;
-                    if (targetObj.curHP <= 0) continue;
-                    objTargets.Add(targetObj);
-                    string n = GetInteractableName(nexus);
-                    if (string.IsNullOrEmpty(n)) n = nexus.gameObject.name;
-                    objNames.Add(n);
-                }
+                // No mobs — fall back to destructible objects (cover, barrels, plants).
+                // Use a physics overlap keyed on curHP > 0, the same way combat's
+                // FindTargetableOnTile works, so pure combat cover that carries no
+                // InteractableNexus is still targetable (and the shot hits the item
+                // instead of falling through to an intentional ground miss).
+                List<string> objNames;
+                var objTargets = FindDestructibleObjectsOnTile(out objNames);
 
                 if (objTargets.Count >= 2)
                 {
@@ -3271,6 +3264,53 @@ namespace Wasteland2AccessibilityMod.States
                 MelonLogger.Error("[MapCursorState] Error in AttackMobOnTile: " + ex.Message);
                 ScreenReaderManager.SpeakInterrupt("Attack failed");
             }
+        }
+
+        /// <summary>
+        /// Finds every live destructible object (TargetableObject with curHP &gt; 0) whose
+        /// collider overlaps the cursor tile, deduped. Mirrors combat's FindTargetableOnTile
+        /// so cover without an InteractableNexus is still a valid free-aim target. Names are
+        /// resolved from the object's nexus when it has one, else its cleaned GameObject name.
+        /// </summary>
+        private List<Targetable> FindDestructibleObjectsOnTile(out List<string> names)
+        {
+            var targets = new List<Targetable>();
+            names = new List<string>();
+            var seen = new HashSet<TargetableObject>();
+
+            Collider[] colliders = Physics.OverlapSphere(cursorPosition, TILE_MATCH_RADIUS);
+            foreach (var collider in colliders)
+            {
+                if (collider == null || collider.gameObject == null) continue;
+
+                var obj = collider.GetComponent<TargetableObject>();
+                if (obj == null) obj = collider.GetComponentInParent<TargetableObject>();
+                if (obj == null || obj.curHP <= 0f) continue;
+                if (!seen.Add(obj)) continue;
+
+                targets.Add(obj);
+                names.Add(ResolveDestructibleName(obj));
+            }
+
+            return targets;
+        }
+
+        private string ResolveDestructibleName(TargetableObject obj)
+        {
+            if (obj == null) return "object";
+
+            var nexus = obj.GetComponent<InteractableNexus>();
+            if (nexus == null) nexus = obj.GetComponentInParent<InteractableNexus>();
+            if (nexus != null)
+            {
+                string n = GetInteractableName(nexus);
+                if (!string.IsNullOrEmpty(n)) return n;
+            }
+
+            string goName = obj.gameObject.name;
+            if (!string.IsNullOrEmpty(goName))
+                return goName.Replace("(Clone)", "").Replace("_", " ").Trim();
+            return "object";
         }
 
         private string ResolveTargetableName(Targetable target)

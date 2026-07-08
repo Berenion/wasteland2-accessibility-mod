@@ -2475,7 +2475,11 @@ namespace Wasteland2AccessibilityMod.States
             Mob mob = FindAliveMobOnTile();
             if (mob != null) return mob;
 
-            // Then check for TargetableObjects (destructibles, explosives, etc.)
+            // Then check for TargetableObjects (destructible cover, barrels, explosives).
+            // Gate on curHP > 0, the same validity check vanilla uses when the attack ray
+            // hits a Targetable (InputManager.cs:3957). The hasHitpoints flag is never set
+            // in code, so keying on it silently found nothing and free aim fell through to
+            // an intentional ground miss.
             float tileRadius = 0.75f;
             Collider[] colliders = Physics.OverlapSphere(cursorPosition, tileRadius);
             foreach (var collider in colliders)
@@ -2483,12 +2487,12 @@ namespace Wasteland2AccessibilityMod.States
                 if (collider == null || collider.gameObject == null) continue;
 
                 var targetableObj = collider.GetComponent<TargetableObject>();
-                if (targetableObj != null && targetableObj.hasHitpoints)
+                if (targetableObj != null && targetableObj.curHP > 0f)
                     return targetableObj;
 
                 // Also check parent
                 targetableObj = collider.GetComponentInParent<TargetableObject>();
-                if (targetableObj != null && targetableObj.hasHitpoints)
+                if (targetableObj != null && targetableObj.curHP > 0f)
                     return targetableObj;
             }
 
@@ -2526,7 +2530,8 @@ namespace Wasteland2AccessibilityMod.States
                 }
             }
 
-            // Destructible / explosive object on the tile.
+            // Destructible / explosive object on the tile (curHP > 0, matching how vanilla
+            // and FindTargetableOnTile decide a Targetable is a live attack target).
             Collider[] colliders = Physics.OverlapSphere(worldPos, TileCoordinateSystem.SquareSize * 0.75f);
             foreach (var collider in colliders)
             {
@@ -2534,7 +2539,7 @@ namespace Wasteland2AccessibilityMod.States
 
                 var targetableObj = collider.GetComponent<TargetableObject>();
                 if (targetableObj == null) targetableObj = collider.GetComponentInParent<TargetableObject>();
-                if (targetableObj != null && targetableObj.hasHitpoints) return true;
+                if (targetableObj != null && targetableObj.curHP > 0f) return true;
             }
 
             return false;
