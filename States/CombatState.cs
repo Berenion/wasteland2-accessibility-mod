@@ -70,8 +70,17 @@ namespace Wasteland2AccessibilityMod.States
         // --- Combatant cycling (PageUp/PageDown) ---
         private List<Mob> combatantList = new List<Mob>();
         private int combatantIndex = -1;
-        private int combatantCategory = 0; // 0=All, 1=Enemies, 2=Allies
-        private static readonly string[] COMBATANT_CATEGORIES = { "All", "Enemies", "Allies" };
+        private int combatantCategory = 0; // 0=All, 1=Enemies, 2=Allies, 3=Cover
+        private static readonly string[] COMBATANT_CATEGORIES = { "All", "Enemies", "Allies", "Cover" };
+        private const int COVER_CATEGORY = 3;
+        private bool IsCoverCategory => combatantCategory == COVER_CATEGORY;
+
+        // Cover positions (Cover components, not Mobs) ride a parallel list, cycled the
+        // same way but announce-only. Limited to cover within this many tiles of the
+        // acting ranger so a big map doesn't produce an unmanageable list.
+        private const int COVER_RANGE_TILES = 50;
+        private struct CoverPoint { public Vector3 Position; public string Label; }
+        private readonly List<CoverPoint> combatCoverPoints = new List<CoverPoint>();
 
 
         // Initiative browsing state
@@ -1642,6 +1651,8 @@ namespace Wasteland2AccessibilityMod.States
 
         private void CycleNextCombatant()
         {
+            if (IsCoverCategory) { CycleCover(1); return; }
+
             BuildCombatantList();
             if (combatantList.Count == 0)
             {
@@ -1655,6 +1666,8 @@ namespace Wasteland2AccessibilityMod.States
 
         private void CyclePreviousCombatant()
         {
+            if (IsCoverCategory) { CycleCover(-1); return; }
+
             BuildCombatantList();
             if (combatantList.Count == 0)
             {
@@ -1695,6 +1708,17 @@ namespace Wasteland2AccessibilityMod.States
 
         private void JumpToSelectedCombatant()
         {
+            if (IsCoverCategory)
+            {
+                if (combatantIndex < 0 || combatantIndex >= combatCoverPoints.Count)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No cover selected");
+                    return;
+                }
+                JumpToCoverPoint(combatCoverPoints[combatantIndex]);
+                return;
+            }
+
             if (combatantList.Count == 0 || combatantIndex < 0 || combatantIndex >= combatantList.Count)
             {
                 ScreenReaderManager.SpeakInterrupt("No combatant selected");
@@ -1713,6 +1737,17 @@ namespace Wasteland2AccessibilityMod.States
 
         private void AnnounceDistanceToSelectedCombatant()
         {
+            if (IsCoverCategory)
+            {
+                if (combatantIndex < 0 || combatantIndex >= combatCoverPoints.Count)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No cover selected");
+                    return;
+                }
+                ScreenReaderManager.SpeakInterrupt(FormatCoverForCycle(combatCoverPoints[combatantIndex], cursorPosition));
+                return;
+            }
+
             if (combatantList.Count == 0 || combatantIndex < 0 || combatantIndex >= combatantList.Count)
             {
                 ScreenReaderManager.SpeakInterrupt("No combatant selected");
@@ -1830,9 +1865,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             combatantCategory = (combatantCategory + 1) % COMBATANT_CATEGORIES.Length;
             combatantIndex = -1;
-            BuildCombatantList();
-            string count = combatantList.Count.ToString();
-            ScreenReaderManager.SpeakInterrupt(COMBATANT_CATEGORIES[combatantCategory] + ", " + count + " found");
+            AnnounceCategoryCount();
         }
 
         private void PreviousCombatantCategory()
@@ -1840,9 +1873,104 @@ namespace Wasteland2AccessibilityMod.States
             combatantCategory--;
             if (combatantCategory < 0) combatantCategory = COMBATANT_CATEGORIES.Length - 1;
             combatantIndex = -1;
-            BuildCombatantList();
-            string count = combatantList.Count.ToString();
+            AnnounceCategoryCount();
+        }
+
+        private void AnnounceCategoryCount()
+        {
+            int count;
+            if (IsCoverCategory) { BuildCoverList(); count = combatCoverPoints.Count; }
+            else { BuildCombatantList(); count = combatantList.Count; }
             ScreenReaderManager.SpeakInterrupt(COMBATANT_CATEGORIES[combatantCategory] + ", " + count + " found");
+        }
+
+        // --- Cover cycling (Cover category) ---
+
+        /// <summary>
+        /// Builds the nearby-cover list from Cover components in the scene: short / tall
+        /// cover the party can see through the fog, within COVER_RANGE_TILES of the acting
+        /// ranger, sorted nearest-first. Rebuilt on each cycle (a key press, not per frame).
+        /// </summary>
+        private void BuildCoverList()
+        {
+            combatCoverPoints.Clear();
+
+            Mob actor = GetCurrentActor();
+            Vector3 origin = actor != null ? actor.transform.position : cursorPosition;
+            float maxDist = COVER_RANGE_TILES * TileCoordinateSystem.SquareSize;
+
+            foreach (var cover in UnityEngine.Object.FindObjectsOfType<Cover>())
+            {
+                if (cover == null || cover.gameObject == null) continue;
+                if (!cover.gameObject.activeInHierarchy) continue;
+                if (cover.type == Cover.CoverType.Destroyed) continue;
+
+                Vector3 pos = cover.transform.position;
+                if (Vector3.Distance(origin, pos) > maxDist) continue;
+                if (!FOWHelper.IsVisibleThroughFOW(pos)) continue;
+
+                string label = cover.type == Cover.CoverType.Tall ? "Tall cover" : "Short cover";
+                combatCoverPoints.Add(new CoverPoint { Position = pos, Label = label });
+            }
+
+            combatCoverPoints.Sort((a, b) =>
+                Vector3.Distance(a.Position, origin).CompareTo(Vector3.Distance(b.Position, origin)));
+        }
+
+        // Cycles nearby cover (dir = +1 next, -1 previous), announcing the selection with
+        // tile distance / direction from the acting ranger. Announce-only: no game selection.
+        private void CycleCover(int dir)
+        {
+            BuildCoverList();
+            if (combatCoverPoints.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No cover found");
+                combatantIndex = -1;
+                return;
+            }
+
+            combatantIndex += (dir >= 0 ? 1 : -1);
+            if (combatantIndex < 0) combatantIndex = combatCoverPoints.Count - 1;
+            else if (combatantIndex >= combatCoverPoints.Count) combatantIndex = 0;
+
+            Mob actor = GetCurrentActor();
+            Vector3 origin = actor != null ? actor.transform.position : cursorPosition;
+            ScreenReaderManager.SpeakInterrupt(FormatCoverForCycle(combatCoverPoints[combatantIndex], origin));
+        }
+
+        private string FormatCoverForCycle(CoverPoint cover, Vector3 origin)
+        {
+            float sq = TileCoordinateSystem.SquareSize;
+            int tileDist = Mathf.Max(
+                Mathf.Abs(Mathf.RoundToInt(cover.Position.x / sq) - Mathf.RoundToInt(origin.x / sq)),
+                Mathf.Abs(Mathf.RoundToInt(cover.Position.z / sq) - Mathf.RoundToInt(origin.z / sq)));
+            string dir = DirectionHelper.GetDirectionDescription(origin, cover.Position);
+            return cover.Label + ", " + tileDist + (tileDist == 1 ? " tile " : " tiles ") + dir
+                + ", " + (combatantIndex + 1) + " of " + combatCoverPoints.Count;
+        }
+
+        private void JumpToCoverPoint(CoverPoint cover)
+        {
+            float sq = TileCoordinateSystem.SquareSize;
+            int gx = Mathf.RoundToInt(cover.Position.x / sq);
+            int gz = Mathf.RoundToInt(cover.Position.z / sq);
+
+            CombatAStarNode node = GetNodeAtGridId(new Vector3(gx, 0, gz));
+            if (node == null) node = FindNearestNode(cover.Position);
+
+            if (node != null)
+            {
+                cursorGridId = node.id;
+                cursorPosition = node.position;
+            }
+            else
+            {
+                cursorGridId = new Vector3(gx, 0, gz);
+                cursorPosition = new Vector3(gx * sq, cover.Position.y, gz * sq);
+            }
+
+            if (cameraFollowsCursor) SnapCameraToCursor();
+            AnnounceTile(detailed: false);
         }
 
         // --- Name Helpers ---

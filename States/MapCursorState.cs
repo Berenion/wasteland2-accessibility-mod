@@ -2326,6 +2326,20 @@ namespace Wasteland2AccessibilityMod.States
 
         private void JumpToSelectedInteractable()
         {
+            // Cover category: jump to the selected cover position (announce-only path,
+            // no InteractableNexus behind it).
+            if (NavigationManager.IsCoverCategory)
+            {
+                Vector3? coverPos = NavigationManager.SelectedCoverPosition;
+                if (!coverPos.HasValue)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No cover selected");
+                    return;
+                }
+                SnapCursorToWorldTile(coverPos.Value);
+                return;
+            }
+
             InteractableNexus selected = NavigationManager.SelectedInteractable;
             if (selected == null)
             {
@@ -2340,19 +2354,24 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            Vector3 worldPos = selected.transform.position;
+            LogTileFinderForTarget(selected);
+            SnapCursorToWorldTile(selected.transform.position);
+        }
 
-            // Snap to the object's natural tile (raw-rounded from world position).
-            // This is where the object visually belongs, independent of whether
-            // a walkable A* node exists there. Falling back to a "nearest node"
-            // can place the cursor one tile off when the object's tile is
-            // unwalkable (walls, props) and the nearest node is on a neighbor.
+        /// <summary>
+        /// Snaps the cursor to the tile that owns <paramref name="worldPos"/> and announces
+        /// it. Uses the object's natural tile (raw-rounded from world position) — where it
+        /// visually belongs, independent of whether a walkable A* node exists there. Falling
+        /// back to a "nearest node" can place the cursor one tile off when the object's tile
+        /// is unwalkable (walls, props) and the nearest node is on a neighbor.
+        /// </summary>
+        private void SnapCursorToWorldTile(Vector3 worldPos)
+        {
             int naturalX = Mathf.RoundToInt(worldPos.x / TileCoordinateSystem.SquareSize);
             int naturalZ = Mathf.RoundToInt(worldPos.z / TileCoordinateSystem.SquareSize);
 
-            // If a node happens to exist at the natural tile, use its position
-            // for an accurate Y (floor height). Otherwise synthesize from the
-            // object's Y.
+            // If a node happens to exist at the natural tile, use its position for an
+            // accurate Y (floor height). Otherwise synthesize from the object's Y.
             CombatAStarNode naturalTileNode = null;
             if (fullMap != null)
             {
@@ -2378,8 +2397,7 @@ namespace Wasteland2AccessibilityMod.States
                 cursorPosition = new Vector3(naturalX * TileCoordinateSystem.SquareSize, worldPos.y, naturalZ * TileCoordinateSystem.SquareSize);
             }
 
-            ModLog.Debug($"[JumpToSelected] target={selected.name} worldPos={worldPos} naturalTile=({naturalX},{naturalZ}) nodeFound={(naturalTileNode != null)} cursorGridId={cursorGridId} cursorPos={cursorPosition}");
-            LogTileFinderForTarget(selected);
+            ModLog.Debug($"[JumpToSelected] worldPos={worldPos} naturalTile=({naturalX},{naturalZ}) nodeFound={(naturalTileNode != null)} cursorGridId={cursorGridId} cursorPos={cursorPosition}");
 
             SnapCameraToCursor();
             AnnounceCurrentTile(detailed: false);
@@ -2411,6 +2429,22 @@ namespace Wasteland2AccessibilityMod.States
 
         private void AnnounceDistanceToSelected()
         {
+            // Cover category: report distance/direction to the selected cover position.
+            if (NavigationManager.IsCoverCategory)
+            {
+                Vector3? coverPos = NavigationManager.SelectedCoverPosition;
+                if (!coverPos.HasValue)
+                {
+                    ScreenReaderManager.SpeakInterrupt("No cover selected");
+                    return;
+                }
+                string coverDist = TileCoordinateSystem.GetDistanceText(cursorPosition, coverPos.Value);
+                string coverDir = DirectionHelper.GetDirectionDescription(cursorPosition, coverPos.Value);
+                ScreenReaderManager.SpeakInterrupt(
+                    (NavigationManager.SelectedCoverLabel ?? "Cover") + ", " + coverDist + ", " + coverDir);
+                return;
+            }
+
             InteractableNexus selected = NavigationManager.SelectedInteractable;
             if (selected == null)
             {

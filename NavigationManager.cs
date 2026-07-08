@@ -19,6 +19,7 @@ namespace Wasteland2AccessibilityMod
         Exits,      // Map exits and area transitions (SceneLoad)
         Examine,    // Examinable/perception objects (descriptions, clues)
         Loot,       // Ground items and loot piles
+        Cover,      // Cover positions (Cover components: short / tall). Not interactables.
         Misc        // Everything else (teleporters, dig spots, etc.)
     }
 
@@ -49,10 +50,35 @@ namespace Wasteland2AccessibilityMod
             InteractableCategory.Exits,
             InteractableCategory.Examine,
             InteractableCategory.Loot,
+            InteractableCategory.Cover,
             InteractableCategory.Misc
         };
 
         public static InteractableCategory CurrentCategory => currentCategory;
+
+        // --- Cover category ---
+        // Cover positions come from Cover components in the scene (not InteractableNexus),
+        // so they ride a small parallel path: a list of world positions + labels, cycled
+        // and announced the same way but without game selection/highlight (announce only).
+        private struct CoverPoint
+        {
+            public Vector3 Position;
+            public string Label;
+        }
+        private static readonly List<CoverPoint> coverPoints = new List<CoverPoint>();
+        private static int coverIndex = -1;
+        private static bool hasSelectedCover = false;
+        private static CoverPoint selectedCover;
+
+        /// <summary>True while the scanner is on the Cover category.</summary>
+        public static bool IsCoverCategory => currentCategory == InteractableCategory.Cover;
+
+        /// <summary>World position of the cover point selected via cycling, or null.
+        /// Used by MapCursorState to jump the cursor there (Home).</summary>
+        public static Vector3? SelectedCoverPosition => hasSelectedCover ? selectedCover.Position : (Vector3?)null;
+
+        /// <summary>Spoken label of the selected cover point (e.g. "Tall cover"), or null.</summary>
+        public static string SelectedCoverLabel => hasSelectedCover ? selectedCover.Label : null;
 
         /// <summary>
         /// Cycles to the next category (Page Down)
@@ -72,11 +98,13 @@ namespace Wasteland2AccessibilityMod
             // Reset selection when changing category
             currentIndex = -1;
             selectedInteractable = null;
+            coverIndex = -1;
+            hasSelectedCover = false;
 
             // Update list and announce
             UpdateFilteredList();
             string categoryName = GetCategoryDisplayName(currentCategory);
-            int count = filteredInteractables.Count;
+            int count = CurrentCount();
             ScreenReaderManager.SpeakInterrupt($"{categoryName}, {count} found");
 
             ModLog.Debug($"Category changed to: {categoryName} ({count} items)");
@@ -101,11 +129,13 @@ namespace Wasteland2AccessibilityMod
             // Reset selection when changing category
             currentIndex = -1;
             selectedInteractable = null;
+            coverIndex = -1;
+            hasSelectedCover = false;
 
             // Update list and announce
             UpdateFilteredList();
             string categoryName = GetCategoryDisplayName(currentCategory);
-            int count = filteredInteractables.Count;
+            int count = CurrentCount();
             ScreenReaderManager.SpeakInterrupt($"{categoryName}, {count} found");
 
             ModLog.Debug($"Category changed to: {categoryName} ({count} items)");
@@ -123,6 +153,7 @@ namespace Wasteland2AccessibilityMod
                 case InteractableCategory.Exits: return "Exits";
                 case InteractableCategory.Examine: return "Examine";
                 case InteractableCategory.Loot: return "Loot";
+                case InteractableCategory.Cover: return "Cover";
                 case InteractableCategory.Misc: return "Miscellaneous";
                 default: return "Unknown";
             }
@@ -137,6 +168,8 @@ namespace Wasteland2AccessibilityMod
             }
 
             UpdateFilteredList();
+
+            if (currentCategory == InteractableCategory.Cover) { CycleCover(1); return; }
 
             if (filteredInteractables.Count == 0)
             {
@@ -162,6 +195,8 @@ namespace Wasteland2AccessibilityMod
 
             UpdateFilteredList();
 
+            if (currentCategory == InteractableCategory.Cover) { CycleCover(-1); return; }
+
             if (filteredInteractables.Count == 0)
             {
                 string categoryName = GetCategoryDisplayName(currentCategory);
@@ -175,6 +210,51 @@ namespace Wasteland2AccessibilityMod
             if (currentIndex < 0) currentIndex = filteredInteractables.Count - 1;
 
             SelectAndAnnounce(currentIndex);
+        }
+
+        /// <summary>Item count for the active category (cover rides its own list).</summary>
+        private static int CurrentCount()
+        {
+            return currentCategory == InteractableCategory.Cover
+                ? coverPoints.Count
+                : filteredInteractables.Count;
+        }
+
+        // Cycles through nearby cover positions (dir = +1 next, -1 previous), announcing
+        // the selected one with distance and direction from the player. Announce-only:
+        // no game selection or highlight, since cover points aren't Targetables/nexuses.
+        private static void CycleCover(int dir)
+        {
+            if (coverPoints.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt("No cover nearby");
+                coverIndex = -1;
+                hasSelectedCover = false;
+                return;
+            }
+
+            coverIndex += (dir >= 0 ? 1 : -1);
+            if (coverIndex < 0) coverIndex = coverPoints.Count - 1;
+            else if (coverIndex >= coverPoints.Count) coverIndex = 0;
+
+            selectedCover = coverPoints[coverIndex];
+            hasSelectedCover = true;
+            AnnounceCoverPoint(selectedCover);
+        }
+
+        private static void AnnounceCoverPoint(CoverPoint cover)
+        {
+            var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
+            PC player = inputManager != null ? inputManager.GetFirstSelectedPlayer() : null;
+            if (player == null)
+            {
+                ScreenReaderManager.SpeakInterrupt(cover.Label);
+                return;
+            }
+
+            string distanceStr = TileCoordinateSystem.GetDistanceText(player.transform.position, cover.Position);
+            string direction = DirectionHelper.GetDirectionDescription(player.transform.position, cover.Position);
+            ScreenReaderManager.SpeakInterrupt($"{cover.Label}, {distanceStr}, {direction}");
         }
 
         public static void RepeatLastAnnouncement()
@@ -290,6 +370,13 @@ namespace Wasteland2AccessibilityMod
                 return;
             }
 
+            // Cover rides its own list (Cover components, not nexuses).
+            if (currentCategory == InteractableCategory.Cover)
+            {
+                UpdateCoverList(playerPos);
+                return;
+            }
+
             // For "All" category, also include party members since they're not in the interactables list
             if (currentCategory == InteractableCategory.All)
             {
@@ -316,6 +403,35 @@ namespace Wasteland2AccessibilityMod
                 .ToList();
 
             ModLog.Debug($"Filtered interactables: {filteredInteractables.Count} found (category: {currentCategory})");
+        }
+
+        /// <summary>
+        /// Builds the nearby-cover list from Cover components in the scene, keeping short /
+        /// tall cover the player can currently see through the fog, sorted nearest-first.
+        /// Rebuilt on each cycle (on a key press, not per frame), so the scene scan is fine.
+        /// </summary>
+        private static void UpdateCoverList(Vector3 playerPos)
+        {
+            coverPoints.Clear();
+
+            var covers = UnityEngine.Object.FindObjectsOfType<Cover>();
+            foreach (var cover in covers)
+            {
+                if (cover == null || cover.gameObject == null) continue;
+                if (!cover.gameObject.activeInHierarchy) continue;
+                if (cover.type == Cover.CoverType.Destroyed) continue;
+
+                Vector3 pos = cover.transform.position;
+                if (!FOWHelper.IsVisibleThroughFOW(pos)) continue;
+
+                string label = cover.type == Cover.CoverType.Tall ? "Tall cover" : "Short cover";
+                coverPoints.Add(new CoverPoint { Position = pos, Label = label });
+            }
+
+            coverPoints.Sort((a, b) =>
+                Vector3.Distance(a.Position, playerPos).CompareTo(Vector3.Distance(b.Position, playerPos)));
+
+            ModLog.Debug($"Cover list: {coverPoints.Count} cover points found");
         }
 
         /// <summary>
