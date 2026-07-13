@@ -1,0 +1,18 @@
+[package]
+name = "wl2-access-installer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+dirs = "6.0.0"
+regex = "1.13.0"
+# default-features=false + default-tls keeps TLS on the OS (SChannel on Windows),
+# avoiding the rustls/aws-lc-sys C build that reqwest's default feature set pulls in.
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "default-tls"] }
+semver = "1.0.28"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+sha2 = "0.11.0"
+sysinfo = "0.39.6"
+winreg = "0.56.0"
+zip = "8.6.0"
