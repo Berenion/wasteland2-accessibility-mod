@@ -6,7 +6,7 @@
 //! progress back over a channel that the frame drains in its idle handler, so
 //! the window never freezes mid-install.
 
-use crate::core::{flow, paths};
+use crate::core::{flow, paths, uninstall};
 use crate::speech;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -68,11 +68,14 @@ pub fn run() {
         let install_btn = Button::builder(&panel)
             .with_label("Install / Update")
             .build();
+        let uninstall_btn = Button::builder(&panel).with_label("Uninstall").build();
         let close_btn = Button::builder(&panel).with_label("Close").build();
         btn_row.add(&check_btn, 0, SizerFlag::All, 4);
         btn_row.add(&install_btn, 0, SizerFlag::All, 4);
+        btn_row.add(&uninstall_btn, 0, SizerFlag::All, 4);
         btn_row.add_stretch_spacer(1);
         btn_row.add(&close_btn, 0, SizerFlag::All, 4);
+
         root.add_sizer(&btn_row, 0, SizerFlag::Expand | SizerFlag::All, 4);
 
         // Log / status read-out.
@@ -117,7 +120,7 @@ pub fn run() {
             let shared = shared.clone();
             check_btn.on_click(move |_| {
                 let dir = dir_field.get_value();
-                if !start_guard(&shared, &log, &dir, &check_btn, &install_btn) {
+                if !start_guard(&shared, &log, &dir, &[check_btn, install_btn, uninstall_btn]) {
                     return;
                 }
                 announce(&log, "Checking for updates...", true);
@@ -148,7 +151,7 @@ pub fn run() {
             let shared = shared.clone();
             install_btn.on_click(move |_| {
                 let dir = dir_field.get_value();
-                if !start_guard(&shared, &log, &dir, &check_btn, &install_btn) {
+                if !start_guard(&shared, &log, &dir, &[check_btn, install_btn, uninstall_btn]) {
                     return;
                 }
                 announce(&log, "Starting install...", true);
@@ -162,6 +165,64 @@ pub fn run() {
                             let _ = tx_log.send(Msg::Line(line.to_string()));
                         })
                     });
+                    let _ = tx.send(Msg::Done(result));
+                });
+            });
+        }
+
+        // --- Uninstall: prompt for scope, then remove on a worker. ---
+        {
+            let shared = shared.clone();
+            uninstall_btn.on_click(move |_| {
+                if shared.busy.get() {
+                    return;
+                }
+                let dir = dir_field.get_value();
+                if dir.trim().is_empty() || !paths::is_game_build_dir(&PathBuf::from(&dir)) {
+                    announce(
+                        &log,
+                        "That folder doesn't contain the game. Pick the WL2 Build folder.",
+                        true,
+                    );
+                    return;
+                }
+
+                // Ask what to remove. A native dialog reads correctly with screen
+                // readers: Yes = also remove MelonLoader, No = mod only, Cancel = abort.
+                let dlg = MessageDialog::builder(
+                    &frame,
+                    "Uninstall the Wasteland 2 Accessibility Mod?\n\n\
+                     Yes: also remove MelonLoader.\n\
+                     No: remove the mod only, keep MelonLoader.\n\
+                     Cancel: don't uninstall.",
+                    "Uninstall",
+                )
+                .with_style(
+                    MessageDialogStyle::YesNo
+                        | MessageDialogStyle::Cancel
+                        | MessageDialogStyle::IconQuestion,
+                )
+                .build();
+                let code = dlg.show_modal();
+                let remove_ml = if code == ID_YES {
+                    true
+                } else if code == ID_NO {
+                    false
+                } else {
+                    announce(&log, "Uninstall cancelled.", true);
+                    return;
+                };
+
+                shared.busy.set(true);
+                check_btn.enable(false);
+                install_btn.enable(false);
+                uninstall_btn.enable(false);
+                announce(&log, "Uninstalling...", true);
+                let (tx, rx) = mpsc::channel();
+                *shared.rx.borrow_mut() = Some(rx);
+                let path = PathBuf::from(dir);
+                thread::spawn(move || {
+                    let result = uninstall::uninstall(&path, remove_ml).map(|r| r.summary());
                     let _ = tx.send(Msg::Done(result));
                 });
             });
@@ -200,6 +261,7 @@ pub fn run() {
                     *shared.rx.borrow_mut() = None;
                     check_btn.enable(true);
                     install_btn.enable(true);
+                    uninstall_btn.enable(true);
                 }
                 if let WindowEventData::Idle(idle) = event {
                     idle.request_more(shared.busy.get());
@@ -218,13 +280,7 @@ fn announce(log: &TextCtrl, line: &str, interrupt: bool) {
 
 /// Validate input and mark the UI busy before starting a worker. Returns false
 /// (and logs why) if the folder is wrong or a job is already running.
-fn start_guard(
-    shared: &Rc<Shared>,
-    log: &TextCtrl,
-    dir: &str,
-    check_btn: &Button,
-    install_btn: &Button,
-) -> bool {
+fn start_guard(shared: &Rc<Shared>, log: &TextCtrl, dir: &str, buttons: &[Button]) -> bool {
     if shared.busy.get() {
         return false;
     }
@@ -238,8 +294,9 @@ fn start_guard(
         return false;
     }
     shared.busy.set(true);
-    check_btn.enable(false);
-    install_btn.enable(false);
+    for btn in buttons {
+        btn.enable(false);
+    }
     true
 }
 

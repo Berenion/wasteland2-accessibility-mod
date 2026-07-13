@@ -2,7 +2,7 @@
 //! reads it naturally; there are no spinners or cursor tricks. The GUI (added
 //! later) is a second front-end over the same `core` engine.
 
-use crate::core::{flow, install, paths};
+use crate::core::{flow, install, paths, uninstall};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -13,6 +13,10 @@ pub struct Options {
     pub assume_yes: bool,
     /// Consider prerelease/beta releases (default true — the mod is in beta).
     pub include_prerelease: bool,
+    /// Remove the mod instead of installing.
+    pub uninstall: bool,
+    /// With --uninstall, also remove MelonLoader.
+    pub remove_melonloader: bool,
 }
 
 pub fn parse_args() -> Result<Options, String> {
@@ -22,6 +26,8 @@ pub fn parse_args() -> Result<Options, String> {
         force_melonloader: false,
         assume_yes: false,
         include_prerelease: true,
+        uninstall: false,
+        remove_melonloader: false,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -36,6 +42,8 @@ pub fn parse_args() -> Result<Options, String> {
             "--force-melonloader" => opts.force_melonloader = true,
             "--yes" | "-y" => opts.assume_yes = true,
             "--stable-only" => opts.include_prerelease = false,
+            "--uninstall" => opts.uninstall = true,
+            "--remove-melonloader" => opts.remove_melonloader = true,
             "--cli" => {} // accepted for symmetry with the GUI launcher
             "--help" | "-h" => return Err(help_text()),
             other => return Err(format!("unknown argument: {other}\n\n{}", help_text())),
@@ -51,6 +59,9 @@ fn help_text() -> String {
      --check               Report versions and exit without installing\n\
      --force-melonloader   Reinstall MelonLoader 0.5.7 even if present\n\
      --stable-only         Ignore prerelease/beta builds (default installs betas)\n\
+     --uninstall           Remove the mod (add --remove-melonloader to also\n\
+     \x20                     remove MelonLoader)\n\
+     --remove-melonloader  With --uninstall, also remove MelonLoader\n\
      --yes, -y             Don't prompt for confirmation\n\
      --help, -h            Show this help"
         .to_string()
@@ -60,7 +71,12 @@ fn help_text() -> String {
 pub fn run(opts: Options) -> i32 {
     println!("Wasteland 2 Accessibility Mod installer\n");
 
-    match install_flow(&opts) {
+    let result = if opts.uninstall {
+        uninstall_flow(&opts)
+    } else {
+        install_flow(&opts)
+    };
+    match result {
         Ok(msg) => {
             println!("\n{msg}");
             0
@@ -70,6 +86,23 @@ pub fn run(opts: Options) -> i32 {
             1
         }
     }
+}
+
+fn uninstall_flow(opts: &Options) -> Result<String, String> {
+    let game_dir = resolve_game_dir(opts)?;
+    println!("Game folder: {}", game_dir.display());
+
+    let what = if opts.remove_melonloader {
+        "the mod and MelonLoader"
+    } else {
+        "the mod"
+    };
+    if !opts.assume_yes && !confirm(&format!("Remove {what} from this folder?")) {
+        return Ok("Cancelled.".to_string());
+    }
+
+    let report = uninstall::uninstall(&game_dir, opts.remove_melonloader)?;
+    Ok(report.summary())
 }
 
 fn install_flow(opts: &Options) -> Result<String, String> {

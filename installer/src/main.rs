@@ -21,6 +21,8 @@ const CLI_FLAGS: &[&str] = &[
     "-y",
     "--stable-only",
     "--force-melonloader",
+    "--uninstall",
+    "--remove-melonloader",
     "--help",
     "-h",
 ];

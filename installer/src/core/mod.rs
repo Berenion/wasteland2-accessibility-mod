@@ -10,3 +10,4 @@ pub mod install;
 pub mod melonloader;
 pub mod process;
 pub mod flow;
+pub mod uninstall;
