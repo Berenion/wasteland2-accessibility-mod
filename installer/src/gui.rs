@@ -187,30 +187,14 @@ pub fn run() {
                     return;
                 }
 
-                // Ask what to remove. A native dialog reads correctly with screen
-                // readers: Yes = also remove MelonLoader, No = mod only, Cancel = abort.
-                let dlg = MessageDialog::builder(
-                    &frame,
-                    "Uninstall the Wasteland 2 Accessibility Mod?\n\n\
-                     Yes: also remove MelonLoader.\n\
-                     No: remove the mod only, keep MelonLoader.\n\
-                     Cancel: don't uninstall.",
-                    "Uninstall",
-                )
-                .with_style(
-                    MessageDialogStyle::YesNo
-                        | MessageDialogStyle::Cancel
-                        | MessageDialogStyle::IconQuestion,
-                )
-                .build();
-                let code = dlg.show_modal();
-                let remove_ml = if code == ID_YES {
-                    true
-                } else if code == ID_NO {
-                    false
-                } else {
-                    announce(&log, "Uninstall cancelled.", true);
-                    return;
+                // Ask what to remove via a RadioBox dialog: arrow-navigable and
+                // read by screen readers, unlike a plain message box's buttons.
+                let remove_ml = match ask_uninstall_scope(&frame) {
+                    Some(v) => v,
+                    None => {
+                        announce(&log, "Uninstall cancelled.", true);
+                        return;
+                    }
                 };
 
                 shared.busy.set(true);
@@ -269,6 +253,78 @@ pub fn run() {
             });
         }
     });
+}
+
+/// Spoken text for an uninstall radio option by index.
+fn uninstall_choice_text(idx: i32) -> &'static str {
+    if idx == 1 {
+        "Remove the mod and MelonLoader"
+    } else {
+        "Remove the mod only, keep MelonLoader"
+    }
+}
+
+/// Modal prompt for what to uninstall. Returns Some(remove_melonloader), or None
+/// if cancelled. A RadioBox makes the choices arrow-navigable and screen-reader
+/// friendly; we also speak an intro since dialog body text isn't reliably read.
+fn ask_uninstall_scope(parent: &Frame) -> Option<bool> {
+    speech::speak(
+        "Uninstall. Use the arrow keys to choose what to remove, then Tab to OK. \
+         Press Escape to cancel.",
+        true,
+    );
+
+    let dialog = Dialog::builder(parent, "Uninstall")
+        .with_style(DialogStyle::DefaultDialogStyle)
+        .with_size(440, 220)
+        .build();
+    let panel = Panel::builder(&dialog).build();
+    let root = BoxSizer::builder(Orientation::Vertical).build();
+
+    let choices = [
+        "Remove the mod only (keep MelonLoader)",
+        "Remove the mod and MelonLoader",
+    ];
+    let radio = RadioBox::builder(&panel, &choices)
+        .with_label("What to remove")
+        .with_major_dimension(1)
+        .build();
+    radio.set_selection(0); // default: keep MelonLoader
+    root.add(&radio, 0, SizerFlag::Expand | SizerFlag::All, 8);
+
+    // NVDA doesn't reliably announce this wxRadioBox, so voice it via Tolk:
+    // the label + current option on focus, and the new option as arrows change it.
+    radio.on_set_focus(move |_| {
+        speech::speak(
+            &format!("What to remove. {}", uninstall_choice_text(radio.get_selection())),
+            true,
+        );
+    });
+    radio.on_selected(move |_| {
+        speech::speak(uninstall_choice_text(radio.get_selection()), true);
+    });
+
+    let btn_row = BoxSizer::builder(Orientation::Horizontal).build();
+    let ok = Button::builder(&panel).with_label("OK").build();
+    let cancel = Button::builder(&panel).with_label("Cancel").build();
+    btn_row.add_stretch_spacer(1);
+    btn_row.add(&ok, 0, SizerFlag::All, 4);
+    btn_row.add(&cancel, 0, SizerFlag::All, 4);
+    root.add_sizer(&btn_row, 0, SizerFlag::Expand | SizerFlag::All, 4);
+
+    panel.set_sizer(root, true);
+    radio.set_focus();
+
+    ok.on_click(move |_| dialog.end_modal(ID_OK));
+    cancel.on_click(move |_| dialog.end_modal(ID_CANCEL));
+
+    let result = if dialog.show_modal() == ID_OK {
+        Some(radio.get_selection() == 1)
+    } else {
+        None
+    };
+    dialog.destroy();
+    result
 }
 
 /// Append a line to the log and speak it, so screen-reader users hear progress
