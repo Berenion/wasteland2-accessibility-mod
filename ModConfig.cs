@@ -15,6 +15,7 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Entry<bool> announcePartyStoppedEntry;
         private static MelonPreferences_Entry<bool> scannerCategorySoundsEntry;
         private static MelonPreferences_Entry<bool> cursorBlockedByTerrainEntry;
+        private static MelonPreferences_Entry<int> scannerRevealModeEntry;
         private static MelonPreferences_Entry<bool> debugLoggingEntry;
 
         public static bool UseClockPositions { get; private set; } = false;
@@ -36,32 +37,38 @@ namespace Wasteland2AccessibilityMod
         /// </summary>
         public sealed class Setting
         {
-            private readonly Func<bool> get;
-            private readonly Action flip;
-            private readonly string onText;
-            private readonly string offText;
+            private readonly Func<string> valueText;
+            private readonly Action advance;
 
             public string Label { get; }
 
+            /// <summary>Two-state (boolean) setting: Toggle flips it, ValueText is on/off text.</summary>
             public Setting(string label, Func<bool> get, Action flip, string onText, string offText)
+                : this(label, () => get() ? onText : offText, flip)
             {
-                Label = label;
-                this.get = get;
-                this.flip = flip;
-                this.onText = onText;
-                this.offText = offText;
             }
 
-            public bool Value => get();
+            /// <summary>
+            /// General N-state setting: <paramref name="valueText"/> returns the current
+            /// value's spoken text and <paramref name="advance"/> steps to the next value
+            /// (cycling). The settings menu treats Enter/Left/Right identically, so multi-
+            /// state settings cycle forward on any activation.
+            /// </summary>
+            public Setting(string label, Func<string> valueText, Action advance)
+            {
+                Label = label;
+                this.valueText = valueText;
+                this.advance = advance;
+            }
 
-            /// <summary>The current value as spoken text, e.g. "clock positions" / "tiles" / "on".</summary>
-            public string ValueText => get() ? onText : offText;
+            /// <summary>The current value as spoken text, e.g. "clock positions" / "tiles" / "reveal all".</summary>
+            public string ValueText => valueText();
 
             /// <summary>Navigation read-out, e.g. "Distance units, tiles".</summary>
             public string Describe() => $"{Label}, {ValueText}";
 
-            /// <summary>Flip the value and persist it. Does not speak — the caller announces.</summary>
-            public void Toggle() => flip();
+            /// <summary>Advance to the next value and persist it. Does not speak — the caller announces.</summary>
+            public void Toggle() => advance();
         }
 
         /// <summary>
@@ -132,6 +139,13 @@ namespace Wasteland2AccessibilityMod
                 "If true, the exploration grid cursor cannot move onto wall or terrain tiles that have no walkable ground; it stops at them and says what's blocking. If false, the cursor can step onto any tile to inspect it. Moving several tiles at once always stops at walls regardless."
             );
 
+            scannerRevealModeEntry = configCategory.CreateEntry(
+                "ScannerRevealMode",
+                0,
+                "Scanner Reveal Mode",
+                "Controls how much fog-hidden content the exploration scanner and tile cursor surface. 0 = Off (normal fog of war: only what the party could see). 1 = Reveal all (shows every inanimate interactable — containers, doors, examines, exits, loot — fogged or not, with real names). 2 = Unrevealed names (same reveal, but undiscovered items are announced as \"Unrevealed\" so you can navigate toward them without spoiling their identity). Characters and enemies always follow normal fog of war."
+            );
+
             debugLoggingEntry = configCategory.CreateEntry(
                 "DebugLogging",
                 false,
@@ -153,6 +167,7 @@ namespace Wasteland2AccessibilityMod
                 new Setting("Party stopped notification", () => AnnouncePartyStopped, FlipPartyStopped, "on", "off"),
                 new Setting("Scanner category sounds", () => ScannerCategorySounds, FlipScannerCategorySounds, "on", "off"),
                 new Setting("Cursor stops at walls", () => CursorBlockedByTerrain, FlipCursorBlockedByTerrain, "on", "off"),
+                new Setting("Scanner reveal mode", () => FOWHelper.RevealModeText(FOWHelper.RevealMode), CycleRevealMode),
                 new Setting("Debug logging", () => DebugLogging, FlipDebugLogging, "on", "off"),
             };
 
@@ -170,6 +185,26 @@ namespace Wasteland2AccessibilityMod
             ScannerCategorySounds = scannerCategorySoundsEntry.Value;
             CursorBlockedByTerrain = cursorBlockedByTerrainEntry.Value;
             DebugLogging = debugLoggingEntry.Value;
+            FOWHelper.RevealMode = ClampRevealMode(scannerRevealModeEntry.Value);
+        }
+
+        private static ScannerRevealMode ClampRevealMode(int raw)
+        {
+            if (raw < 0 || raw > (int)ScannerRevealMode.RevealUnnamed) return ScannerRevealMode.Normal;
+            return (ScannerRevealMode)raw;
+        }
+
+        /// <summary>
+        /// Cycles the scanner reveal mode Off → Reveal all → Unrevealed names → Off,
+        /// updating the live FOWHelper state and persisting. Does not speak — the
+        /// settings menu announces via Setting.Describe.
+        /// </summary>
+        private static void CycleRevealMode()
+        {
+            int next = ((int)FOWHelper.RevealMode + 1) % 3;
+            FOWHelper.RevealMode = (ScannerRevealMode)next;
+            scannerRevealModeEntry.Value = next;
+            configCategory.SaveToFile();
         }
 
         // ===== No-speech flips (flip value + persist). Shared by the quick-toggle

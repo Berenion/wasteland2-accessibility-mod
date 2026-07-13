@@ -65,6 +65,12 @@ namespace Wasteland2AccessibilityMod.Core
             {
                 var nexus = visible[i];
                 if (nexus == null) continue;
+                // Cues follow genuine fog-of-war discovery, not the reveal-mode
+                // setting: a reveal mode adds undiscovered items to the visible set,
+                // but we don't want a burst of cues (or to poison the seen-set so a
+                // later real discovery is silenced). In Normal mode every item here
+                // is already discovered, so this is a no-op.
+                if (!FOWHelper.IsDiscoveredNormally(nexus)) continue;
 
                 int id = nexus.GetInstanceID();
                 currentIds.Add(id);

@@ -5,11 +5,46 @@ using MelonLoader;
 namespace Wasteland2AccessibilityMod
 {
     /// <summary>
+    /// Controls how much fog-hidden content the scanner and tile cursor surface.
+    /// A player-facing accessibility aid (not a fidelity choice): some users want
+    /// to navigate the whole map regardless of what the party has actually seen.
+    /// </summary>
+    public enum ScannerRevealMode
+    {
+        /// <summary>Normal fog-of-war fidelity: only what a sighted player could see.</summary>
+        Normal = 0,
+        /// <summary>Reveal every loaded interactable, fogged or not, with real names.</summary>
+        RevealAll = 1,
+        /// <summary>Reveal fogged interactables but mask undiscovered ones as "unrevealed".</summary>
+        RevealUnnamed = 2
+    }
+
+    /// <summary>
     /// Shared fog of war visibility check used across the mod to avoid
     /// announcing objects that sighted players cannot see.
     /// </summary>
     public static class FOWHelper
     {
+        /// <summary>
+        /// Active reveal mode for the scanner / tile cursor. Set from ModConfig on
+        /// load and when the accessibility settings menu cycles it. Only the
+        /// mode-aware gate (<see cref="PassesScannerGate"/>) and name masking read
+        /// this — the strict primitives (IsVisibleToSighted, IsPerceptionGated,
+        /// IsDiscoveredNormally) stay true to real fog state regardless.
+        /// </summary>
+        public static ScannerRevealMode RevealMode { get; set; } = ScannerRevealMode.Normal;
+
+        /// <summary>Spoken value for the settings menu, e.g. "off" / "reveal all".</summary>
+        public static string RevealModeText(ScannerRevealMode mode)
+        {
+            switch (mode)
+            {
+                case ScannerRevealMode.RevealAll: return "reveal all";
+                case ScannerRevealMode.RevealUnnamed: return "unrevealed names";
+                default: return "off";
+            }
+        }
+
         /// <summary>
         /// Maximum distance from a party member for detecting newly-activated
         /// teleporters that appear in the interactables list at runtime.
@@ -280,6 +315,61 @@ namespace Wasteland2AccessibilityMod
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// The single visibility gate every scanner / tile-cursor list should use.
+        /// In Normal mode it's exactly the strict triad (game-visible, sighted-FOW,
+        /// not perception-gated) callers previously inlined. In a reveal mode it
+        /// drops the FOW / perception filters and shows every loaded interactable,
+        /// but still respects scripted invisibility (nexus.isHidden / mob.isHidden)
+        /// — those aren't fog, and forcing them visible would surface objects the
+        /// game deliberately un-rendered (story reveals, dead triggers).
+        ///
+        /// Note the hard limit: SleepManager SetActive(false)s NPCs far from the
+        /// party, so reveal mode cannot surface distance-culled or un-spawned mobs;
+        /// it reveals fog-hidden but loaded content only.
+        /// </summary>
+        public static bool PassesScannerGate(InteractableNexus nexus)
+        {
+            if (nexus == null || nexus.gameObject == null) return false;
+            if (RevealMode == ScannerRevealMode.Normal)
+                return IsDiscoveredNormally(nexus);
+            // Mobs (characters, enemies, corpses that still link a Mob) keep their
+            // normal fog filter for now — reveal mode only surfaces inanimate
+            // interactables (containers, doors, examines, exits, loot, misc). This
+            // also keeps the live-mob tile path (FindMobsOnTile) and the scanner
+            // Characters category consistent, and avoids masking live mob names.
+            if (nexus.isMob)
+                return IsDiscoveredNormally(nexus);
+            return IsRevealVisible(nexus);
+        }
+
+        /// <summary>
+        /// True if the party would genuinely see/notice this interactable under
+        /// normal fog-of-war rules. This is the strict triad — independent of
+        /// <see cref="RevealMode"/> — used both by Normal-mode gating and by name
+        /// masking (a reveal-mode item that fails this reads as "unrevealed").
+        /// </summary>
+        public static bool IsDiscoveredNormally(InteractableNexus nexus)
+        {
+            if (nexus == null || nexus.gameObject == null) return false;
+            if (!nexus.isVisible) return false;
+            if (!IsVisibleToSighted(nexus.gameObject)) return false;
+            if (IsPerceptionGated(nexus)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Reveal-mode visibility for a non-mob interactable: mirrors
+        /// InteractableNexus.isVisible minus its FOWRenderers clause, so fogged-
+        /// but-loaded objects show while scripted-invisible ones stay hidden.
+        /// (Mobs never reach here — PassesScannerGate routes them to the strict
+        /// path — so no mob.isHidden check is needed.)
+        /// </summary>
+        private static bool IsRevealVisible(InteractableNexus nexus)
+        {
+            return !nexus.isHidden;
         }
     }
 }

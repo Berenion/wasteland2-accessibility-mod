@@ -387,10 +387,8 @@ namespace Wasteland2AccessibilityMod
             foreach (var nexus in InteractableNexus.interactables)
             {
                 if (nexus == null) continue;
-                if (!nexus.isVisible) continue;
                 if (nexus.transform == null) continue;
-                if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) continue;
-                if (FOWHelper.IsPerceptionGated(nexus)) continue;
+                if (!FOWHelper.PassesScannerGate(nexus)) continue;
                 if (!HasInteractionSurface(nexus)) continue;
                 if (IsLootedEmptyContainer(nexus)) continue;
                 if (!MatchesCategory(nexus, currentCategory)) continue;
@@ -497,10 +495,8 @@ namespace Wasteland2AccessibilityMod
             foreach (var nexus in InteractableNexus.interactables)
             {
                 if (nexus == null) continue;
-                if (!nexus.isVisible) continue;
                 if (nexus.transform == null) continue;
-                if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) continue;
-                if (FOWHelper.IsPerceptionGated(nexus)) continue;
+                if (!FOWHelper.PassesScannerGate(nexus)) continue;
                 if (!HasInteractionSurface(nexus)) continue;
                 if (IsLootedEmptyContainer(nexus)) continue;
                 result.Add(nexus);
@@ -781,6 +777,12 @@ namespace Wasteland2AccessibilityMod
 
         private static string GetInteractableName(InteractableNexus nexus)
         {
+            // "Unrevealed names" mode: the item is shown so the player can navigate
+            // toward it, but its identity stays hidden until genuinely discovered.
+            if (FOWHelper.RevealMode == ScannerRevealMode.RevealUnnamed &&
+                !FOWHelper.IsDiscoveredNormally(nexus))
+                return "Unrevealed";
+
             // Try Drama system first
             if (nexus.drama != null)
             {

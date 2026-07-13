@@ -1306,10 +1306,8 @@ namespace Wasteland2AccessibilityMod.States
             foreach (var interactable in InteractableNexus.interactables)
             {
                 if (interactable == null) continue;
-                if (!interactable.isVisible) continue;
                 if (interactable.isPC) continue;
-                if (!FOWHelper.IsVisibleToSighted(interactable.gameObject)) continue;
-                if (FOWHelper.IsPerceptionGated(interactable)) continue;
+                if (!FOWHelper.PassesScannerGate(interactable)) continue;
                 if (!NavigationManager.HasInteractionSurface(interactable)) continue;
 
                 Vector3 p = interactable.transform.position;
@@ -1331,10 +1329,8 @@ namespace Wasteland2AccessibilityMod.States
             foreach (var interactable in InteractableNexus.interactables)
             {
                 if (interactable == null) continue;
-                if (!interactable.isVisible) continue;
                 if (interactable.isPC) continue;
-                if (!FOWHelper.IsVisibleToSighted(interactable.gameObject)) continue;
-                if (FOWHelper.IsPerceptionGated(interactable)) continue;
+                if (!FOWHelper.PassesScannerGate(interactable)) continue;
                 // Skip invisible scripting trigger volumes (e.g. AZ4_HiddenBoyTrigger) that
                 // register a nexus but expose no player interaction. Same gate as the cycling
                 // scanner in NavigationManager.
@@ -1454,6 +1450,13 @@ namespace Wasteland2AccessibilityMod.States
         private string GetInteractableName(InteractableNexus interactable)
         {
             if (interactable == null) return "Unknown";
+
+            // "Unrevealed names" mode: surface the object for navigation but keep
+            // its identity (and any open/locked state suffix) hidden until the
+            // party genuinely discovers it. Mirrors NavigationManager.GetInteractableName.
+            if (FOWHelper.RevealMode == ScannerRevealMode.RevealUnnamed &&
+                !FOWHelper.IsDiscoveredNormally(interactable))
+                return "Unrevealed";
 
             // Try to get name from Drama
             if (interactable.drama != null)
@@ -2667,11 +2670,16 @@ namespace Wasteland2AccessibilityMod.States
                     }
                 }
             }
-            if (nexus != null && !nexus.isPC &&
-                (!nexus.isVisible ||
-                 !FOWHelper.IsVisibleToSighted(nexus.gameObject) ||
-                 FOWHelper.IsPerceptionGated(nexus)))
-                return null;
+            if (nexus != null && !nexus.isPC)
+            {
+                // Same gate as the tile/scanner lists: hide undiscovered objects in
+                // Normal mode; in a reveal mode show them (masked as "Unrevealed"
+                // when their identity isn't genuinely discovered yet).
+                if (!FOWHelper.PassesScannerGate(nexus)) return null;
+                if (FOWHelper.RevealMode == ScannerRevealMode.RevealUnnamed &&
+                    !FOWHelper.IsDiscoveredNormally(nexus))
+                    return "Unrevealed";
+            }
 
             // Categorize by layer
             if (layerName == "Wall" || layerName == "FadedWall")
