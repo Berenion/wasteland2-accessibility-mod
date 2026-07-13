@@ -2,7 +2,7 @@
 //! reads it naturally; there are no spinners or cursor tricks. The GUI (added
 //! later) is a second front-end over the same `core` engine.
 
-use crate::core::{detect, github, install, melonloader, paths, process};
+use crate::core::{flow, install, paths};
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -77,29 +77,24 @@ fn install_flow(opts: &Options) -> Result<String, String> {
     let game_dir = resolve_game_dir(opts)?;
     println!("Game folder: {}", game_dir.display());
 
-    // 2. Ask GitHub what the latest mod release is. During beta we include
-    // prereleases (the plain /releases/latest endpoint hides them).
+    // 2. Inspect: query GitHub (prereleases included during beta — the plain
+    // /releases/latest endpoint hides them) and classify the install.
     println!("Checking for the latest release...");
-    let (release, asset, latest) =
-        github::find_latest_mod_release(paths::MOD_REPO, opts.include_prerelease)?;
+    let plan = flow::plan(&game_dir, opts.include_prerelease)?;
     println!(
-        "Latest release: {latest}{} (tag {}, {})",
-        if release.prerelease { " prerelease" } else { "" },
-        release.tag_name,
-        asset.name
+        "Latest release: {}{} (tag {}, {})",
+        plan.latest,
+        if plan.prerelease { " prerelease" } else { "" },
+        plan.tag,
+        plan.asset.name
     );
-
-    // 3. Classify the current install and decide.
-    let state = detect::classify_install(&game_dir);
-    if let Some(installed) = detect::installed_version(&state) {
-        println!("Installed version: {installed}");
-    } else {
-        println!("Installed version: none managed by this installer");
+    match &plan.installed {
+        Some(v) => println!("Installed version: {v}"),
+        None => println!("Installed version: none managed by this installer"),
     }
-    let decision = install::decide(&state, &latest);
-    println!("Action: {}", describe(&decision));
+    println!("Action: {}", plan.summary());
 
-    if detect::melonloader_looks_incompatible(&game_dir) {
+    if plan.melonloader_incompatible {
         println!(
             "Note: the MelonLoader in this folder looks like a 0.6.x build, which crashes \
              this game. It will be replaced with the required 0.5.7."
@@ -110,66 +105,27 @@ fn install_flow(opts: &Options) -> Result<String, String> {
         return Ok("Check complete (no changes made).".to_string());
     }
 
-    let force_melon =
-        opts.force_melonloader || detect::melonloader_looks_incompatible(&game_dir);
-
-    if decision == install::UpdateDecision::UpToDate
-        && detect::melonloader_present(&game_dir)
+    let force_melon = opts.force_melonloader || plan.melonloader_incompatible;
+    if plan.decision == install::UpdateDecision::UpToDate
+        && plan.melonloader_present
         && !force_melon
     {
         return Ok("Already up to date. Nothing to do.".to_string());
     }
 
-    // 4. Never patch a running game.
-    if process::game_running() {
-        return Err("Wasteland 2 is running. Close the game and run this again.".to_string());
-    }
-
-    // 5. Confirm before touching the folder.
+    // 3. Confirm before touching the folder.
     if !opts.assume_yes && !confirm("Proceed?") {
         return Ok("Cancelled.".to_string());
     }
 
-    // 6. MelonLoader bootstrap.
-    println!("Ensuring MelonLoader 0.5.7...");
-    let ml_installed_now = melonloader::ensure_melonloader(&game_dir, force_melon)?;
-    println!(
-        "MelonLoader: {}",
-        if ml_installed_now {
-            "installed 0.5.7"
-        } else {
-            "already present"
-        }
-    );
-
-    // 7. Download and install the mod.
-    println!("Downloading {}...", asset.name);
-    let tmp = std::env::temp_dir().join(&asset.name);
-    github::download_asset(&asset, &tmp)?;
-    println!("Installing...");
-    let melon_flag = ml_installed_now
-        || matches!(&state, detect::InstallState::Managed(m) if m.melonloader_installed);
-    let manifest =
-        install::install_mod(&game_dir, &asset, &latest, &tmp, &state, melon_flag)?;
-    let _ = std::fs::remove_file(&tmp);
+    // 4. Do it, streaming progress to the console.
+    flow::apply(&game_dir, &plan, opts.force_melonloader, |line| println!("{line}"))?;
 
     Ok(format!(
-        "Done. Installed mod {} ({} files).\n\
-         Start your screen reader, then launch the game. If it doesn't speak, check \
+        "Done. Start your screen reader, then launch the game. If it doesn't speak, check \
          {}\\MelonLoader\\Latest.log for a \"Screen reader detected\" line.",
-        manifest.mod_version,
-        manifest.installed_files.len(),
         game_dir.display()
     ))
-}
-
-fn describe(d: &install::UpdateDecision) -> &'static str {
-    match d {
-        install::UpdateDecision::FreshInstall => "fresh install",
-        install::UpdateDecision::Update => "update",
-        install::UpdateDecision::Reinstall => "reinstall / take over existing files",
-        install::UpdateDecision::UpToDate => "already up to date",
-    }
 }
 
 /// Resolve the Build folder: explicit flag, then auto-detect, then prompt.

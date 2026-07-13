@@ -9,3 +9,4 @@ pub mod detect;
 pub mod install;
 pub mod melonloader;
 pub mod process;
+pub mod flow;

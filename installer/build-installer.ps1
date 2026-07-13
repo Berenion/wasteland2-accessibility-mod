@@ -26,6 +26,32 @@ if (-not (Test-Path $cargo)) {
     throw "cargo not found. Install Rust from https://rustup.rs and re-run."
 }
 
+# The wxdragon GUI's native build (wxdragon-sys) needs libclang (bindgen) and
+# cmake + ninja (C++ glue). These often aren't on PATH, so locate them from an
+# LLVM install and Visual Studio's bundled copies.
+if (-not $env:LIBCLANG_PATH) {
+    foreach ($c in @("$env:ProgramFiles\LLVM\bin", "${env:ProgramFiles(x86)}\LLVM\bin")) {
+        if (Test-Path (Join-Path $c 'libclang.dll')) { $env:LIBCLANG_PATH = $c; break }
+    }
+}
+if (-not $env:LIBCLANG_PATH) {
+    Write-Warning "libclang not found. If the build fails on bindgen, run: winget install LLVM.LLVM"
+}
+$missingCmake = -not (Get-Command cmake -ErrorAction SilentlyContinue)
+$missingNinja = -not (Get-Command ninja -ErrorAction SilentlyContinue)
+if ($missingCmake -or $missingNinja) {
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswhere) {
+        $vsPath = & $vswhere -latest -products * -property installationPath
+        if ($vsPath) {
+            $ext = Join-Path $vsPath 'Common7\IDE\CommonExtensions\Microsoft\CMake'
+            foreach ($d in @((Join-Path $ext 'CMake\bin'), (Join-Path $ext 'Ninja'))) {
+                if (Test-Path $d) { $env:PATH = "$d;$env:PATH" }
+            }
+        }
+    }
+}
+
 Write-Host "Building installer (release)..." -ForegroundColor Cyan
 # cargo writes progress to stderr; under ErrorActionPreference=Stop that would be
 # treated as a terminating error even on success. Relax it around the native call

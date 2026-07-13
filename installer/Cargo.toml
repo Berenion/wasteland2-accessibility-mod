@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 dirs = "6.0.0"
+libloading = "0.9.0"
 regex = "1.13.0"
 # default-features=false + default-tls keeps TLS on the OS (SChannel on Windows),
 # avoiding the rustls/aws-lc-sys C build that reqwest's default feature set pulls in.
@@ -14,7 +15,9 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sha2 = "0.11.0"
 sysinfo = "0.39.6"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_LibraryLoader"] }
 winreg = "0.56.0"
+wxdragon = "0.9.17"
 zip = "8.6.0"
 
 [build-dependencies]
