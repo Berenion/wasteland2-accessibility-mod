@@ -419,15 +419,14 @@ namespace Wasteland2AccessibilityMod.Patches
     /// for these: it opens the book directly and returns before building any Drop / Junk /
     /// Give-to buttons, so keyboard users could never drop or hand off a book. This prefix
     /// intercepts books, builds an ItemInfoMenu with a Read button (the original open-book
-    /// action) plus the standard Junk/Drop options, and skips the original. "Give to..." is
-    /// appended afterward by <see cref="OpenContextMenu_GiveTo_Patch"/> (a postfix, which
-    /// still runs when a prefix skips the original).
+    /// action) plus the standard Junk option, and skips the original. "Drop" and "Give
+    /// to..." are appended afterward by <see cref="OpenContextMenu_GiveTo_Patch"/> (a postfix,
+    /// which still runs when a prefix skips the original), so books share the same Drop path
+    /// as every other backpack item.
     /// </summary>
     [HarmonyPatch(typeof(INV_DragDropItem), "OpenContextMenu")]
     public class OpenContextMenu_ReadableBook_Patch
     {
-        private static MethodInfo onDropClickedMethod;
-
         [HarmonyPrefix]
         public static bool Prefix(INV_DragDropItem __instance)
         {
@@ -474,18 +473,77 @@ namespace Wasteland2AccessibilityMod.Patches
             else if (!item.template.partyNoDrop)
                 menu.AddButton("Flag as Junk", () => ddi.OnJunkClicked());
 
-            // Drop — respects the game's no-drop flag so quest-critical books stay put.
-            if (!item.template.partyNoDrop)
-                menu.AddButton("Drop", () => DropBook(ddi));
-
-            // "Give to..." is appended by OpenContextMenu_GiveTo_Patch after this returns.
+            // "Drop" and "Give to..." are appended by OpenContextMenu_GiveTo_Patch (a postfix
+            // that still runs even though this prefix skips the original), so books get the
+            // same shared Drop handling as every other backpack item.
             return false;
         }
+    }
 
-        // Invokes the game's own private OnDropClicked so the book drops to the world
-        // exactly like any other item's Drop button (handles the trade message, inventory
-        // removal, world drop, and tile cleanup).
-        private static void DropBook(INV_DragDropItem ddi)
+    /// <summary>
+    /// Appends the two context-menu actions keyboard users otherwise can't reach, both of
+    /// which vanilla only offers via mouse drag-and-drop: "Drop" (drop to the world) and
+    /// "Give to..." (hand off to another party member). Runs as a postfix so it also fires
+    /// after <see cref="OpenContextMenu_ReadableBook_Patch"/> skips the original for books.
+    /// </summary>
+    [HarmonyPatch(typeof(INV_DragDropItem), "OpenContextMenu")]
+    public class OpenContextMenu_GiveTo_Patch
+    {
+        private static MethodInfo onDropClickedMethod;
+
+        [HarmonyPostfix]
+        public static void Postfix(INV_DragDropItem __instance)
+        {
+            // Only the character's carried inventory, not loot/vendor screens.
+            if (__instance is VND_DragDropItem) return;
+            if (__instance.ownerPC == null) return;
+
+            // Find the ItemInfoMenu the game (or the book prefix) just opened.
+            if (!MonoBehaviourSingleton<GUIManager>.HasInstance()) return;
+            var guiManager = MonoBehaviourSingleton<GUIManager>.GetInstance();
+            if (!guiManager.IsItemInfoScreenOpen()) return;
+
+            var screensField = typeof(GUIManager).GetField("screens", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (screensField == null) return;
+            var screens = screensField.GetValue(guiManager) as List<GUIScreen>;
+            if (screens == null || screens.Count == 0) return;
+
+            ItemInfoMenu itemInfoMenu = null;
+            for (int i = screens.Count - 1; i >= 0; i--)
+            {
+                itemInfoMenu = screens[i] as ItemInfoMenu;
+                if (itemInfoMenu != null) break;
+            }
+            if (itemInfoMenu == null) return;
+
+            // Capture reference for the closures
+            INV_DragDropItem dragDropItem = __instance;
+
+            // Drop — the game only builds a Drop button when allowedActions carries the Drop
+            // flag, which no standard inventory context ever sets (vanilla drops via
+            // drag-to-world, unreachable by keyboard). Add it for backpack items: skip
+            // equipped gear (slot != None) and respect partyNoDrop so quest items stay put.
+            ItemInstance item = __instance.GetItem();
+            if (item != null && item.template != null
+                && __instance.slot == EquipmentSlot.None
+                && !item.template.partyNoDrop)
+            {
+                itemInfoMenu.AddButton("Drop", () => DropItem(dragDropItem));
+            }
+
+            // Give to... — needs at least one other party member to receive the item.
+            if (MonoBehaviourSingleton<Game>.HasInstance())
+            {
+                var party = MonoBehaviourSingleton<Game>.GetInstance().party;
+                if (party != null && party.Count > 1)
+                    itemInfoMenu.AddButton("Give to...", () => OnGiveToClicked(dragDropItem));
+            }
+        }
+
+        // Invokes the game's own private OnDropClicked so the item drops to the world exactly
+        // like the (mouse-only) vanilla Drop action — it handles the trade message, inventory
+        // removal, world drop, and tile cleanup.
+        private static void DropItem(INV_DragDropItem ddi)
         {
             try
             {
@@ -504,56 +562,8 @@ namespace Wasteland2AccessibilityMod.Patches
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"[InventoryPatches] Book drop failed: {ex.Message}");
+                MelonLogger.Error($"[InventoryPatches] Item drop failed: {ex.Message}");
             }
-        }
-    }
-
-    /// <summary>
-    /// Adds a "Give to" button to the inventory context menu, enabling keyboard-accessible
-    /// item transfers between party members (normally requires drag-and-drop).
-    /// </summary>
-    [HarmonyPatch(typeof(INV_DragDropItem), "OpenContextMenu")]
-    public class OpenContextMenu_GiveTo_Patch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(INV_DragDropItem __instance)
-        {
-            // Only add "Give to" in the character inventory screen, not loot/vendor
-            if (__instance is VND_DragDropItem) return;
-            if (__instance.ownerPC == null) return;
-
-            // Must have party members to give to
-            if (!MonoBehaviourSingleton<Game>.HasInstance()) return;
-            var party = MonoBehaviourSingleton<Game>.GetInstance().party;
-            if (party == null || party.Count <= 1) return;
-
-            // Find the ItemInfoMenu that was just opened
-            if (!MonoBehaviourSingleton<GUIManager>.HasInstance()) return;
-            var guiManager = MonoBehaviourSingleton<GUIManager>.GetInstance();
-            if (!guiManager.IsItemInfoScreenOpen()) return;
-
-            // Get the top screen as ItemInfoMenu
-            var screensField = typeof(GUIManager).GetField("screens", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (screensField == null) return;
-            var screens = screensField.GetValue(guiManager) as List<GUIScreen>;
-            if (screens == null || screens.Count == 0) return;
-
-            ItemInfoMenu itemInfoMenu = null;
-            for (int i = screens.Count - 1; i >= 0; i--)
-            {
-                itemInfoMenu = screens[i] as ItemInfoMenu;
-                if (itemInfoMenu != null) break;
-            }
-            if (itemInfoMenu == null) return;
-
-            // Capture references for the closure
-            INV_DragDropItem dragDropItem = __instance;
-
-            itemInfoMenu.AddButton("Give to...", () =>
-            {
-                OnGiveToClicked(dragDropItem);
-            });
         }
 
         private static void OnGiveToClicked(INV_DragDropItem dragDropItem)
