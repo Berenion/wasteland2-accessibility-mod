@@ -1251,6 +1251,12 @@ namespace Wasteland2AccessibilityMod.States
                     parts.Add(los);
             }
 
+            // While free-aiming, flag static scenery cover (P_CoverLow_* etc.) so the user
+            // knows before pressing Enter that there's nothing shootable here — only when
+            // the tile has no real target, to avoid stepping on a genuine destructible/mob.
+            if (freeAimMode && FindTargetableOnTile() == null && HasIndestructibleCoverOnTile())
+                parts.Add("indestructible cover");
+
             // Note: node.occupant is not used — it can be stale after mobs move.
             // FindMobsOnTile() above uses actual mob positions, which is always fresh.
 
@@ -2550,6 +2556,17 @@ namespace Wasteland2AccessibilityMod.States
                     catch (Exception ex) { MelonLogger.Warning($"[CombatState] free-aim TargetVisible check failed: {ex.Message}"); }
                 }
 
+                // Nothing shootable on the tile. If the player parked on static scenery
+                // cover (P_CoverLow_* etc. — a Cover-layer collider with no hitpoints),
+                // say it can't be destroyed instead of burning the shot on the ground.
+                if (target == null && HasIndestructibleCoverOnTile())
+                {
+                    ScreenReaderManager.SpeakInterrupt("That cover can't be destroyed");
+                    freeAimMode = false;
+                    freeAimUser = null;
+                    return;
+                }
+
                 var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
                 inputManager.ClearSelectedSquare();
 
@@ -2603,28 +2620,127 @@ namespace Wasteland2AccessibilityMod.States
             Mob mob = FindAliveMobOnTile();
             if (mob != null) return mob;
 
-            // Then check for TargetableObjects (destructible cover, barrels, explosives).
-            // Gate on curHP > 0, the same validity check vanilla uses when the attack ray
-            // hits a Targetable (InputManager.cs:3957). The hasHitpoints flag is never set
-            // in code, so keying on it silently found nothing and free aim fell through to
-            // an intentional ground miss.
+            // Destructible cover / barrels / explosives. Prefer the game's own registry,
+            // Game.targetableObjects — the exact list vanilla builds its attack targets
+            // from (InputManager.cs:3917) — matched by tile position, gated on curHP > 0
+            // (the validity check at InputManager.cs:3957). This sidesteps the collider
+            // guesswork below: cover routinely puts its collider on a child/sibling object
+            // and points the real Targetable at it through a RaycastPropagate, so an
+            // OverlapSphere on the ground node found the collider but neither it nor its
+            // parent was the TargetableObject — free aim then fell through to a ground miss.
+            TargetableObject byPos = FindTargetableObjectByPosition(cursorPosition);
+            if (byPos != null)
+            {
+                ModLog.Debug($"[CombatState] free-aim target (registry): {byPos.name} hp={byPos.curHP}");
+                return byPos;
+            }
+
+            // Fallback: physics overlap, following RaycastPropagate to the Targetable the
+            // same way vanilla's attack ray does (InputManager.cs:2029, 3015), so a hit
+            // collider that only *points* at its Targetable still resolves.
             float tileRadius = 0.75f;
             Collider[] colliders = Physics.OverlapSphere(cursorPosition, tileRadius);
             foreach (var collider in colliders)
             {
                 if (collider == null || collider.gameObject == null) continue;
 
-                var targetableObj = collider.GetComponent<TargetableObject>();
-                if (targetableObj != null && targetableObj.curHP > 0f)
-                    return targetableObj;
-
-                // Also check parent
-                targetableObj = collider.GetComponentInParent<TargetableObject>();
-                if (targetableObj != null && targetableObj.curHP > 0f)
-                    return targetableObj;
+                TargetableObject obj = ResolveTargetableObject(collider);
+                if (obj != null && obj.curHP > 0f)
+                {
+                    ModLog.Debug($"[CombatState] free-aim target (overlap): {obj.name} hp={obj.curHP} via {collider.name}");
+                    return obj;
+                }
             }
 
+            ModLog.Debug($"[CombatState] free-aim: no targetable at {cursorPosition} " +
+                         $"(registry={(MonoBehaviourSingleton<Game>.HasInstance() && MonoBehaviourSingleton<Game>.GetInstance().targetableObjects != null ? MonoBehaviourSingleton<Game>.GetInstance().targetableObjects.Count : 0)} objects, " +
+                         $"overlap={colliders.Length} colliders)");
             return null;
+        }
+
+        /// <summary>
+        /// True when the cursor tile holds static, indestructible cover — a collider that is
+        /// not backed by a <see cref="TargetableObject"/> and is either on the Cover layer,
+        /// carries a <see cref="Cover"/> component, or sits on the Wall layer. Wasteland 2
+        /// models scenery cover in two ways: low cover (P_CoverLow_*) lives on the Cover
+        /// layer, high cover (P_CoverHigh_*) lives on the Wall layer. Both block line of
+        /// sight and grant a cover bonus but have no hitpoints, so a shot at them just hits
+        /// the ground. A live <see cref="DestructableObject"/> also carries a Cover component
+        /// / sits on these layers, so the no-Targetable check is what separates "can't be
+        /// destroyed" from a real target.
+        /// </summary>
+        private bool HasIndestructibleCoverOnTile()
+        {
+            int coverLayer = LayerMask.NameToLayer("Cover");
+            int wallLayer = LayerMask.NameToLayer("Wall");
+            Collider[] colliders = Physics.OverlapSphere(cursorPosition, 0.75f);
+            foreach (var collider in colliders)
+            {
+                if (collider == null || collider.gameObject == null) continue;
+
+                int layer = collider.gameObject.layer;
+                bool isCover = (coverLayer >= 0 && layer == coverLayer)
+                               || (wallLayer >= 0 && layer == wallLayer)
+                               || collider.GetComponent<Cover>() != null
+                               || collider.GetComponentInParent<Cover>() != null;
+                if (!isCover) continue;
+
+                if (ResolveTargetableObject(collider) == null)
+                    return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Finds a live destructible TargetableObject whose position falls on the tile at
+        /// <paramref name="worldPos"/>, scanning the game's own registry
+        /// (<c>Game.targetableObjects</c>). Matches X/Z within a tile radius and requires
+        /// curHP &gt; 0, mirroring how vanilla assembles its attack-target list
+        /// (InputManager.cs:3917/3957) and how <see cref="HasTargetableAtPosition"/> matches
+        /// mobs. Returns null if none is on the tile.
+        /// </summary>
+        private TargetableObject FindTargetableObjectByPosition(Vector3 worldPos)
+        {
+            if (!MonoBehaviourSingleton<Game>.HasInstance()) return null;
+            var objects = MonoBehaviourSingleton<Game>.GetInstance().targetableObjects;
+            if (objects == null) return null;
+
+            foreach (var obj in objects)
+            {
+                if (obj == null || obj.gameObject == null) continue;
+                if (obj.curHP <= 0f) continue;
+                try
+                {
+                    Vector3 p = obj.transform.position;
+                    if (Mathf.Abs(p.x - worldPos.x) <= TILE_MATCH_RADIUS &&
+                        Mathf.Abs(p.z - worldPos.z) <= TILE_MATCH_RADIUS)
+                        return obj;
+                }
+                catch (Exception ex) { MelonLogger.Warning($"[CombatState] FindTargetableObjectByPosition transform check failed: {ex.Message}"); }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Resolves the <see cref="TargetableObject"/> reachable from a hit collider: the
+        /// component itself, its parent, or — as vanilla's attack ray does
+        /// (InputManager.cs:2029) — the target a <see cref="RaycastPropagate"/> on the
+        /// collider points to. Returns null if the collider maps to no Targetable.
+        /// </summary>
+        private TargetableObject ResolveTargetableObject(Collider collider)
+        {
+            var obj = collider.GetComponent<TargetableObject>();
+            if (obj == null) obj = collider.GetComponentInParent<TargetableObject>();
+            if (obj != null) return obj;
+
+            var propagate = collider.GetComponent<RaycastPropagate>();
+            if (propagate == null) propagate = collider.GetComponentInParent<RaycastPropagate>();
+            if (propagate != null && propagate.target != null)
+            {
+                obj = propagate.target.GetComponent<TargetableObject>();
+                if (obj == null) obj = propagate.target.GetComponentInParent<TargetableObject>();
+            }
+            return obj;
         }
 
         /// <summary>
@@ -2659,14 +2775,18 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             // Destructible / explosive object on the tile (curHP > 0, matching how vanilla
-            // and FindTargetableOnTile decide a Targetable is a live attack target).
+            // and FindTargetableOnTile decide a Targetable is a live attack target). Check
+            // the game's registry first, then fall back to a physics overlap that follows
+            // RaycastPropagate — same resolution as FindTargetableOnTile, so a tile the free
+            // aim path can shoot is also a tile the cursor is allowed to stop on.
+            if (FindTargetableObjectByPosition(worldPos) != null) return true;
+
             Collider[] colliders = Physics.OverlapSphere(worldPos, TileCoordinateSystem.SquareSize * 0.75f);
             foreach (var collider in colliders)
             {
                 if (collider == null || collider.gameObject == null) continue;
 
-                var targetableObj = collider.GetComponent<TargetableObject>();
-                if (targetableObj == null) targetableObj = collider.GetComponentInParent<TargetableObject>();
+                TargetableObject targetableObj = ResolveTargetableObject(collider);
                 if (targetableObj != null && targetableObj.curHP > 0f) return true;
             }
 
