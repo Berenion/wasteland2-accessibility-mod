@@ -145,15 +145,24 @@ namespace Wasteland2AccessibilityMod.Core
         /// settings hotkey defers to these so a typed capital S lands in the field instead
         /// of hijacking the keystroke to open the mod menu.
         ///
-        /// NGUI tracks the focused input in the static <c>UIInput.selection</c> (set on focus,
-        /// nulled on blur — see UIInput.isSelected), so a non-null value means a game text box
-        /// is live.
+        /// NGUI tracks the focused input in the static <c>UIInput.selection</c>, but only ever
+        /// clears it from OnDeselectEvent — reached via a UICamera "OnSelect" SendMessage.
+        /// That message never arrives if the field's GameObject is deactivated while focused,
+        /// and UICamera.SetSelection skips the deselect notify outright when a selection change
+        /// is already pending for the frame. UIInput.OnDisable/Cleanup do not clear it either.
+        /// So `selection` can be left pointing at a live-but-disabled field indefinitely, and a
+        /// plain null check would swallow the settings hotkey for the rest of the session
+        /// (Unity's fake-null only covers destroyed objects, not disabled ones).
+        ///
+        /// NGUITools.GetActive(Behaviour) is the game's own liveness test — object alive, the
+        /// component enabled, and the GameObject active in the hierarchy — which is exactly the
+        /// condition under which the field is really capturing keystrokes.
         /// </summary>
         private static bool IsTextEntryActive()
         {
             return KeywordEntryState.blockUIInput
                 || GenericMenuState.IsEditingTextField
-                || UIInput.selection != null;
+                || NGUITools.GetActive(UIInput.selection);
         }
 
         /// <summary>
