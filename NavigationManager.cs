@@ -391,6 +391,7 @@ namespace Wasteland2AccessibilityMod
                 if (!FOWHelper.PassesScannerGate(nexus)) continue;
                 if (!HasInteractionSurface(nexus)) continue;
                 if (IsLootedEmptyContainer(nexus)) continue;
+                if (IsDefusedTrap(nexus)) continue;
                 if (!MatchesCategory(nexus, currentCategory)) continue;
                 filteredInteractables.Add(nexus);
             }
@@ -460,6 +461,31 @@ namespace Wasteland2AccessibilityMod
             return invObj.empty;
         }
 
+        /// <summary>
+        /// True once a trap-only interactable (land mine, laser tripwire) has been disarmed
+        /// or has already gone off, so it should drop off the scanner the same way a looted
+        /// container does — a defused mine is scenery, and leaving it in makes the live ones
+        /// harder to pick out.
+        ///
+        /// InteractableObject.isDemolitionsTrapped (state flag 5) is the game's own armed
+        /// flag: DisarmedDemolitions() clears it and disables the Demolitions/BoobyTrap
+        /// components, and both LandMine and IO_LaserTripwire gate their whole behaviour on
+        /// it (LandMine.Event_ASI_examine reports "The land mine has been disarmed" when it
+        /// is false). isExploded covers a trap that was triggered rather than defused.
+        ///
+        /// Deliberately limited to these two types. Other booby-trapped objects — the AZ3
+        /// Interceptor's car bomb, trapped chests, the CA1 armory door — still have a
+        /// container, door, or quest interaction left once the trap is gone, so they stay.
+        /// </summary>
+        private static bool IsDefusedTrap(InteractableNexus nexus)
+        {
+            var obj = nexus.drama as InteractableObject;
+            if (obj == null) obj = nexus.GetComponent<InteractableObject>();
+            if (obj == null) return false;
+            if (!(obj is LandMine) && !(obj is IO_LaserTripwire)) return false;
+            return !obj.isDemolitionsTrapped || obj.isExploded;
+        }
+
         public static bool HasInteractionSurface(InteractableNexus nexus)
         {
             if (nexus.drama is InteractableObject) return true;
@@ -480,7 +506,8 @@ namespace Wasteland2AccessibilityMod
         /// <summary>
         /// Every scanner-visible interactable right now — all categories plus party
         /// members — unsorted, applying the same visibility / FOW / perception /
-        /// interaction-surface / looted-container filters the cycling scanner uses.
+        /// interaction-surface / looted-container / defused-trap filters the cycling
+        /// scanner uses.
         /// Callers order it themselves (e.g. the tile cursor sorts by distance from the
         /// cursor rather than from the player). Ignores the current category filter on
         /// purpose: this is the "what's around me" scan, not the cycling view.
@@ -499,6 +526,7 @@ namespace Wasteland2AccessibilityMod
                 if (!FOWHelper.PassesScannerGate(nexus)) continue;
                 if (!HasInteractionSurface(nexus)) continue;
                 if (IsLootedEmptyContainer(nexus)) continue;
+                if (IsDefusedTrap(nexus)) continue;
                 result.Add(nexus);
             }
 
