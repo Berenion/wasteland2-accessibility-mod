@@ -28,8 +28,10 @@ namespace Wasteland2AccessibilityMod.States
                    "Ctrl plus an arrow moves until blocked, Tab opens the actions menu, Enter opens the tile context menu, " +
                    "the right bracket key orders the ranger to walk to the cursor, backslash scans the tile, X examines, " +
                    "L lists everything within the scan radius of the cursor, comma and period shrink and grow that radius, " +
+                   "N names this location so you can find it again, and repeating N on a labelled tile edits it, " +
                    "Home jumps to the selected interactable, Shift Home jumps to the party leader, F toggles camera follow. " +
                    "Scanner: Page Up and Page Down cycle nearby interactables, Ctrl Page Up and Ctrl Page Down cycle category, " +
+                   "the Labels category cycles the places you have named, " +
                    "Enter interacts. Always on: F1 to F7 select party members, F10 toggles camera lock, " +
                    "Space toggles tactical pause, I opens character and inventory, R answers the radio, " +
                    "G toggles group mode, Escape opens the pause menu.";
@@ -90,7 +92,6 @@ namespace Wasteland2AccessibilityMod.States
         private System.Action<Targetable> pendingTargetableSelectionCallback = null;
 
         // Layer masks for floor detection raycasting
-        private static int floorLayerMask = -1;
 
         // --- Actions Menu (Tab key) ---
         private bool browsingActions = false;
@@ -553,6 +554,15 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // N: name (label) the tile under the cursor, so it can be recognised on a
+            // later visit. Use Home first to put the cursor on the selected interactable
+            // when labelling something the scanner found.
+            if (Input.GetKeyDown(KeyCode.N))
+            {
+                LabelCurrentTile();
+                return true;
+            }
+
             // Comma / Period: shrink / grow the scan radius (like Shift+arrows for step size).
             if (Input.GetKeyDown(KeyCode.Comma))
             {
@@ -735,30 +745,7 @@ namespace Wasteland2AccessibilityMod.States
 
         private int GetFloorLevel(Vector3 worldPos)
         {
-            if (floorLayerMask < 0)
-            {
-                floorLayerMask = (1 << LayerMask.NameToLayer("Terrain"))
-                               | (1 << LayerMask.NameToLayer("Floor"))
-                               | (1 << LayerMask.NameToLayer("FadedFloor"));
-            }
-
-            RaycastHit hit;
-            if (Physics.Raycast(worldPos + Vector3.up * 2f, Vector3.down, out hit, 5f, floorLayerMask))
-            {
-                Transform trans = hit.transform;
-                while (trans != null)
-                {
-                    string tag = trans.tag;
-                    if (tag == "2nd Floor") return 1;
-                    if (tag == "3rd Floor") return 2;
-                    if (tag == "4th Floor") return 3;
-                    if (tag == "5th Floor") return 4;
-                    if (tag == "6th Floor") return 5;
-                    trans = trans.parent;
-                }
-            }
-
-            return 0;
+            return TileCoordinateSystem.GetFloorLevel(worldPos);
         }
 
         // --- Movement ---
@@ -896,6 +883,54 @@ namespace Wasteland2AccessibilityMod.States
             return steps;
         }
 
+        // --- Location labels ---
+
+        // World position the open label prompt refers to. Captured when the prompt opens
+        // because the modal deactivates this state (GUIManager.IsAnyMenuActive), and the
+        // cursor may have been moved by the time the OK delegate fires.
+        private Vector3 pendingLabelPosition;
+
+        /// <summary>
+        /// Opens the game's text-input modal to name the cursor's tile, pre-filled with any
+        /// existing label so the same key edits rather than only creates. KeywordEntryState
+        /// (priority 72) takes over the typing accessibly as soon as the modal appears.
+        /// </summary>
+        private void LabelCurrentTile()
+        {
+            if (!MonoBehaviourSingleton<GUIManager>.HasInstance()) return;
+
+            pendingLabelPosition = cursorPosition;
+
+            string existing = LocationLabels.Get(cursorPosition);
+            string title = string.IsNullOrEmpty(existing) ? "Label this location" : "Edit location label";
+
+            MonoBehaviourSingleton<GUIManager>.GetInstance().DisplayInputMenuOK(
+                title, string.Empty, OnLabelEntered, existing ?? string.Empty);
+        }
+
+        /// <summary>
+        /// OK delegate for the label prompt. Escape also submits (with an emptied box), so
+        /// cancel is distinguished from a deliberately cleared label via
+        /// KeywordEntryState.LastSubmitWasCancel — otherwise backing out would delete.
+        /// </summary>
+        private void OnLabelEntered(ModalMessageMenu menu)
+        {
+            ModalInputMenu inputMenu = menu as ModalInputMenu;
+            if (inputMenu == null || inputMenu.input == null) return;
+
+            if (KeywordEntryState.LastSubmitWasCancel)
+            {
+                // KeywordEntryState already said "Cancelled".
+                return;
+            }
+
+            string stored = LocationLabels.Set(pendingLabelPosition, inputMenu.input.value);
+            ScreenReaderManager.SpeakInterrupt(
+                stored != null ? "Labelled " + stored : "Label removed");
+            ModLog.Debug($"[MapCursorState] Label at {TileCoordinateSystem.GetGridId(pendingLabelPosition)}: "
+                + (stored ?? "(removed)"));
+        }
+
         // --- Announcements ---
 
         private void AnnounceCurrentTile(bool detailed, string prefix = null, bool reportHeightChange = false)
@@ -910,6 +945,15 @@ namespace Wasteland2AccessibilityMod.States
             if (!string.IsNullOrEmpty(prefix))
             {
                 parts.Add(prefix);
+            }
+
+            // The player's own label for this tile, if any. Announced ahead of coordinates
+            // and contents either way round: it is the most identifying thing about the
+            // tile, and it is the reason they came back here.
+            string tileLabel = LocationLabels.Get(cursorPosition);
+            if (!string.IsNullOrEmpty(tileLabel))
+            {
+                parts.Add("labelled " + tileLabel);
             }
 
             // Grid coordinates
@@ -2329,17 +2373,17 @@ namespace Wasteland2AccessibilityMod.States
 
         private void JumpToSelectedInteractable()
         {
-            // Cover category: jump to the selected cover position (announce-only path,
-            // no InteractableNexus behind it).
-            if (NavigationManager.IsCoverCategory)
+            // Point categories (Cover, Labels): jump to the selected position (announce-only
+            // path, no InteractableNexus behind it).
+            if (NavigationManager.IsPointCategory)
             {
-                Vector3? coverPos = NavigationManager.SelectedCoverPosition;
-                if (!coverPos.HasValue)
+                Vector3? pointPos = NavigationManager.SelectedPointPosition;
+                if (!pointPos.HasValue)
                 {
-                    ScreenReaderManager.SpeakInterrupt("No cover selected");
+                    ScreenReaderManager.SpeakInterrupt("Nothing selected");
                     return;
                 }
-                SnapCursorToWorldTile(coverPos.Value);
+                SnapCursorToWorldTile(pointPos.Value);
                 return;
             }
 
@@ -2432,19 +2476,19 @@ namespace Wasteland2AccessibilityMod.States
 
         private void AnnounceDistanceToSelected()
         {
-            // Cover category: report distance/direction to the selected cover position.
-            if (NavigationManager.IsCoverCategory)
+            // Point categories (Cover, Labels): report distance/direction to the selection.
+            if (NavigationManager.IsPointCategory)
             {
-                Vector3? coverPos = NavigationManager.SelectedCoverPosition;
-                if (!coverPos.HasValue)
+                Vector3? pointPos = NavigationManager.SelectedPointPosition;
+                if (!pointPos.HasValue)
                 {
-                    ScreenReaderManager.SpeakInterrupt("No cover selected");
+                    ScreenReaderManager.SpeakInterrupt("Nothing selected");
                     return;
                 }
-                string coverDist = TileCoordinateSystem.GetDistanceText(cursorPosition, coverPos.Value);
-                string coverDir = DirectionHelper.GetDirectionDescription(cursorPosition, coverPos.Value);
+                string pointDist = TileCoordinateSystem.GetDistanceText(cursorPosition, pointPos.Value);
+                string pointDir = DirectionHelper.GetDirectionDescription(cursorPosition, pointPos.Value);
                 ScreenReaderManager.SpeakInterrupt(
-                    (NavigationManager.SelectedCoverLabel ?? "Cover") + ", " + coverDist + ", " + coverDir);
+                    (NavigationManager.SelectedPointLabel ?? "Selection") + ", " + pointDist + ", " + pointDir);
                 return;
             }
 

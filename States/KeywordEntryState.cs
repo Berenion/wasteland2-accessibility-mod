@@ -5,11 +5,18 @@ using Wasteland2AccessibilityMod.Core;
 namespace Wasteland2AccessibilityMod.States
 {
     /// <summary>
-    /// Accessible text entry for the conversation "custom keyword" box (ModalInputMenu).
-    /// This is the same modal the game opens for gamepad users (ConversationHUD.OnButtonDown,
-    /// "Controller Y" -> GUIManager.DisplayInputMenuOK("Custom Keyword", ..., OnCustomKeywordEntered)),
-    /// reused here so a screen-reader user can type secret keywords / passwords that the game
-    /// never surfaces as buttons (e.g. Red's computer access code "Rosebud").
+    /// Accessible text entry for any ModalInputMenu — the game's single-line input modal.
+    ///
+    /// Originally written for the conversation "custom keyword" box, which is the same modal
+    /// the game opens for gamepad users (ConversationHUD.OnButtonDown, "Controller Y" ->
+    /// GUIManager.DisplayInputMenuOK("Custom Keyword", ..., OnCustomKeywordEntered)), reused
+    /// so a screen-reader user can type secret keywords / passwords that the game never
+    /// surfaces as buttons (e.g. Red's computer access code "Rosebud").
+    ///
+    /// It activates on whichever ModalInputMenu is up rather than on the conversation, so the
+    /// mod can open its own and get accessible typing for free — MapCursorState does this to
+    /// prompt for a location label. Anything spoken here therefore stays generic; the modal's
+    /// title carries the specifics.
     ///
     /// Priority 72 - above DialogState (70) so this state owns the ModalInputMenu instead of
     /// DialogState treating it as a generic yes/no modal. DialogState explicitly skips
@@ -26,7 +33,7 @@ namespace Wasteland2AccessibilityMod.States
 
         public override string GetHelpText()
         {
-            return "Keyword entry. Type the secret keyword or password, Enter submits, " +
+            return "Text entry. Type your text, Enter submits, " +
                    "Backspace deletes the last character, Escape cancels.";
         }
 
@@ -35,6 +42,18 @@ namespace Wasteland2AccessibilityMod.States
         /// (see CharacterScreenPatches) so the modal's own UIInput doesn't also capture keys.
         /// </summary>
         public static bool blockUIInput = false;
+
+        /// <summary>
+        /// True when the submission now reaching the modal's OK delegate came from Escape
+        /// rather than Enter. Escape cancels by submitting an empty value (the conversation
+        /// keyword path relies on that: OnCustomKeywordEntered ignores empty and closes), so
+        /// on the wire a cancel and a deliberately-cleared box look identical. Callers that
+        /// treat empty as a destructive "clear" — LocationLabels removes a label on empty —
+        /// must check this first, or Escape would silently delete instead of backing out.
+        /// Read it from inside the OK delegate: it is set immediately before the button is
+        /// clicked, and reset when the next entry begins.
+        /// </summary>
+        public static bool LastSubmitWasCancel { get; private set; }
 
         private ModalInputMenu cachedMenu;
 
@@ -72,6 +91,7 @@ namespace Wasteland2AccessibilityMod.States
                 string value = input.value ?? "";
                 ScreenReaderManager.SpeakInterrupt(
                     !string.IsNullOrEmpty(value) ? $"Submitting {value}" : "Empty");
+                LastSubmitWasCancel = false;
                 Submit();
                 return true;
             }
@@ -82,6 +102,7 @@ namespace Wasteland2AccessibilityMod.States
             {
                 ScreenReaderManager.SpeakInterrupt("Cancelled");
                 SetValue("");
+                LastSubmitWasCancel = true;
                 Submit();
                 return true;
             }
@@ -128,8 +149,12 @@ namespace Wasteland2AccessibilityMod.States
         public override void OnActivated()
         {
             blockUIInput = true;
+            LastSubmitWasCancel = false;
             cachedMenu = UnityEngine.Object.FindObjectOfType<ModalInputMenu>();
 
+            // The modal's own title says what is being asked for (the game sets "Custom
+            // Keyword"; the mod sets its own when it opens one for a location label), so
+            // the instruction that follows stays generic rather than naming keywords.
             string title = "Enter keyword or password";
             if (cachedMenu != null && cachedMenu.titleLabel != null &&
                 !string.IsNullOrEmpty(cachedMenu.titleLabel.text))
@@ -138,7 +163,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             ScreenReaderManager.SpeakInterrupt(
-                $"{title}. Type your keyword or password, Backspace to delete, Enter to submit, Escape to cancel.");
+                $"{title}. Type your text, Backspace to delete, Enter to submit, Escape to cancel.");
 
             base.OnActivated();
         }
