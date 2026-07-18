@@ -15,6 +15,7 @@ Persistent location labels, a universal Drop action, and a batch of fixes across
 - Free-aiming at destructible cover now hits the cover instead of falling through to a ground miss; static, indestructible cover is announced ("indestructible cover" / "That cover can't be destroyed") instead of silently wasting the shot.
 
 ### Changed
+- The `Shift+S` settings menu gains a **Clear all location labels** action after the sound glossary. It reports how many labels are saved and asks you to confirm (Y to delete, any other key to keep) before removing them from every area.
 - Documentation now headlines the one-download installer (`Wasteland2AccessibilityMod-Installer.exe`) as the primary install method, with the manual MelonLoader steps kept as a fallback.
 
 ## [0.8.1-beta] — 2026-07-08
