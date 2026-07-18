@@ -26,6 +26,7 @@ What it does
 - A scanner that cycles nearby interactables by category, plus a nearby-scan key (L) that lists everything within an adjustable radius of the cursor, each with its direction.
 - Optional sound cues when a new item enters the scanner, one per category, with a glossary in the settings menu to learn and preview them.
 - A "party stopped" notification when an ordered move finishes, in exploration and on the world map; ungrouped members are named individually.
+- Location labels: name any tile (N) — "Rick's shop", or the teleporting door among five identical "Door"s — and hear it back on later visits. Named places cycle in the scanner as their own category, and the labels persist across saves and sessions.
 - A world-map review cursor with POI and radiation alerts, water-cost estimates, and POI cycling.
 - Tactical pause (Space) that freezes time outside combat. Auto-pauses for inventory, loot, and vendor screens.
 - Camera rotation lock so "up" stays north (F10 toggles it).
@@ -70,7 +71,7 @@ Configuration
 
 The mod writes <game>\UserData\Wasteland2Accessibility.cfg on first run. Edit it directly, use the in-game settings menu (Shift+S), or use the per-setting quick toggles; changes save automatically.
 
-The settings menu (Shift+S, available anywhere) lists every setting below as a navigable on/off list: Up and Down move, Enter or Left/Right toggle the focused setting, Escape closes. The single-key quick toggles still work if you prefer them. The last item is a sound glossary: press Enter to open it, then Up and Down to hear each scanner category sound and what it means, Enter to replay, Escape to go back.
+The settings menu (Shift+S, available anywhere) lists every setting below as a navigable on/off list: Up and Down move, Enter or Left/Right toggle the focused setting, Escape closes. The single-key quick toggles still work if you prefer them. The last two items are actions rather than toggles. First, a sound glossary: press Enter to open it, then Up and Down to hear each scanner category sound and what it means, Enter to replay, Escape to go back. Last, clear all location labels: it reports how many are saved and asks you to confirm (Y to delete, any other key to keep) before removing them from every area.
 
 - UseClockPositions (default off): speak directions as clock positions ("3 o'clock") instead of compass names. Toggle in-game with =.
 - ObjectNamesFirst (default off): lead tile announcements with the object name instead of the coordinate. Toggle with K.
@@ -131,7 +132,7 @@ Exploration runs two cursors at once: the scanner cycles nearby interactables, a
 
 Exploration, scanner:
 - PgUp / PgDn: previous / next interactable in the current category.
-- Ctrl+PgUp / Ctrl+PgDn: previous / next category (containers, NPCs, doors, and so on).
+- Ctrl+PgUp / Ctrl+PgDn: previous / next category (containers, NPCs, doors, and so on). The Labels category cycles the places you have named; Home jumps the cursor to the selected one.
 - =: toggle direction format (compass or clock).
 - K: toggle announcement order (coordinate first or object name first).
 - ' (apostrophe): announce party scrap.
@@ -149,6 +150,7 @@ Exploration, grid cursor:
 - Enter: open the tile's context menu. Or fire/use when a free-aim or item mode is active, or open a single ranger's info if one ranger is on the tile.
 - Backslash: detailed scan of the current tile. X: examine the first examinable object on the tile.
 - L: list every scanner-visible item (interactables, characters, party, loot) within the scan radius of the cursor, nearest first, each with its direction from the cursor. Comma / period: decrease / increase that radius, two to forty tiles (default ten).
+- N: name (label) the cursor's tile, so you can recognise it later; the label reads first in the tile scan and the place cycles in the scanner's Labels category. Press N again on a labelled tile to edit it, or clear the box to remove it. To label something the scanner found, press Home first to put the cursor on it.
 - ]: order the selected ranger to walk to the cursor.
 - Home: jump the cursor to the selected interactable (the one from the scanner). End: distance and direction to it.
 - Shift+Home: jump the cursor to the party leader. Shift+End: distance and direction to the leader.
