@@ -61,21 +61,32 @@ if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
 }
 if (-not $Notes) { $Notes = "Wasteland 2 Accessibility Mod $tag (beta prerelease)." }
 
+# Pass notes via a temp file, not --notes: a multi-line notes string handed to
+# gh inline gets mangled (backticks/markdown are re-parsed and gh fails with
+# "no matches found"). --notes-file takes the body verbatim.
+$notesFile = Join-Path ([System.IO.Path]::GetTempPath()) "wl2mod-release-notes-$version.md"
+Set-Content -Path $notesFile -Value $Notes -Encoding utf8
+
 # Create the prerelease, or upload assets to it if the tag already exists.
 # gh writes progress to stderr; relax ErrorActionPreference around the native
 # calls (as with cargo) and gate on the exit code.
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
-gh release view $tag 1>$null 2>$null
-$exists = ($LASTEXITCODE -eq 0)
-if ($exists) {
-    Write-Host "Release $tag exists; uploading assets (clobber)." -ForegroundColor Cyan
-    gh release upload $tag $zip $exe --clobber
-} else {
-    Write-Host "Creating prerelease $tag..." -ForegroundColor Cyan
-    gh release create $tag $zip $exe --prerelease --title $tag --notes $Notes
+try {
+    gh release view $tag 1>$null 2>$null
+    $exists = ($LASTEXITCODE -eq 0)
+    if ($exists) {
+        Write-Host "Release $tag exists; uploading assets (clobber)." -ForegroundColor Cyan
+        gh release upload $tag $zip $exe --clobber
+    } else {
+        Write-Host "Creating prerelease $tag..." -ForegroundColor Cyan
+        gh release create $tag $zip $exe --prerelease --title $tag --notes-file $notesFile
+    }
+    $code = $LASTEXITCODE
 }
-$code = $LASTEXITCODE
-$ErrorActionPreference = $prevEap
+finally {
+    $ErrorActionPreference = $prevEap
+    Remove-Item $notesFile -ErrorAction SilentlyContinue
+}
 if ($code -ne 0) { throw "gh release publish failed (exit $code)." }
 Write-Host "Published $tag." -ForegroundColor Green
