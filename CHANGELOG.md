@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.6-beta] — 2026-07-18
+
+Persistent location labels, a universal Drop action, and a batch of fixes across the world map, scanner, combat, and settings.
+
+### Added
+- **Location labels** (`N`) — name the cursor's tile so you can recognise a place on a later visit (the teleporting door among five identical "Door"s). Named places cycle in the scanner with distance and direction, and the tile read-out speaks the label first. Labels are keyed to a tile and stored in UserData, so they persist across saves and sessions; a confirmed "clear all labels" lives in the `Shift+S` settings menu.
+- **Drop for every backpack item** — the inventory context menu now offers **Drop** for any carried item, not just books. Equipped gear and quest-critical (no-drop) items are left out.
+
+### Fixed
+- Jumping to a scanner location with `Home` on the world map no longer locks the cursor — POI targets sat below the walkable navmesh, so the arrows reported "Blocked" in every direction. The jump now snaps onto the navmesh and the arrows move normally.
+- The `Shift+S` settings hotkey no longer goes dead for the rest of the session after a conversation.
+- Disarmed land mines and tripwires drop out of the exploration scanner, so the live threats are easier to pick out.
+- Free-aiming at destructible cover now hits the cover instead of falling through to a ground miss; static, indestructible cover is announced ("indestructible cover" / "That cover can't be destroyed") instead of silently wasting the shot.
+
+### Changed
+- Documentation now headlines the one-download installer (`Wasteland2AccessibilityMod-Installer.exe`) as the primary install method, with the manual MelonLoader steps kept as a fallback.
+
 ## [0.8.1-beta] — 2026-07-08
 
 Cover awareness, plus a batch of exploration and combat fixes.
