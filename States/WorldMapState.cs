@@ -480,7 +480,19 @@ namespace Wasteland2AccessibilityMod.States
                 return;
             }
 
-            cursorPosition = selectedPos.Value;
+            // POI transforms sit several units below the walkable navmesh
+            // (settlement Ys run around -7 to -8 vs. ~0-3 on the navmesh).
+            // Adopting that raw Y would leave the cursor off-navmesh, and
+            // MoveCursor's tight 2f SamplePosition can't bridge the vertical
+            // gap, so every subsequent arrow press reports "Blocked". Snap the
+            // jump target onto the navmesh (same radius MovePartyToCursor uses)
+            // so the cursor lands somewhere the arrows can actually move from.
+            NavMeshHit hit;
+            if (NavMesh.SamplePosition(selectedPos.Value, out hit, 15f, 1))
+                cursorPosition = hit.position;
+            else
+                cursorPosition = selectedPos.Value;
+
             WorldMapProximityAlert.Reset();
 
             if (cameraFollowsCursor)
