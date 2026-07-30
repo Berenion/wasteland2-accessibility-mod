@@ -4,6 +4,22 @@ using System;
 namespace Wasteland2AccessibilityMod
 {
     /// <summary>
+    /// Where the mod routes its output through Tolk. Speech is the default; the
+    /// other modes send text to a connected Braille display (Tolk drives whatever
+    /// the active screen reader — NVDA/JAWS — has attached). Chosen in the
+    /// accessibility settings menu; see <see cref="ModConfig.OutputMode"/>.
+    /// </summary>
+    public enum OutputMode
+    {
+        /// <summary>Speech only (Tolk_Speak). Braille display is not written by the mod.</summary>
+        Speech = 0,
+        /// <summary>Both speech and Braille (Tolk_Output).</summary>
+        SpeechAndBraille = 1,
+        /// <summary>Braille display only (Tolk_Braille), no speech.</summary>
+        BrailleOnly = 2
+    }
+
+    /// <summary>
     /// Manages screen reader initialization and text-to-speech output
     /// </summary>
     public static class ScreenReaderManager
@@ -31,6 +47,17 @@ namespace Wasteland2AccessibilityMod
                 else
                 {
                     MelonLogger.Msg("No screen reader detected (Tolk loaded, will use SAPI if available)");
+                }
+
+                // Report Braille availability so the log shows whether a display is
+                // connected when a user has selected a Braille output mode.
+                try
+                {
+                    MelonLogger.Msg($"Braille display: {(screenReader.HasBraille() ? "connected" : "not detected")}");
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Warning($"Braille capability check failed: {ex.Message}");
                 }
 
                 return true;
@@ -95,6 +122,36 @@ namespace Wasteland2AccessibilityMod
             {
                 text = UITextExtractor.CleanText(text);
                 if (string.IsNullOrEmpty(text)) return;
+                Output(text, interrupt);
+            }
+        }
+
+        /// <summary>
+        /// Routes a cleaned string to Tolk according to the configured output mode:
+        /// speech (default), speech + Braille, or Braille only. Every spoken string
+        /// funnels through here, so this is the single point that honors Braille mode.
+        /// Falls back to speech if a Braille call fails (e.g. no display connected).
+        /// </summary>
+        private static void Output(string text, bool interrupt)
+        {
+            try
+            {
+                switch (ModConfig.OutputMode)
+                {
+                    case OutputMode.BrailleOnly:
+                        screenReader.Braille(text);
+                        break;
+                    case OutputMode.SpeechAndBraille:
+                        screenReader.Output(text, interrupt);
+                        break;
+                    default:
+                        screenReader.Speak(text, interrupt: interrupt);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"Output failed ({ModConfig.OutputMode}), falling back to speech: {ex.Message}");
                 screenReader.Speak(text, interrupt: interrupt);
             }
         }

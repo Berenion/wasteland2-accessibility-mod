@@ -72,6 +72,7 @@ namespace Wasteland2AccessibilityMod
             InputRouter.Register(new KeypadState());       // Priority 58 - safe/passcode keypad popup
             InputRouter.Register(new ItemResultState());   // Priority 56 - field-strip result popup (overlays inventory)
             InputRouter.Register(new GenericMenuState());  // Priority 55 - generic popup menus (Options, Load/Save, etc.)
+            InputRouter.Register(new ItemDropoffState());   // Priority 54 - conversation give-item screen (ItemDropoffMenu)
             InputRouter.Register(new ConversationState()); // Priority 50 - dialogue navigation
             InputRouter.Register(new InventoryState());    // Priority 50 - inventory navigation
             InputRouter.Register(new ShopState());         // Priority 50 - vendor/shop navigation

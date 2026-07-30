@@ -172,6 +172,14 @@ namespace Wasteland2AccessibilityMod.States
                     MonoBehaviourSingleton<GUIManager>.GetInstance().IsVendorScreenOpen())
                     return false;
 
+                // Yield to ItemDropoffState when the conversation-driven give-item popup
+                // is up. It's a PopupMenu, not a VendorScreen, so IsVendorScreenOpen() above
+                // does not catch it; without this, ConversationState would sit "loading"
+                // behind it and trap the keys.
+                var dropoff = Helpers.SceneQueryCache.Find<ItemDropoffMenu>();
+                if (dropoff != null && dropoff.gameObject.activeInHierarchy)
+                    return false;
+
                 return IsInAdvanceMode || IsInInputMode || IsConversationLoading;
             }
         }

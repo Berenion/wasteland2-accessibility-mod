@@ -16,6 +16,7 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Entry<bool> scannerCategorySoundsEntry;
         private static MelonPreferences_Entry<bool> cursorBlockedByTerrainEntry;
         private static MelonPreferences_Entry<int> scannerRevealModeEntry;
+        private static MelonPreferences_Entry<int> outputModeEntry;
         private static MelonPreferences_Entry<bool> debugLoggingEntry;
 
         public static bool UseClockPositions { get; private set; } = false;
@@ -26,6 +27,7 @@ namespace Wasteland2AccessibilityMod
         public static bool AnnouncePartyStopped { get; private set; } = true;
         public static bool ScannerCategorySounds { get; private set; } = true;
         public static bool CursorBlockedByTerrain { get; private set; } = false;
+        public static OutputMode OutputMode { get; private set; } = OutputMode.Speech;
         public static bool DebugLogging { get; private set; } = false;
 
         /// <summary>
@@ -146,6 +148,13 @@ namespace Wasteland2AccessibilityMod
                 "Controls how much fog-hidden content the exploration scanner and tile cursor surface. 0 = Off (normal fog of war: only what the party could see). 1 = Reveal all (shows every inanimate interactable — containers, doors, examines, exits, loot — fogged or not, with real names). 2 = Unrevealed names (same reveal, but undiscovered items are announced as \"Unrevealed\" so you can navigate toward them without spoiling their identity). Characters and enemies always follow normal fog of war."
             );
 
+            outputModeEntry = configCategory.CreateEntry(
+                "OutputMode",
+                0,
+                "Output Mode",
+                "How the mod sends its output through Tolk to your screen reader. 0 = Speech (default). 1 = Speech and Braille (also writes to a connected Braille display). 2 = Braille only (writes to the Braille display, no speech). Braille modes require a screen reader (NVDA/JAWS) with a Braille display attached."
+            );
+
             debugLoggingEntry = configCategory.CreateEntry(
                 "DebugLogging",
                 false,
@@ -168,10 +177,11 @@ namespace Wasteland2AccessibilityMod
                 new Setting("Scanner category sounds", () => ScannerCategorySounds, FlipScannerCategorySounds, "on", "off"),
                 new Setting("Cursor stops at walls", () => CursorBlockedByTerrain, FlipCursorBlockedByTerrain, "on", "off"),
                 new Setting("Scanner reveal mode", () => FOWHelper.RevealModeText(FOWHelper.RevealMode), CycleRevealMode),
+                new Setting("Output mode", () => OutputModeText(OutputMode), CycleOutputMode),
                 new Setting("Debug logging", () => DebugLogging, FlipDebugLogging, "on", "off"),
             };
 
-            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Party stopped: {AnnouncePartyStopped}, Scanner sounds: {ScannerCategorySounds}, Cursor stops at walls: {CursorBlockedByTerrain}, Debug logging: {DebugLogging}");
+            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Party stopped: {AnnouncePartyStopped}, Scanner sounds: {ScannerCategorySounds}, Cursor stops at walls: {CursorBlockedByTerrain}, Output mode: {OutputModeText(OutputMode)}, Debug logging: {DebugLogging}");
         }
 
         public static void LoadConfig()
@@ -186,12 +196,30 @@ namespace Wasteland2AccessibilityMod
             CursorBlockedByTerrain = cursorBlockedByTerrainEntry.Value;
             DebugLogging = debugLoggingEntry.Value;
             FOWHelper.RevealMode = ClampRevealMode(scannerRevealModeEntry.Value);
+            OutputMode = ClampOutputMode(outputModeEntry.Value);
         }
 
         private static ScannerRevealMode ClampRevealMode(int raw)
         {
             if (raw < 0 || raw > (int)ScannerRevealMode.RevealUnnamed) return ScannerRevealMode.Normal;
             return (ScannerRevealMode)raw;
+        }
+
+        private static OutputMode ClampOutputMode(int raw)
+        {
+            if (raw < 0 || raw > (int)OutputMode.BrailleOnly) return OutputMode.Speech;
+            return (OutputMode)raw;
+        }
+
+        /// <summary>Spoken value for the settings menu, e.g. "speech" / "speech and braille".</summary>
+        public static string OutputModeText(OutputMode mode)
+        {
+            switch (mode)
+            {
+                case OutputMode.SpeechAndBraille: return "speech and braille";
+                case OutputMode.BrailleOnly: return "braille only";
+                default: return "speech";
+            }
         }
 
         /// <summary>
@@ -204,6 +232,21 @@ namespace Wasteland2AccessibilityMod
             int next = ((int)FOWHelper.RevealMode + 1) % 3;
             FOWHelper.RevealMode = (ScannerRevealMode)next;
             scannerRevealModeEntry.Value = next;
+            configCategory.SaveToFile();
+        }
+
+        /// <summary>
+        /// Cycles the output mode Speech → Speech and Braille → Braille only → Speech,
+        /// updating the live value ScreenReaderManager reads and persisting. Does not
+        /// speak — the settings menu announces via Setting.Describe. (In Braille-only
+        /// mode that announcement lands on the Braille display, which is what the user
+        /// selecting it is reading.)
+        /// </summary>
+        private static void CycleOutputMode()
+        {
+            int next = ((int)OutputMode + 1) % 3;
+            OutputMode = (OutputMode)next;
+            outputModeEntry.Value = next;
             configCategory.SaveToFile();
         }
 
