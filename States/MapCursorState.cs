@@ -78,6 +78,17 @@ namespace Wasteland2AccessibilityMod.States
         // Camera follow
         private bool cameraFollowsCursor = true;
 
+        // Set when a position shot was refused once because the tile holds only
+        // indestructible cover. The next Enter on the SAME tile goes through, so the
+        // warning always lands before the shot is spent. Moving the cursor invalidates it
+        // (the pending tile no longer matches), so no reset hook in MoveInDirection is needed.
+        private bool coverShotConfirmPending = false;
+        private Vector3 coverShotConfirmTile = Vector3.zero;
+
+        // Same one-tile confirm for an AoE throw whose blast would catch your own people.
+        private bool aoeConfirmPending = false;
+        private Vector3 aoeConfirmTile = Vector3.zero;
+
         // Context menu state
         private bool contextMenuActive = false;
         private List<ContextMenuOption> contextMenuOptions = new List<ContextMenuOption>();
@@ -411,7 +422,12 @@ namespace Wasteland2AccessibilityMod.States
                 string currentASI = UseASIManager.GetActiveASIName();
                 if (currentASI == "attack" || currentASI == "aoeattack" || currentASI == "coneattack")
                 {
-                    UseASIManager.SetActiveASIName(null);
+                    // AoE leaves the game in aiming mode with a projected sphere, so clear
+                    // that too rather than only dropping the ASI.
+                    if (currentASI == "aoeattack") AoeAimHelper.ClearAiming();
+                    else UseASIManager.SetActiveASIName(null);
+                    coverShotConfirmPending = false;
+                    aoeConfirmPending = false;
                     ScreenReaderManager.SpeakInterrupt("Free aim cancelled");
                     return true;
                 }
@@ -601,6 +617,8 @@ namespace Wasteland2AccessibilityMod.States
             browsingPartyInfo = false;
             partyInfoLines.Clear();
             partyInfoPc = null;
+            coverShotConfirmPending = false;
+            aoeConfirmPending = false;
             // Stop wall tones when leaving the cursor (combat, menus, conversations).
             if (WallSonification.Enabled) WallSonification.Disable();
             base.OnDeactivated();
@@ -770,7 +788,12 @@ namespace Wasteland2AccessibilityMod.States
                 // Even in "cursor stops at walls" mode, still let a single step land on a
                 // tile that holds an interactable (container, door, etc.) — those occupy
                 // obstacle tiles with no walkable node and would otherwise be unreachable.
-                allowBlockedStep: (gridId, worldPos) => HasInteractableAtPosition(worldPos));
+                // Destructibles get the same exception: a prop like a propane tank may not
+                // clear the interactable gate above (HasInteractionSurface), and free aim
+                // can only be pointed at a tile the cursor is allowed to stop on.
+                allowBlockedStep: (gridId, worldPos) =>
+                    HasInteractableAtPosition(worldPos)
+                    || FreeAimHelper.FindDestructiblesAt(worldPos, TILE_MATCH_RADIUS).Count > 0);
 
             if (!result.Moved)
             {
@@ -1027,6 +1050,29 @@ namespace Wasteland2AccessibilityMod.States
                 parts.AddRange(objectParts);
                 if (!string.IsNullOrEmpty(obstruction))
                     parts.Add(obstruction);
+            }
+
+            // While aiming an area weapon, read back what the blast centred here would
+            // catch. Sighted players get this from the projected sphere highlighting its
+            // targets; without it there is no way to know a grenade is about to land on your
+            // own squad until the damage numbers arrive.
+            if (inFreeAim && aimingPC != null && AoeAimHelper.IsAoeWeapon(aimingPC))
+            {
+                if (!AoeAimHelper.IsInThrowRange(aimingPC, cursorPosition))
+                    parts.Add("out of throwing range");
+                else
+                    parts.Add(DescribeBlastContents(
+                        aimingPC, AoeAimHelper.SummarizeBlast(aimingPC, cursorPosition)));
+            }
+            // While free-aiming a normal weapon, flag a tile that holds nothing shootable, so
+            // the user hears it before committing rather than after. Only when the tile has
+            // no real target, to avoid stepping on a genuine destructible or mob.
+            else if (inFreeAim && mobs.Count == 0)
+            {
+                List<string> destructibleNames;
+                if (FindDestructibleObjectsOnTile(out destructibleNames).Count == 0 &&
+                    FreeAimHelper.HasIndestructibleCoverAt(cursorPosition, FreeAimHelper.TileOverlapRadius))
+                    parts.Add("indestructible cover");
             }
 
             // Line of sight from the selected character to this tile (opt-in, toggled with V).
@@ -3052,6 +3098,8 @@ namespace Wasteland2AccessibilityMod.States
                                     {
                                         rangedWeapon.ChangeFiringMode(capturedModeIdx);
                                         UseASIManager.SetActiveASIName(asiName);
+                                        coverShotConfirmPending = false;
+                                        aoeConfirmPending = false;
                                         ScreenReaderManager.SpeakInterrupt(
                                             "Free aim, " + modeName + " with " + weaponName +
                                             ". Move to target and press Enter to attack");
@@ -3062,13 +3110,34 @@ namespace Wasteland2AccessibilityMod.States
                             }
                         }
                     }
+                    else if (AoeAimHelper.IsAoeWeapon(pc))
+                    {
+                        // Area weapon (grenade / rocket) — aims at a tile, not a target.
+                        string radiusText = TileCoordinateSystem.GetRangeText(AoeAimHelper.GetBlastRadius(pc));
+                        string label = weaponTemplate.weaponType == WeaponType.RPG
+                            ? "Fire at tile" : "Throw at tile";
+
+                        actionList.Add(new ExplorationAction
+                        {
+                            Label = label,
+                            Status = weaponName + ", blast radius " + radiusText,
+                            IsEnabled = true,
+                            Execute = () =>
+                            {
+                                UseASIManager.SetActiveASIName("aoeattack");
+                                coverShotConfirmPending = false;
+                                aoeConfirmPending = false;
+                                ScreenReaderManager.SpeakInterrupt(
+                                    "Area attack with " + weaponName + ", blast radius " + radiusText +
+                                    ". Move to the tile to hit and press Enter, or Escape to cancel");
+                                ModLog.Debug("[MapCursorState] AoE aim activated: " + weaponName +
+                                             " radius " + radiusText);
+                            }
+                        });
+                    }
                     else
                     {
                         // Melee or other weapon — single attack action
-                        string asiName = (weaponTemplate.weaponType == WeaponType.Thrown ||
-                                          weaponTemplate.weaponType == WeaponType.RPG)
-                            ? "aoeattack" : "attack";
-
                         actionList.Add(new ExplorationAction
                         {
                             Label = "Free Aim",
@@ -3076,7 +3145,9 @@ namespace Wasteland2AccessibilityMod.States
                             IsEnabled = true,
                             Execute = () =>
                             {
-                                UseASIManager.SetActiveASIName(asiName);
+                                UseASIManager.SetActiveASIName("attack");
+                                coverShotConfirmPending = false;
+                                aoeConfirmPending = false;
                                 ScreenReaderManager.SpeakInterrupt(
                                     "Free aim with " + weaponName +
                                     ". Move to target and press Enter to attack");
@@ -3299,6 +3370,15 @@ namespace Wasteland2AccessibilityMod.States
         {
             try
             {
+                // An AoE weapon aims at a position and never has a Targetable — the whole
+                // target-lookup path below does not apply to it (Mob.CanAttack even rejects
+                // RPG/Thrown outright, Mob.cs:1479). Split off before any of it runs.
+                if (AoeAimHelper.IsAoeWeapon(GetPartyLeader()))
+                {
+                    PerformAoeAttack();
+                    return;
+                }
+
                 // Collect every valid mob target on the tile (NPCs, enemies, animals)
                 var mobTargets = new List<Targetable>();
                 var mobNames = new List<string>();
@@ -3343,7 +3423,11 @@ namespace Wasteland2AccessibilityMod.States
                     return;
                 }
 
-                ScreenReaderManager.SpeakInterrupt("No target on this tile");
+                // Nothing carries a Targetable here. Vanilla still fires: with the attack
+                // ASI active and no Targetable under the cursor it publishes an
+                // intentional-miss attack at the aim position (InputManager.cs:3336), so
+                // dead-ending on "No target" was a gap against vanilla.
+                PerformPositionShot();
             }
             catch (Exception ex)
             {
@@ -3353,27 +3437,203 @@ namespace Wasteland2AccessibilityMod.States
         }
 
         /// <summary>
-        /// Finds every live destructible object (TargetableObject with curHP &gt; 0) whose
-        /// collider overlaps the cursor tile, deduped. Mirrors combat's FindTargetableOnTile
-        /// so cover without an InteractableNexus is still a valid free-aim target. Names are
-        /// resolved from the object's nexus when it has one, else its cleaned GameObject name.
+        /// Throws / fires an area weapon at the cursor tile. Blast contents are read back
+        /// first, and a blast that would catch your own people warns and requires a second
+        /// Enter on the same tile before it will go — a grenade landing on the party is the
+        /// most expensive mistake available here, and there is no other way to see it coming.
+        /// </summary>
+        private void PerformAoeAttack()
+        {
+            PC pc = GetPartyLeader();
+            if (pc == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No ranger selected");
+                return;
+            }
+
+            var summary = AoeAimHelper.SummarizeBlast(pc, cursorPosition);
+
+            if (AoeAimHelper.HasFriendlyFire(summary))
+            {
+                bool confirmed = aoeConfirmPending
+                                 && (aoeConfirmTile - cursorPosition).sqrMagnitude
+                                    <= TILE_MATCH_RADIUS * TILE_MATCH_RADIUS;
+                if (!confirmed)
+                {
+                    aoeConfirmPending = true;
+                    aoeConfirmTile = cursorPosition;
+                    ScreenReaderManager.SpeakInterrupt(
+                        "Warning, blast would hit " + DescribeFriendlyFire(pc, summary) +
+                        ". Press Enter again to throw anyway, or Escape to cancel");
+                    return;
+                }
+            }
+            aoeConfirmPending = false;
+
+            string failureReason;
+            if (!AoeAimHelper.Throw(pc, cursorPosition, out failureReason))
+            {
+                ScreenReaderManager.SpeakInterrupt(failureReason ?? "Attack failed");
+                return;
+            }
+
+            string weapon = "area weapon";
+            try
+            {
+                var template = pc.stats.GetWeaponTemplate();
+                if (template != null)
+                    weapon = UITextExtractor.CleanText(
+                        Language.Localize(template.displayName, false, false, string.Empty));
+            }
+            catch (Exception ex) { MelonLogger.Warning("[MapCursorState] AoE weapon name failed: " + ex.Message); }
+
+            ScreenReaderManager.SpeakInterrupt(
+                "Throwing " + weapon + ", " + DescribeBlastContents(pc, summary));
+            ModLog.Debug("[MapCursorState] AoE attack at " + cursorPosition +
+                         " radius=" + summary.Radius +
+                         " hostiles=" + summary.Hostiles.Count +
+                         " friendlies=" + summary.Friendlies.Count +
+                         " self=" + summary.CatchesSelf);
+        }
+
+        /// <summary>Names the friendlies a blast would catch, thrower first.</summary>
+        private string DescribeFriendlyFire(PC pc, AoeAimHelper.BlastSummary summary)
+        {
+            var names = new List<string>();
+            if (summary.CatchesSelf) names.Add(GetMobName(pc) ?? "yourself");
+            foreach (var friendly in summary.Friendlies)
+                names.Add(GetMobName(friendly) ?? "an ally");
+            if (names.Count == 0) return "your own side";
+            return string.Join(", ", names.ToArray());
+        }
+
+        /// <summary>Speakable read-out of everything a blast centred here would catch.</summary>
+        private string DescribeBlastContents(PC pc, AoeAimHelper.BlastSummary summary)
+        {
+            var parts = new List<string>();
+
+            if (summary.Hostiles.Count > 0)
+            {
+                var names = new List<string>();
+                foreach (var hostile in summary.Hostiles)
+                    names.Add(GetMobName(hostile) ?? "enemy");
+                parts.Add(summary.Hostiles.Count + (summary.Hostiles.Count == 1 ? " enemy: " : " enemies: ")
+                          + string.Join(", ", names.ToArray()));
+            }
+
+            if (summary.CatchesSelf || summary.Friendlies.Count > 0)
+                parts.Add("friendly fire on " + DescribeFriendlyFire(pc, summary));
+
+            if (summary.Objects.Count > 0)
+                parts.Add(summary.Objects.Count +
+                          (summary.Objects.Count == 1 ? " object" : " objects"));
+
+            if (parts.Count == 0)
+                return "blast radius " + TileCoordinateSystem.GetRangeText(summary.Radius) + ", nothing in range";
+
+            return "blast radius " + TileCoordinateSystem.GetRangeText(summary.Radius) + ", "
+                   + string.Join(", ", parts.ToArray());
+        }
+
+        /// <summary>
+        /// Fires at the cursor position rather than at a target — vanilla's intentional
+        /// miss (InputManager.cs:3336), which fires whenever the attack ASI is active and
+        /// nothing targetable is under the cursor. Used when the tile holds no Targetable.
+        ///
+        /// A shot at cover that cannot be destroyed is pure waste, so that case warns and
+        /// requires a second Enter on the same tile before it will fire — the user always
+        /// hears the warning before the action is spent.
+        /// </summary>
+        private void PerformPositionShot()
+        {
+            PC pc = GetPartyLeader();
+            if (pc == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No ranger selected");
+                return;
+            }
+
+            ItemTemplate_Weapon weaponTemplate = pc.stats.GetWeaponTemplate();
+            if (weaponTemplate == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No weapon equipped");
+                return;
+            }
+
+            // A position shot is a ranged shot — a melee swing at empty ground does
+            // nothing, and vanilla's intentional-miss path only fires bullets
+            // (Mob.MissAttack, Mob.cs:2769, is gated on ItemTemplate_WeaponRanged).
+            var rangedWeapon = pc.pcStats.GetWeaponInstance() as ItemInstance_WeaponRanged;
+            if (rangedWeapon == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No target on this tile");
+                return;
+            }
+            if (rangedWeapon.IsJammed())
+            {
+                ScreenReaderManager.SpeakInterrupt("Weapon is jammed");
+                return;
+            }
+            if (rangedWeapon.IsEmpty())
+            {
+                ScreenReaderManager.SpeakInterrupt("Out of ammo");
+                return;
+            }
+
+            if (FreeAimHelper.HasIndestructibleCoverAt(cursorPosition, FreeAimHelper.TileOverlapRadius))
+            {
+                bool confirmed = coverShotConfirmPending
+                                 && (coverShotConfirmTile - cursorPosition).sqrMagnitude
+                                    <= TILE_MATCH_RADIUS * TILE_MATCH_RADIUS;
+                if (!confirmed)
+                {
+                    coverShotConfirmPending = true;
+                    coverShotConfirmTile = cursorPosition;
+                    ScreenReaderManager.SpeakInterrupt(
+                        "That cover can't be destroyed. Shooting it will waste a shot. " +
+                        "Press Enter again to shoot anyway, or Escape to cancel");
+                    return;
+                }
+            }
+            coverShotConfirmPending = false;
+
+            var evt = ObjectPool.Get<EventInfo_CommandAttack>();
+            evt.pc = pc;
+            evt.target = null;
+            evt.intentionalMiss = true;
+            evt.aimDirection = cursorPosition;
+            evt.meleeMoveToRange = false;
+            MonoBehaviourSingleton<EventManager>.GetInstance().Publish(evt);
+
+            string weapon = UITextExtractor.CleanText(
+                Language.Localize(weaponTemplate.displayName, false, false, string.Empty));
+            ScreenReaderManager.SpeakInterrupt("Shooting at ground with " + weapon);
+            ModLog.Debug("[MapCursorState] Position shot at " + cursorPosition);
+
+            UseASIManager.SetActiveASIName(null);
+        }
+
+        /// <summary>
+        /// Finds every live destructible object (TargetableObject with curHP &gt; 0) on the
+        /// cursor tile, deduped, so cover without an InteractableNexus is still a valid
+        /// free-aim target. Names are resolved from the object's nexus when it has one, else
+        /// its cleaned GameObject name.
+        ///
+        /// This used to be a bare physics overlap resolving only the collider and its
+        /// parents, which is the weakest of the three lookups vanilla uses: props routinely
+        /// put the collider on a child or sibling and point at the real Targetable through a
+        /// RaycastPropagate, so the parent walk found nothing and free aim reported "no
+        /// target" on a perfectly shootable object. FreeAimHelper queries the game's own
+        /// registry (Game.targetableObjects) first and follows RaycastPropagate on the
+        /// overlap, matching what combat already did.
         /// </summary>
         private List<Targetable> FindDestructibleObjectsOnTile(out List<string> names)
         {
             var targets = new List<Targetable>();
             names = new List<string>();
-            var seen = new HashSet<TargetableObject>();
 
-            Collider[] colliders = Physics.OverlapSphere(cursorPosition, TILE_MATCH_RADIUS);
-            foreach (var collider in colliders)
+            foreach (var obj in FreeAimHelper.FindDestructiblesAt(cursorPosition, TILE_MATCH_RADIUS))
             {
-                if (collider == null || collider.gameObject == null) continue;
-
-                var obj = collider.GetComponent<TargetableObject>();
-                if (obj == null) obj = collider.GetComponentInParent<TargetableObject>();
-                if (obj == null || obj.curHP <= 0f) continue;
-                if (!seen.Add(obj)) continue;
-
                 targets.Add(obj);
                 names.Add(ResolveDestructibleName(obj));
             }
@@ -3385,18 +3645,22 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (obj == null) return "object";
 
+            string name = null;
             var nexus = obj.GetComponent<InteractableNexus>();
             if (nexus == null) nexus = obj.GetComponentInParent<InteractableNexus>();
             if (nexus != null)
-            {
-                string n = GetInteractableName(nexus);
-                if (!string.IsNullOrEmpty(n)) return n;
-            }
+                name = GetInteractableName(nexus);
 
-            string goName = obj.gameObject.name;
-            if (!string.IsNullOrEmpty(goName))
-                return goName.Replace("(Clone)", "").Replace("_", " ").Trim();
-            return "object";
+            if (string.IsNullOrEmpty(name))
+                name = FreeAimHelper.PrettifyPropName(obj.gameObject.name);
+
+            // A contact-detonating prop (propane tank) is shot like any other destructible,
+            // but the blast also catches anyone standing next to it — worth flagging when
+            // the user is choosing a target.
+            if (FreeAimHelper.IsContactExplosive(obj))
+                name += ", explosive";
+
+            return name;
         }
 
         private string ResolveTargetableName(Targetable target)

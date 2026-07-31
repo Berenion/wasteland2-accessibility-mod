@@ -119,6 +119,15 @@ namespace Wasteland2AccessibilityMod.States
         // --- Free Aim Targeting Mode ---
         private bool freeAimMode = false;
         private PC freeAimUser = null;
+        // Set when a position shot was refused once because the tile holds only
+        // indestructible cover. The next Enter on the SAME tile goes through, so the
+        // warning always lands before the AP is spent. Moving the cursor invalidates it
+        // (the pending tile no longer matches), so no reset hook in MoveCursor is needed.
+        private bool coverShotConfirmPending = false;
+        private Vector3 coverShotConfirmTile = Vector3.zero;
+        // Same one-tile confirm for an AoE throw whose blast would catch your own people.
+        private bool aoeConfirmPending = false;
+        private Vector3 aoeConfirmTile = Vector3.zero;
 
         // --- Party Member Info ---
         private bool browsingPartyInfo = false;
@@ -864,6 +873,8 @@ namespace Wasteland2AccessibilityMod.States
             pendingItemUser = null;
             freeAimMode = false;
             freeAimUser = null;
+            coverShotConfirmPending = false;
+            aoeConfirmPending = false;
             browsingPartyInfo = false;
             partyInfoLines.Clear();
             partyInfoPc = null;
@@ -1251,10 +1262,22 @@ namespace Wasteland2AccessibilityMod.States
                     parts.Add(los);
             }
 
-            // While free-aiming, flag static scenery cover (P_CoverLow_* etc.) so the user
-            // knows before pressing Enter that there's nothing shootable here — only when
-            // the tile has no real target, to avoid stepping on a genuine destructible/mob.
-            if (freeAimMode && FindTargetableOnTile() == null && HasIndestructibleCoverOnTile())
+            // While aiming an area weapon, read back what the blast centred here would
+            // catch. Sighted players get this from the projected sphere highlighting its
+            // targets; without it there is no way to know a grenade is about to land on your
+            // own squad until the damage numbers arrive.
+            if (freeAimMode && AoeAimHelper.IsAoeWeapon(freeAimUser))
+            {
+                if (!AoeAimHelper.IsInThrowRange(freeAimUser, cursorPosition))
+                    parts.Add("out of throwing range");
+                else
+                    parts.Add(DescribeBlastContents(
+                        AoeAimHelper.SummarizeBlast(freeAimUser, cursorPosition)));
+            }
+            // While free-aiming a normal weapon, flag static scenery cover (P_CoverLow_* etc.)
+            // so the user knows before pressing Enter that there's nothing shootable here —
+            // only when the tile has no real target, to avoid stepping on a destructible/mob.
+            else if (freeAimMode && FindTargetableOnTile() == null && HasIndestructibleCoverOnTile())
                 parts.Add("indestructible cover");
 
             // Note: node.occupant is not used — it can be stale after mobs move.
@@ -2213,6 +2236,30 @@ namespace Wasteland2AccessibilityMod.States
                         }
                     });
                 }
+                else
+                {
+                    // Area weapons are not ItemInstance_WeaponRanged (grenades and rockets
+                    // are ItemInstance_WeaponAoe, a sibling class), so the check above hid
+                    // free aim entirely for them — there was no way to throw a grenade at
+                    // all. They aim at a tile, not a target; EnterFreeAim covers both.
+                    var aoeTemplate = AoeAimHelper.GetAoeTemplate(pc);
+                    if (aoeTemplate != null)
+                    {
+                        var capturedPC = pc;
+                        string label = pc.stats.GetWeaponType() == WeaponType.RPG ? "Fire at tile" : "Throw at tile";
+                        actionList.Add(new CombatAction
+                        {
+                            Label = label,
+                            Status = attackAP + " AP, blast radius "
+                                     + TileCoordinateSystem.GetRangeText(AoeAimHelper.GetBlastRadius(pc)),
+                            IsEnabled = isThinking && pc.combatActionPointsRemaining >= attackAP,
+                            Execute = () =>
+                            {
+                                EnterFreeAim(capturedPC);
+                            }
+                        });
+                    }
+                }
             }
 
             // --- Use Items ---
@@ -2502,13 +2549,30 @@ namespace Wasteland2AccessibilityMod.States
         {
             freeAimUser = user;
             freeAimMode = true;
+            coverShotConfirmPending = false;
+            aoeConfirmPending = false;
+
+            if (AoeAimHelper.IsAoeWeapon(user))
+            {
+                ScreenReaderManager.SpeakInterrupt(
+                    "Area attack, blast radius " +
+                    TileCoordinateSystem.GetRangeText(AoeAimHelper.GetBlastRadius(user)) +
+                    ". Move cursor to the tile to hit and press Enter, or Escape to cancel");
+                return;
+            }
+
             ScreenReaderManager.SpeakInterrupt("Free aim. Move cursor to a target and press Enter to shoot, or Escape to cancel");
         }
 
         private void CancelFreeAim()
         {
+            // An AoE aim may have left the game in aiming mode with a projected sphere.
+            if (AoeAimHelper.IsAoeWeapon(freeAimUser)) AoeAimHelper.ClearAiming();
+
             freeAimMode = false;
             freeAimUser = null;
+            coverShotConfirmPending = false;
+            aoeConfirmPending = false;
             ScreenReaderManager.SpeakInterrupt("Free aim cancelled");
         }
 
@@ -2517,6 +2581,16 @@ namespace Wasteland2AccessibilityMod.States
             if (freeAimUser == null)
             {
                 CancelFreeAim();
+                return;
+            }
+
+            // An area weapon aims at a tile and has no Targetable — none of the target
+            // resolution below applies (Mob.CanAttack rejects RPG/Thrown outright,
+            // Mob.cs:1479, and the attack travels on EventInfo_CommandAreaAttack, not
+            // EventInfo_CommandAttack). Split off before any of it runs.
+            if (AoeAimHelper.IsAoeWeapon(freeAimUser))
+            {
+                ExecuteAoeAttack();
                 return;
             }
 
@@ -2556,16 +2630,30 @@ namespace Wasteland2AccessibilityMod.States
                     catch (Exception ex) { MelonLogger.Warning($"[CombatState] free-aim TargetVisible check failed: {ex.Message}"); }
                 }
 
-                // Nothing shootable on the tile. If the player parked on static scenery
-                // cover (P_CoverLow_* etc. — a Cover-layer collider with no hitpoints),
-                // say it can't be destroyed instead of burning the shot on the ground.
+                // Nothing targetable on the tile. Vanilla still fires here — an intentional
+                // miss at the aim position (InputManager.cs:3336) — so the shot stays
+                // available; what changes is how much warning it comes with.
+                //
+                // Static scenery cover (P_CoverLow_* etc. — a Cover-layer collider with no
+                // hitpoints) can't be destroyed, so the shot would burn AP for nothing.
+                // Warn first and require a second Enter on the same tile to confirm, so the
+                // user never spends the action without hearing that it's wasted.
                 if (target == null && HasIndestructibleCoverOnTile())
                 {
-                    ScreenReaderManager.SpeakInterrupt("That cover can't be destroyed");
-                    freeAimMode = false;
-                    freeAimUser = null;
-                    return;
+                    bool confirmed = coverShotConfirmPending
+                                     && (coverShotConfirmTile - cursorPosition).sqrMagnitude
+                                        <= TILE_MATCH_RADIUS * TILE_MATCH_RADIUS;
+                    if (!confirmed)
+                    {
+                        coverShotConfirmPending = true;
+                        coverShotConfirmTile = cursorPosition;
+                        ScreenReaderManager.SpeakInterrupt(
+                            "That cover can't be destroyed. Shooting it will waste " +
+                            attackAP + " AP. Press Enter again to shoot anyway, or Escape to cancel");
+                        return;
+                    }
                 }
+                coverShotConfirmPending = false;
 
                 var inputManager = MonoBehaviourSingleton<InputManager>.GetInstance();
                 inputManager.ClearSelectedSquare();
@@ -2611,6 +2699,101 @@ namespace Wasteland2AccessibilityMod.States
         }
 
         /// <summary>
+        /// Throws / fires an area weapon at the cursor tile. A blast that would catch your
+        /// own people warns and requires a second Enter on the same tile before it goes —
+        /// a grenade landing on the squad is the most expensive mistake available here, and
+        /// AP spent on it is not refundable.
+        /// </summary>
+        private void ExecuteAoeAttack()
+        {
+            var summary = AoeAimHelper.SummarizeBlast(freeAimUser, cursorPosition);
+
+            if (AoeAimHelper.HasFriendlyFire(summary))
+            {
+                bool confirmed = aoeConfirmPending
+                                 && (aoeConfirmTile - cursorPosition).sqrMagnitude
+                                    <= TILE_MATCH_RADIUS * TILE_MATCH_RADIUS;
+                if (!confirmed)
+                {
+                    aoeConfirmPending = true;
+                    aoeConfirmTile = cursorPosition;
+                    ScreenReaderManager.SpeakInterrupt(
+                        "Warning, blast would hit " + DescribeFriendlyFire(summary) +
+                        ". Press Enter again to throw anyway, or Escape to cancel");
+                    return;
+                }
+            }
+            aoeConfirmPending = false;
+
+            string failureReason;
+            if (!AoeAimHelper.Throw(freeAimUser, cursorPosition, out failureReason))
+            {
+                // Leave free aim active so the user can move and retry rather than having to
+                // reopen the menu after an out-of-range or wrong-turn rejection.
+                ScreenReaderManager.SpeakInterrupt(failureReason ?? "Attack failed");
+                return;
+            }
+
+            string weapon = "area weapon";
+            try
+            {
+                var template = freeAimUser.stats.GetWeaponTemplate();
+                if (template != null)
+                    weapon = UITextExtractor.CleanText(
+                        Language.Localize(template.displayName, false, false, string.Empty));
+            }
+            catch (Exception ex) { MelonLogger.Warning($"[CombatState] AoE weapon name failed: {ex.Message}"); }
+
+            ScreenReaderManager.SpeakInterrupt(
+                "Throwing " + weapon + ", " + DescribeBlastContents(summary));
+            ModLog.Debug($"[CombatState] AoE attack at {cursorPosition} radius={summary.Radius} " +
+                         $"hostiles={summary.Hostiles.Count} friendlies={summary.Friendlies.Count} self={summary.CatchesSelf}");
+
+            if (MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat)
+                MonoBehaviourSingleton<CombatAStar>.GetInstance().ClearPath();
+
+            freeAimMode = false;
+            freeAimUser = null;
+        }
+
+        /// <summary>Names the friendlies a blast would catch, thrower first.</summary>
+        private string DescribeFriendlyFire(AoeAimHelper.BlastSummary summary)
+        {
+            var names = new List<string>();
+            if (summary.CatchesSelf) names.Add(GetDisplayName(freeAimUser != null && freeAimUser.template != null
+                ? freeAimUser.template.displayName : "yourself"));
+            foreach (var friendly in summary.Friendlies)
+                names.Add(GetTargetableName(friendly) ?? "an ally");
+            if (names.Count == 0) return "your own side";
+            return string.Join(", ", names.ToArray());
+        }
+
+        /// <summary>Speakable read-out of everything a blast centred here would catch.</summary>
+        private string DescribeBlastContents(AoeAimHelper.BlastSummary summary)
+        {
+            var parts = new List<string>();
+
+            if (summary.Hostiles.Count > 0)
+            {
+                var names = new List<string>();
+                foreach (var hostile in summary.Hostiles)
+                    names.Add(GetTargetableName(hostile) ?? "enemy");
+                parts.Add(summary.Hostiles.Count + (summary.Hostiles.Count == 1 ? " enemy: " : " enemies: ")
+                          + string.Join(", ", names.ToArray()));
+            }
+
+            if (summary.CatchesSelf || summary.Friendlies.Count > 0)
+                parts.Add("friendly fire on " + DescribeFriendlyFire(summary));
+
+            if (summary.Objects.Count > 0)
+                parts.Add(summary.Objects.Count + (summary.Objects.Count == 1 ? " object" : " objects"));
+
+            string radius = "blast radius " + TileCoordinateSystem.GetRangeText(summary.Radius);
+            if (parts.Count == 0) return radius + ", nothing in range";
+            return radius + ", " + string.Join(", ", parts.ToArray());
+        }
+
+        /// <summary>
         /// Finds any Targetable on the current cursor tile: alive mobs, destructible objects,
         /// or explosives. Returns null if nothing targetable is found.
         /// </summary>
@@ -2620,41 +2803,22 @@ namespace Wasteland2AccessibilityMod.States
             Mob mob = FindAliveMobOnTile();
             if (mob != null) return mob;
 
-            // Destructible cover / barrels / explosives. Prefer the game's own registry,
-            // Game.targetableObjects — the exact list vanilla builds its attack targets
-            // from (InputManager.cs:3917) — matched by tile position, gated on curHP > 0
-            // (the validity check at InputManager.cs:3957). This sidesteps the collider
-            // guesswork below: cover routinely puts its collider on a child/sibling object
-            // and points the real Targetable at it through a RaycastPropagate, so an
-            // OverlapSphere on the ground node found the collider but neither it nor its
-            // parent was the TargetableObject — free aim then fell through to a ground miss.
-            TargetableObject byPos = FindTargetableObjectByPosition(cursorPosition);
-            if (byPos != null)
+            // Destructible cover / barrels / propane tanks. FreeAimHelper queries the game's
+            // own registry (Game.targetableObjects — the exact list vanilla builds its attack
+            // targets from, InputManager.cs:3917) before falling back to a physics overlap
+            // that follows RaycastPropagate the way vanilla's attack ray does
+            // (InputManager.cs:2029). Both matter: props routinely put the collider on a
+            // child or sibling and point at the real Targetable indirectly, so a plain parent
+            // walk finds nothing and free aim would fall through to a ground miss.
+            var destructibles = FreeAimHelper.FindDestructiblesAt(cursorPosition, TILE_MATCH_RADIUS);
+            if (destructibles.Count > 0)
             {
-                ModLog.Debug($"[CombatState] free-aim target (registry): {byPos.name} hp={byPos.curHP}");
-                return byPos;
-            }
-
-            // Fallback: physics overlap, following RaycastPropagate to the Targetable the
-            // same way vanilla's attack ray does (InputManager.cs:2029, 3015), so a hit
-            // collider that only *points* at its Targetable still resolves.
-            float tileRadius = 0.75f;
-            Collider[] colliders = Physics.OverlapSphere(cursorPosition, tileRadius);
-            foreach (var collider in colliders)
-            {
-                if (collider == null || collider.gameObject == null) continue;
-
-                TargetableObject obj = ResolveTargetableObject(collider);
-                if (obj != null && obj.curHP > 0f)
-                {
-                    ModLog.Debug($"[CombatState] free-aim target (overlap): {obj.name} hp={obj.curHP} via {collider.name}");
-                    return obj;
-                }
+                ModLog.Debug($"[CombatState] free-aim target: {destructibles[0].name} hp={destructibles[0].curHP}");
+                return destructibles[0];
             }
 
             ModLog.Debug($"[CombatState] free-aim: no targetable at {cursorPosition} " +
-                         $"(registry={(MonoBehaviourSingleton<Game>.HasInstance() && MonoBehaviourSingleton<Game>.GetInstance().targetableObjects != null ? MonoBehaviourSingleton<Game>.GetInstance().targetableObjects.Count : 0)} objects, " +
-                         $"overlap={colliders.Length} colliders)");
+                         $"(registry={(MonoBehaviourSingleton<Game>.HasInstance() && MonoBehaviourSingleton<Game>.GetInstance().targetableObjects != null ? MonoBehaviourSingleton<Game>.GetInstance().targetableObjects.Count : 0)} objects)");
             return null;
         }
 
@@ -2671,24 +2835,7 @@ namespace Wasteland2AccessibilityMod.States
         /// </summary>
         private bool HasIndestructibleCoverOnTile()
         {
-            int coverLayer = LayerMask.NameToLayer("Cover");
-            int wallLayer = LayerMask.NameToLayer("Wall");
-            Collider[] colliders = Physics.OverlapSphere(cursorPosition, 0.75f);
-            foreach (var collider in colliders)
-            {
-                if (collider == null || collider.gameObject == null) continue;
-
-                int layer = collider.gameObject.layer;
-                bool isCover = (coverLayer >= 0 && layer == coverLayer)
-                               || (wallLayer >= 0 && layer == wallLayer)
-                               || collider.GetComponent<Cover>() != null
-                               || collider.GetComponentInParent<Cover>() != null;
-                if (!isCover) continue;
-
-                if (ResolveTargetableObject(collider) == null)
-                    return true;
-            }
-            return false;
+            return FreeAimHelper.HasIndestructibleCoverAt(cursorPosition, FreeAimHelper.TileOverlapRadius);
         }
 
         /// <summary>
@@ -2701,24 +2848,8 @@ namespace Wasteland2AccessibilityMod.States
         /// </summary>
         private TargetableObject FindTargetableObjectByPosition(Vector3 worldPos)
         {
-            if (!MonoBehaviourSingleton<Game>.HasInstance()) return null;
-            var objects = MonoBehaviourSingleton<Game>.GetInstance().targetableObjects;
-            if (objects == null) return null;
-
-            foreach (var obj in objects)
-            {
-                if (obj == null || obj.gameObject == null) continue;
-                if (obj.curHP <= 0f) continue;
-                try
-                {
-                    Vector3 p = obj.transform.position;
-                    if (Mathf.Abs(p.x - worldPos.x) <= TILE_MATCH_RADIUS &&
-                        Mathf.Abs(p.z - worldPos.z) <= TILE_MATCH_RADIUS)
-                        return obj;
-                }
-                catch (Exception ex) { MelonLogger.Warning($"[CombatState] FindTargetableObjectByPosition transform check failed: {ex.Message}"); }
-            }
-            return null;
+            var found = FreeAimHelper.FindDestructiblesAt(worldPos, TILE_MATCH_RADIUS);
+            return found.Count > 0 ? found[0] : null;
         }
 
         /// <summary>
@@ -2729,18 +2860,7 @@ namespace Wasteland2AccessibilityMod.States
         /// </summary>
         private TargetableObject ResolveTargetableObject(Collider collider)
         {
-            var obj = collider.GetComponent<TargetableObject>();
-            if (obj == null) obj = collider.GetComponentInParent<TargetableObject>();
-            if (obj != null) return obj;
-
-            var propagate = collider.GetComponent<RaycastPropagate>();
-            if (propagate == null) propagate = collider.GetComponentInParent<RaycastPropagate>();
-            if (propagate != null && propagate.target != null)
-            {
-                obj = propagate.target.GetComponent<TargetableObject>();
-                if (obj == null) obj = propagate.target.GetComponentInParent<TargetableObject>();
-            }
-            return obj;
+            return FreeAimHelper.ResolveTargetableObject(collider);
         }
 
         /// <summary>
