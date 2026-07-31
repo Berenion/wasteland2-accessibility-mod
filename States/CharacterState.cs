@@ -22,6 +22,7 @@ namespace Wasteland2AccessibilityMod.States
         {
             return "Character creation. Tab announces the panel and position. N is Next or Done, Escape is Back. " +
                    "On Attributes and Skills: Up and Down move, plus and minus adjust, Enter enters edit mode, " +
+                   "hold Shift for five points at a time or Control for ten, " +
                    "I describes, P points remaining, F switches between Attributes and Skills, " +
                    "D opens the Derived Stats browser; on Skills, Left and Right switch category. " +
                    "On Traits: Enter or Space toggles, I gives a browsable description. " +
@@ -1125,7 +1126,10 @@ namespace Wasteland2AccessibilityMod.States
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
             var editor = controlList[controlIndex].GetComponent<CHA_AttributeEditor>();
             if (editor == null) return;
-            CharacterAnnouncementHelper.AdjustAttribute(editor, direction, () => AnnounceCurrentControl());
+            // Shift / Ctrl ask for a bigger jump. Applied here rather than at the key
+            // checks so it covers Left/Right AND the plus/minus keys alike.
+            int repeats = StepInput.Repeats(StepInput.Current());
+            CharacterAnnouncementHelper.AdjustAttribute(editor, direction, repeats, () => AnnounceCurrentControl());
         }
 
         private void AdjustCurrentSkill(int direction)
@@ -1133,7 +1137,10 @@ namespace Wasteland2AccessibilityMod.States
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
             var editor = controlList[controlIndex].GetComponent<CHA_SkillEditor>();
             if (editor == null) return;
-            CharacterAnnouncementHelper.AdjustSkill(editor, direction, () => AnnounceCurrentControl());
+            // Shift / Ctrl ask for a bigger jump. Applied here rather than at the key
+            // checks so it covers Left/Right AND the plus/minus keys alike.
+            int repeats = StepInput.Repeats(StepInput.Current());
+            CharacterAnnouncementHelper.AdjustSkill(editor, direction, repeats, () => AnnounceCurrentControl());
         }
 
         // ========== Panel-Specific Input Handlers ==========

@@ -23,6 +23,7 @@ namespace Wasteland2AccessibilityMod.States
             return "Character info. Tab announces the panel and position, D reads the character summary, " +
                    "Page Up and Page Down switch tabs, E reads current XP, S opens the stats browser. " +
                    "On Attributes and Skills: Up and Down move, plus and minus or Enter raise with available points, " +
+                   "hold Shift for five points at a time or Control for ten, " +
                    "I describes, P points remaining; on Skills, F cycles skill categories. " +
                    "On Traits: Enter or Space toggles if perk points are available, I gives the perk description. " +
                    "On Dossier: I reads the quirk description or the biography. " +
@@ -998,7 +999,10 @@ namespace Wasteland2AccessibilityMod.States
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
             var editor = controlList[controlIndex].GetComponent<CHA_AttributeEditor>();
             if (editor == null) return;
-            CharacterAnnouncementHelper.AdjustAttribute(editor, direction, () => AnnounceCurrentControl());
+            // Shift / Ctrl ask for a bigger jump. Applied here rather than at the key
+            // checks so it covers Left/Right AND the plus/minus keys alike.
+            int repeats = StepInput.Repeats(StepInput.Current());
+            CharacterAnnouncementHelper.AdjustAttribute(editor, direction, repeats, () => AnnounceCurrentControl());
         }
 
         private void AnnounceAttributePointsRemaining(CharacterInfoMenu menu)
@@ -1213,7 +1217,10 @@ namespace Wasteland2AccessibilityMod.States
             if (controlIndex < 0 || controlIndex >= controlList.Count) return;
             var editor = controlList[controlIndex].GetComponent<CHA_SkillEditor>();
             if (editor == null) return;
-            CharacterAnnouncementHelper.AdjustSkill(editor, direction, () => AnnounceCurrentControl());
+            // Shift / Ctrl ask for a bigger jump. Applied here rather than at the key
+            // checks so it covers Left/Right AND the plus/minus keys alike.
+            int repeats = StepInput.Repeats(StepInput.Current());
+            CharacterAnnouncementHelper.AdjustSkill(editor, direction, repeats, () => AnnounceCurrentControl());
         }
 
         private void AnnounceSkillPointsRemaining(CharacterInfoMenu menu)

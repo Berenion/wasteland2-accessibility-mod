@@ -14,58 +14,86 @@ namespace Wasteland2AccessibilityMod.Helpers
 
         public static void AdjustAttribute(CHA_AttributeEditor editor, int direction, Action announceCallback)
         {
+            AdjustAttribute(editor, direction, 1, announceCallback);
+        }
+
+        /// <summary>
+        /// Applies up to <paramref name="repeats"/> single steps, stopping early at the cap
+        /// or when the points run out. Each step must go through the editor's own handler —
+        /// the value is priced per point and validated per click, so there is no "set to N"
+        /// shortcut to take. Only one announcement is made, at the end: firing the callback
+        /// ten times would bury the result under nine stale readings.
+        /// </summary>
+        public static void AdjustAttribute(CHA_AttributeEditor editor, int direction, int repeats, Action announceCallback)
+        {
             EnsureReflectionCached();
             if (editor == null) return;
+            if (repeats < 1) repeats = 1;
 
-            if (direction > 0)
+            int applied = 0;
+            for (int i = 0; i < repeats; i++)
             {
-                if (editor.CanIncreaseValue())
+                if (direction > 0)
                 {
-                    if (attrOnPlusClickedMethod != null)
-                        attrOnPlusClickedMethod.Invoke(editor, new object[] { null });
-                    announceCallback?.Invoke();
+                    if (!editor.CanIncreaseValue()) break;
+                    if (attrOnPlusClickedMethod == null) break;
+                    attrOnPlusClickedMethod.Invoke(editor, new object[] { null });
                 }
                 else
                 {
-                    ScreenReaderManager.SpeakInterrupt("Maximum");
+                    if (!editor.CanDecreaseValue()) break;
+                    if (attrOnMinusClickedMethod == null) break;
+                    attrOnMinusClickedMethod.Invoke(editor, new object[] { null });
                 }
+                applied++;
             }
-            else
+
+            if (applied == 0)
             {
-                if (editor.CanDecreaseValue())
-                {
-                    if (attrOnMinusClickedMethod != null)
-                        attrOnMinusClickedMethod.Invoke(editor, new object[] { null });
-                    announceCallback?.Invoke();
-                }
-                else
-                {
-                    ScreenReaderManager.SpeakInterrupt("Minimum");
-                }
+                ScreenReaderManager.SpeakInterrupt(direction > 0 ? "Maximum" : "Minimum");
+                return;
             }
+
+            announceCallback?.Invoke();
         }
 
         public static void AdjustSkill(CHA_SkillEditor editor, int direction, Action announceCallback)
         {
+            AdjustSkill(editor, direction, 1, announceCallback);
+        }
+
+        /// <summary>
+        /// Applies up to <paramref name="repeats"/> single steps. Unlike attributes there is
+        /// no public CanDecreaseValue on CHA_SkillEditor — OnMinusClicked guards internally
+        /// (currentValue &lt;= 0 || currentValue &lt;= initialValue) — so progress is detected
+        /// by watching GetCurrentValue(), which also covers a raise refused because the next
+        /// level costs more XP than remains. Announces once, at the end.
+        /// </summary>
+        public static void AdjustSkill(CHA_SkillEditor editor, int direction, int repeats, Action announceCallback)
+        {
             EnsureReflectionCached();
             if (editor == null) return;
+            if (repeats < 1) repeats = 1;
 
-            if (direction > 0)
+            var method = direction > 0 ? skillOnPlusClickedMethod : skillOnMinusClickedMethod;
+            if (method == null) return;
+
+            int applied = 0;
+            for (int i = 0; i < repeats; i++)
             {
-                if (skillOnPlusClickedMethod != null)
-                {
-                    skillOnPlusClickedMethod.Invoke(editor, new object[] { null });
-                    announceCallback?.Invoke();
-                }
+                int before = editor.GetCurrentValue();
+                method.Invoke(editor, new object[] { null });
+                if (editor.GetCurrentValue() == before) break;
+                applied++;
             }
-            else
+
+            if (applied == 0)
             {
-                if (skillOnMinusClickedMethod != null)
-                {
-                    skillOnMinusClickedMethod.Invoke(editor, new object[] { null });
-                    announceCallback?.Invoke();
-                }
+                ScreenReaderManager.SpeakInterrupt(direction > 0 ? "Maximum" : "Minimum");
+                return;
             }
+
+            announceCallback?.Invoke();
         }
 
         /// <summary>

@@ -126,6 +126,7 @@ Keypad (safes, doors, terminals):
 
 Generic menus (pause, options, save and load):
 - Baseline, plus Left / Right to move within the focused control, PgUp / PgDn to switch Options tabs, Delete to delete the selected save.
+- On sliders (volume, brightness): Left / Right move one notch, Shift + Left / Right jump 10 percent, Ctrl + Left / Right jump 25 percent. The end of the range is announced as minimum or maximum.
 - Save-name field: Enter saves, Escape cancels and restores the prior name; typing and Backspace work, and the last character typed is spoken.
 
 Exploration runs two cursors at once: the scanner cycles nearby interactables, and the grid cursor moves tile by tile.
@@ -230,12 +231,13 @@ Character creation, party panels (Use Default Party, Party, Add Character):
 
 Character creation, Attributes:
 - Up / Down move attributes. + / - adjust (also = / -, numpad + / -, or Enter then Left/Right).
+- Hold Shift while adjusting for 5 points at a time, or Ctrl for 10. It stops early at the cap or when points run out, and announces the result once.
 - Enter: edit mode (Left/Right adjust, Enter or Escape exits). I: describe. P: points remaining.
 - F: switch to Skills without leaving the panel; F again switches back.
 
 Character creation, Skills (or Attributes then F):
 - Up / Down move skills. Left / Right switch category (Combat, Knowledge, General).
-- + / - adjust (or Enter for edit mode). I: describe. P: points remaining. F (from Attributes): switch back.
+- + / - adjust (or Enter for edit mode), with Shift for 5 at a time or Ctrl for 10. I: describe. P: points remaining. F (from Attributes): switch back.
 
 Character creation, Traits:
 - Up / Down move traits. Enter or Space toggles. I: browsable perk description (Up/Down lines, Escape closes).

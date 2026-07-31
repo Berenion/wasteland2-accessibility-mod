@@ -21,7 +21,8 @@ namespace Wasteland2AccessibilityMod.States
         public override string GetHelpText()
         {
             return "Menu. Up and Down move, Enter activates, Escape closes. " +
-                   "Left and Right adjust the focused control, Tab moves to the next element, " +
+                   "Left and Right adjust the focused control, with Shift for a ten percent jump " +
+                   "and Control for twenty five percent. Tab moves to the next element, " +
                    "Page Up and Page Down switch Options tabs, Delete removes the selected save. " +
                    "In the save-name field, type a name, Enter saves, Escape cancels and restores the prior name.";
         }
@@ -935,14 +936,33 @@ namespace Wasteland2AccessibilityMod.States
                     OPT_Scrollbar optScrollbar = current.GetComponent<OPT_Scrollbar>();
                     if (optScrollbar != null && optScrollbar.slider != null)
                     {
-                        float step = (optScrollbar.slider.numberOfSteps > 0)
+                        // Native step: one notch on a stepped slider, else a tenth.
+                        float nativeStep = (optScrollbar.slider.numberOfSteps > 0)
                             ? 1f / optScrollbar.slider.numberOfSteps
                             : 0.1f;
 
+                        // Shift / Ctrl ask for a bigger jump. Crossing a stepped slider one
+                        // notch at a time is the thing that makes volume sliders tedious.
+                        var stepSize = StepInput.Current();
+                        float fraction = StepInput.SliderFraction(stepSize);
+                        float step = nativeStep;
+                        if (fraction > 0f)
+                        {
+                            step = fraction;
+                            if (optScrollbar.slider.numberOfSteps > 0)
+                            {
+                                // Snap to whole notches, but never round down to standing
+                                // still on a coarse slider (e.g. 4 steps vs a 10% request).
+                                int notches = Mathf.Max(1, Mathf.RoundToInt(fraction / nativeStep));
+                                step = notches * nativeStep;
+                            }
+                        }
+
+                        float before = optScrollbar.slider.value;
                         if (direction == KeyCode.LeftArrow)
-                            optScrollbar.slider.value = Mathf.Max(0f, optScrollbar.slider.value - step);
+                            optScrollbar.slider.value = Mathf.Max(0f, before - step);
                         else
-                            optScrollbar.slider.value = Mathf.Min(1f, optScrollbar.slider.value + step);
+                            optScrollbar.slider.value = Mathf.Min(1f, before + step);
 
                         // Announce using valueLabel if available, otherwise percentage
                         string valueText;
@@ -956,8 +976,13 @@ namespace Wasteland2AccessibilityMod.States
                             int percent = Mathf.RoundToInt(optScrollbar.slider.value * 100);
                             valueText = $"{percent} percent";
                         }
+
+                        // Already at the end: say so rather than repeating the same number.
+                        if (Mathf.Approximately(before, optScrollbar.slider.value))
+                            valueText += direction == KeyCode.LeftArrow ? ", minimum" : ", maximum";
+
                         ScreenReaderManager.SpeakInterrupt(valueText);
-                        ModLog.Debug($"[GenericMenuState] Slider adjusted: {optScrollbar.slider.value}");
+                        ModLog.Debug($"[GenericMenuState] Slider adjusted: {optScrollbar.slider.value} ({stepSize})");
                         return;
                     }
 
