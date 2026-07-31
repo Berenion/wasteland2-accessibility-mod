@@ -27,6 +27,8 @@ namespace Wasteland2AccessibilityMod.States
                    "Tab reads the full item info, I opens the info browser, R reads the flavor description, " +
                    "F cycles the filter, C gives a context summary, Shift plus D dismisses a companion. " +
                    "When looting: T takes all, G distributes across the party, F1 to F7 choose the destination ranger. " +
+                   "At a Ranger Locker, Left and Right also reach your own backpack at the end of the cycle, " +
+                   "where Enter stores the item into the locker. " +
                    "Page Up and Page Down switch character-info tabs.";
         }
 
@@ -40,7 +42,10 @@ namespace Wasteland2AccessibilityMod.States
         {
             Equipment,
             Backpack,
-            ContainerItems
+            ContainerItems,
+            // Ranger Locker only: the selected ranger's backpack, shown alongside the
+            // locker by PopupLootDropoffMenu so items can go IN as well as out.
+            PlayerItems
         }
 
         // Current state
@@ -171,9 +176,9 @@ namespace Wasteland2AccessibilityMod.States
 
             // Retry if list was empty — the game may populate the loot grid
             // after the popup becomes active (async container setup)
-            if (currentList.Count == 0 && currentZone == NavigationZone.ContainerItems)
+            if (currentList.Count == 0 && IsPopupZone())
             {
-                BuildContainerItemList();
+                RebuildPopupZoneList();
                 if (currentList.Count > 0)
                 {
                     ModLog.Debug($"[InventoryState] Late grid population detected, found {currentList.Count} items");
@@ -264,7 +269,12 @@ namespace Wasteland2AccessibilityMod.States
                 currentZone = NavigationZone.ContainerItems;
                 BuildContainerItemList();
                 trackedPopupInstanceId = GetPopupInstanceId();
-                ScreenReaderManager.SpeakInterrupt("Loot");
+                // A Ranger Locker is two-way; every other container is take-only, so only
+                // advertise the deposit side when it actually exists.
+                ScreenReaderManager.SpeakInterrupt(
+                    GetDropoffMenu() != null
+                        ? "Ranger Locker. Left or Right switches between the locker and your backpack, Enter moves the item across"
+                        : "Loot");
             }
 
             if (currentList.Count > 0 && currentIndex < 0)
@@ -651,10 +661,36 @@ namespace Wasteland2AccessibilityMod.States
 
             // Get items from inventoryContainer.table
             var container = popupInv.inventoryContainer;
+            FillFromContainer(container);
+
+            ModLog.Debug($"[InventoryState] Built container item list: {currentList.Count} items");
+        }
+
+        /// <summary>
+        /// The selected ranger's own backpack, which only exists on a Ranger Locker.
+        /// <see cref="PopupLootDropoffMenu"/> shows it in a second grid
+        /// (playerInventoryContainer, populated by SelectPlayer) so items can be deposited;
+        /// the plain PopupLootMenu used by every other container has no such grid and is
+        /// take-only in vanilla too.
+        /// </summary>
+        private void BuildPlayerItemList()
+        {
+            currentList.Clear();
+            currentZone = NavigationZone.PlayerItems;
+
+            var dropoff = GetDropoffMenu();
+            if (dropoff == null) return;
+
+            FillFromContainer(dropoff.playerInventoryContainer);
+
+            ModLog.Debug($"[InventoryState] Built player item list: {currentList.Count} items");
+        }
+
+        private void FillFromContainer(InventoryContainer container)
+        {
             if (container == null || container.table == null) return;
 
-            var table = container.table;
-            List<Transform> sorted = table.GetSortedList();
+            List<Transform> sorted = container.table.GetSortedList();
             foreach (Transform t in sorted)
             {
                 if (t == null || !t.gameObject.activeSelf) continue;
@@ -669,8 +705,32 @@ namespace Wasteland2AccessibilityMod.States
                 currentIndex = currentList.Count > 0 ? currentList.Count - 1 : -1;
             if (currentIndex < 0 && currentList.Count > 0)
                 currentIndex = 0;
+        }
 
-            ModLog.Debug($"[InventoryState] Built container item list: {currentList.Count} items");
+        /// <summary>
+        /// The open popup as a Ranger Locker dropoff menu, or null for an ordinary
+        /// take-only container. GUIManager picks the prefab from the acceptsPCItems flag
+        /// that InteractableInventoryObject passes as isRangerLocker
+        /// (InteractableInventoryObject.cs:191, GUIManager.cs:1254).
+        /// </summary>
+        /// <summary>A popup-side zone whose grid the game may still be populating.</summary>
+        private bool IsPopupZone()
+        {
+            return currentZone == NavigationZone.ContainerItems
+                   || currentZone == NavigationZone.PlayerItems;
+        }
+
+        private void RebuildPopupZoneList()
+        {
+            if (currentZone == NavigationZone.PlayerItems) BuildPlayerItemList();
+            else BuildContainerItemList();
+        }
+
+        private PopupLootDropoffMenu GetDropoffMenu()
+        {
+            var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
+            var dropoff = popupInv as PopupLootDropoffMenu;
+            return (dropoff != null && dropoff.gameObject.activeInHierarchy) ? dropoff : null;
         }
 
         private void RebuildCurrentList()
@@ -686,6 +746,9 @@ namespace Wasteland2AccessibilityMod.States
                     break;
                 case NavigationZone.ContainerItems:
                     BuildContainerItemList();
+                    break;
+                case NavigationZone.PlayerItems:
+                    BuildPlayerItemList();
                     break;
             }
 
@@ -704,9 +767,9 @@ namespace Wasteland2AccessibilityMod.States
 
         private void JumpToListEdge(bool toFirst)
         {
-            if (currentList.Count == 0 && currentZone == NavigationZone.ContainerItems)
+            if (currentList.Count == 0 && IsPopupZone())
             {
-                BuildContainerItemList();
+                RebuildPopupZoneList();
             }
             if (currentList.Count == 0)
             {
@@ -725,9 +788,9 @@ namespace Wasteland2AccessibilityMod.States
             // If the list is empty but the loot grid hasn't populated yet, try to rebuild
             // before giving up — keeps us from announcing "Container is empty" in the brief
             // window between popup open and item population.
-            if (currentList.Count == 0 && currentZone == NavigationZone.ContainerItems)
+            if (currentList.Count == 0 && IsPopupZone())
             {
-                BuildContainerItemList();
+                RebuildPopupZoneList();
                 if (currentList.Count > 0 && currentIndex < 0)
                     currentIndex = 0;
             }
@@ -784,6 +847,12 @@ namespace Wasteland2AccessibilityMod.States
             }
         }
 
+        /// <summary>
+        /// Left/Right cycle across the popup. On a Ranger Locker the ranger's own backpack
+        /// sits at one end of the same cycle as the containers, so Right off the last
+        /// container lands on the backpack and Left off the backpack returns to it — one
+        /// axis, no separate zone-switch key to remember.
+        /// </summary>
         private void SwitchContainer(int direction)
         {
             if (!isPopupInventoryMenu) return;
@@ -792,36 +861,94 @@ namespace Wasteland2AccessibilityMod.States
             if (popupInv == null) return;
 
             var containerButtons = popupInv.containerButtons;
-            if (containerButtons == null || containerButtons.Count <= 1)
+            int containerCount = containerButtons != null ? containerButtons.Count : 0;
+
+            // The backpack occupies the slot just past the last container.
+            bool hasBackpack = GetDropoffMenu() != null;
+            int backpackIdx = containerCount;
+            int stopCount = containerCount + (hasBackpack ? 1 : 0);
+
+            if (stopCount <= 1)
             {
                 ScreenReaderManager.SpeakInterrupt("Only one container");
                 return;
             }
 
-            // Find current container index
-            int currentContainerIdx = -1;
-            for (int i = 0; i < containerButtons.Count; i++)
+            // Where we are now: the backpack zone, or the selected container button.
+            int currentIdx;
+            if (currentZone == NavigationZone.PlayerItems)
             {
-                if (containerButtons[i] == popupInv.sourceContainerButton)
+                currentIdx = backpackIdx;
+            }
+            else
+            {
+                currentIdx = -1;
+                for (int i = 0; i < containerCount; i++)
                 {
-                    currentContainerIdx = i;
-                    break;
+                    if (containerButtons[i] == popupInv.sourceContainerButton)
+                    {
+                        currentIdx = i;
+                        break;
+                    }
                 }
             }
 
-            int newIdx = currentContainerIdx + direction;
+            int newIdx = currentIdx + direction;
             bool wrapped = false;
-            if (newIdx < 0) { newIdx = containerButtons.Count - 1; wrapped = true; }
-            else if (newIdx >= containerButtons.Count) { newIdx = 0; wrapped = true; }
-            if (wrapped && containerButtons.Count > 1) MenuCue.PlayWrap();
+            if (newIdx < 0) { newIdx = stopCount - 1; wrapped = true; }
+            else if (newIdx >= stopCount) { newIdx = 0; wrapped = true; }
+            if (wrapped) MenuCue.PlayWrap();
 
+            if (hasBackpack && newIdx == backpackIdx)
+            {
+                currentIndex = -1;
+                BuildPlayerItemList();
+                isDirty = false;
+                AnnounceZoneChange(GetPlayerBackpackLabel());
+                return;
+            }
+
+            // Moving back onto a container: re-select it and leave the backpack zone.
+            bool leavingBackpack = currentZone == NavigationZone.PlayerItems;
             popupInv.SelectContainer(containerButtons[newIdx]);
+
+            if (leavingBackpack)
+            {
+                currentIndex = -1;
+                BuildContainerItemList();
+                isDirty = false;
+                AnnounceZoneChange("Container: " + GetContainerName());
+                return;
+            }
 
             // Rebuild item list for new container
             isDirty = true;
+            ScreenReaderManager.SpeakInterrupt($"Container: {GetContainerName()}");
+        }
 
-            string containerName = GetContainerName();
-            ScreenReaderManager.SpeakInterrupt($"Container: {containerName}");
+        /// <summary>"Ali's backpack" for the ranger whose inventory the locker is showing.</summary>
+        private string GetPlayerBackpackLabel()
+        {
+            var pc = GetCurrentPC();
+            if (pc != null && pc.pcTemplate != null)
+            {
+                string name = UITextExtractor.CleanText(
+                    Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty));
+                if (!string.IsNullOrEmpty(name)) return name + "'s backpack";
+            }
+            return "Your backpack";
+        }
+
+        private void AnnounceZoneChange(string zoneLabel)
+        {
+            if (currentList.Count == 0)
+            {
+                ScreenReaderManager.SpeakInterrupt(zoneLabel + ", " + GetZoneEmptyMessage());
+                return;
+            }
+            ScreenReaderManager.SpeakInterrupt(zoneLabel + ", " + currentList.Count +
+                                               (currentList.Count == 1 ? " item" : " items"));
+            AnnounceCurrentItem(interrupt: false);
         }
 
         #endregion
@@ -904,16 +1031,45 @@ namespace Wasteland2AccessibilityMod.States
             var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
             if (popupInv == null) return;
 
-            // Use OnItemDoubleClicked which is the game's own transfer mechanism
-            popupInv.OnItemDoubleClicked(dragDropItem.gameObject);
-            isDirty = true;
-
             ItemInstance item = dragDropItem.GetItem();
             string itemName = item != null
                 ? UITextExtractor.CleanText(Language.Localize(item.template.displayName, false, false, string.Empty))
                 : "Item";
-            ScreenReaderManager.SpeakInterrupt($"Transferred {itemName}");
-            ModLog.Debug($"[InventoryState] Transferred item: {itemName}");
+
+            // Depositing: the backpack zone only exists on a Ranger Locker, and the deposit
+            // action is a different handler from the take one — PopupLootDropoffMenu's
+            // OnPlayerItemDoubleClicked calls RemoveItem with source/destination reversed.
+            if (currentZone == NavigationZone.PlayerItems)
+            {
+                var dropoff = GetDropoffMenu();
+                if (dropoff == null)
+                {
+                    ScreenReaderManager.SpeakInterrupt("This container doesn't accept items");
+                    return;
+                }
+
+                // OnPlayerItemDoubleClicked silently ignores owned ("original property")
+                // items, so say why instead of appearing to do nothing.
+                if (item != null && item.isOriginalProperty)
+                {
+                    ScreenReaderManager.SpeakInterrupt(
+                        itemName + " belongs to someone else and can't be stored");
+                    return;
+                }
+
+                dropoff.OnPlayerItemDoubleClicked(dragDropItem.gameObject);
+                isDirty = true;
+                ScreenReaderManager.SpeakInterrupt($"Stored {itemName}");
+                ModLog.Debug($"[InventoryState] Stored item in locker: {itemName}");
+                return;
+            }
+
+            // Use OnItemDoubleClicked which is the game's own transfer mechanism
+            popupInv.OnItemDoubleClicked(dragDropItem.gameObject);
+            isDirty = true;
+
+            ScreenReaderManager.SpeakInterrupt($"Took {itemName}");
+            ModLog.Debug($"[InventoryState] Took item: {itemName}");
         }
 
         private void TakeAll()
@@ -1056,15 +1212,37 @@ namespace Wasteland2AccessibilityMod.States
 
             // Use the game's own OnButtonDown handler which properly updates pcSelected
             // via EventInfo_CharacterSelectionChanged -> OnPlayerSelected
+            PC requested = party[index];
             popupInv.OnButtonDown($"Select Player {index + 1}");
             isDirty = true;
 
-            PC pc = party[index];
-            string pcName = pc != null && pc.pcTemplate != null
-                ? UITextExtractor.CleanText(Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty))
+            // SelectPlayer does not necessarily honour the request: in combat it force-swaps
+            // to the current actor, and outside the player's turn it returns without doing
+            // anything at all (PopupInventoryMenu.cs:724). Report who is ACTUALLY selected
+            // now rather than who was asked for — on a Ranger Locker this decides whose
+            // backpack the deposit zone is showing.
+            PC actual = GetCurrentPC();
+            string actualName = actual != null && actual.pcTemplate != null
+                ? UITextExtractor.CleanText(Language.Localize(actual.pcTemplate.displayName, false, false, string.Empty))
+                : null;
+            string requestedName = requested != null && requested.pcTemplate != null
+                ? UITextExtractor.CleanText(Language.Localize(requested.pcTemplate.displayName, false, false, string.Empty))
                 : $"Party member {index + 1}";
-            ScreenReaderManager.SpeakInterrupt($"Selected {pcName}");
-            ModLog.Debug($"[InventoryState] Popup party switch to {index + 1}: {pcName}");
+
+            if (actual != null && requested != null && actual != requested)
+            {
+                ScreenReaderManager.SpeakInterrupt(
+                    $"Can't switch to {requestedName} right now, still {actualName}");
+                ModLog.Debug($"[InventoryState] Popup party switch refused: wanted {requestedName}, got {actualName}");
+                return;
+            }
+
+            string spoken = actualName ?? requestedName;
+            ScreenReaderManager.SpeakInterrupt(
+                currentZone == NavigationZone.PlayerItems
+                    ? $"Selected {spoken}, showing their backpack"
+                    : $"Selected {spoken}");
+            ModLog.Debug($"[InventoryState] Popup party switch to {index + 1}: {spoken}");
         }
 
         private void CycleFilter()
@@ -1357,14 +1535,25 @@ namespace Wasteland2AccessibilityMod.States
 
         private void AnnounceLootContext()
         {
-            string containerName = GetContainerName();
-
             var pc = GetCurrentPC();
             string pcName = pc != null && pc.pcTemplate != null
                 ? UITextExtractor.CleanText(Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty))
                 : "Unknown";
 
-            string info = $"Loot: {containerName}, {currentList.Count} items, destination: {pcName}";
+            // On a Ranger Locker the direction of a transfer depends on which side of the
+            // Left/Right cycle you are on, and the two sides sound identical otherwise —
+            // so state it.
+            if (currentZone == NavigationZone.PlayerItems)
+            {
+                ScreenReaderManager.SpeakInterrupt(
+                    $"{GetPlayerBackpackLabel()}, {currentList.Count} items, " +
+                    $"Enter stores into {GetContainerName()}");
+                return;
+            }
+
+            string info = $"Loot: {GetContainerName()}, {currentList.Count} items, destination: {pcName}";
+            if (GetDropoffMenu() != null)
+                info += ", Left or Right for " + GetPlayerBackpackLabel() + " to store items";
             ScreenReaderManager.SpeakInterrupt(info);
         }
 
@@ -1643,6 +1832,14 @@ namespace Wasteland2AccessibilityMod.States
         {
             if (isPopupInventoryMenu)
             {
+                // In the locker's backpack zone the filter (and the C summary) must describe
+                // the ranger's grid, not the locker's — they are two separate containers.
+                if (currentZone == NavigationZone.PlayerItems)
+                {
+                    var dropoff = GetDropoffMenu();
+                    if (dropoff != null) return dropoff.playerInventoryContainer;
+                }
+
                 var popupInv = UnityEngine.Object.FindObjectOfType<PopupInventoryMenu>();
                 return popupInv?.inventoryContainer;
             }
@@ -1709,6 +1906,7 @@ namespace Wasteland2AccessibilityMod.States
                 case NavigationZone.Equipment: return "No equipment slots available";
                 case NavigationZone.Backpack: return "Backpack is empty";
                 case NavigationZone.ContainerItems: return "Container is empty";
+                case NavigationZone.PlayerItems: return "Backpack is empty";
                 default: return "Empty";
             }
         }
