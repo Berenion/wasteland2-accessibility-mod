@@ -49,6 +49,8 @@ namespace Wasteland2AccessibilityMod.States
         private readonly List<object> currentList = new List<object>(); // Entry or FinalizeMarker
         private int currentIndex = -1;
         private bool isDirty = false;
+        // Last inventory version this state rebuilt against.
+        private int seenInventoryVersion = 0;
         private string lastAnnouncedText;
 
         // Info browser (mirrors ShopState).
@@ -84,6 +86,11 @@ namespace Wasteland2AccessibilityMod.States
 
             if (isInfoBrowsing)
                 return HandleInfoBrowserInput();
+
+            // Any inventory change anywhere — including ones this mod did not perform —
+            // invalidates the cached list. See Helpers/InventoryChangeTracker.
+            if (Helpers.InventoryChangeTracker.HasChanged(ref seenInventoryVersion))
+                isDirty = true;
 
             if (isDirty)
             {

@@ -55,6 +55,8 @@ namespace Wasteland2AccessibilityMod.States
         private List<object> currentList = new List<object>(); // ShopItemEntry, EscrowEntry, string (escrow markers), or GameObject (filters)
         private int currentIndex = -1;
         private bool isDirty = false;
+        // Last inventory version this state rebuilt against.
+        private int seenInventoryVersion = 0;
 
         // Suspended state for overlays (quantity dialogs, modals)
         private ShopZone suspendedZone;
@@ -131,6 +133,11 @@ namespace Wasteland2AccessibilityMod.States
             // Info browser mode intercepts all input
             if (isInfoBrowsing)
                 return HandleInfoBrowserInput();
+
+            // Any inventory change anywhere — including ones this mod did not perform —
+            // invalidates the cached list. See Helpers/InventoryChangeTracker.
+            if (Helpers.InventoryChangeTracker.HasChanged(ref seenInventoryVersion))
+                isDirty = true;
 
             // Rebuild lists if dirty
             if (isDirty)

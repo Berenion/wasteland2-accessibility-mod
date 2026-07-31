@@ -53,6 +53,13 @@ namespace Wasteland2AccessibilityMod.States
         private List<object> currentList = new List<object>(); // INV_EquipmentSlot or INV_DragDropItem
         private int currentIndex = -1;
         private bool isDirty = false;
+        // Last inventory version this state rebuilt against.
+        private int seenInventoryVersion = 0;
+        // True only for a rebuild caused by something OTHER than the user's own action here,
+        // which is the only case that should speak an unprompted notice.
+        private bool announceExternalChange = false;
+        private float lastSelfInitiatedRebuild = -99f;
+        private const float SELF_CHANGE_GRACE = 0.75f;
 
         // Context tracking
         private bool isCharacterInfoMenu = false;
@@ -162,11 +169,28 @@ namespace Wasteland2AccessibilityMod.States
             if (isInfoBrowsing)
                 return HandleInfoBrowserInput();
 
+            // Any inventory change anywhere — including ones this mod did not perform —
+            // invalidates the cached list. See Helpers/InventoryChangeTracker.
+            //
+            // A change the user just made through this state also bumps the version, and the
+            // bump lands a frame or two later (the container reconciles from its own Update).
+            // Those actions already announced their own result ("Took X", "Stored X"), so a
+            // short grace period after a self-initiated rebuild keeps the external-change
+            // notice from talking over them.
+            if (Helpers.InventoryChangeTracker.HasChanged(ref seenInventoryVersion))
+            {
+                isDirty = true;
+                announceExternalChange =
+                    Time.realtimeSinceStartup - lastSelfInitiatedRebuild > SELF_CHANGE_GRACE;
+            }
+
             // Rebuild lists if dirty
             if (isDirty)
             {
+                if (!announceExternalChange) lastSelfInitiatedRebuild = Time.realtimeSinceStartup;
                 isDirty = false;
                 RebuildCurrentList();
+                announceExternalChange = false;
             }
 
             // Detect back-to-back loot windows: the old PopupInventoryMenu can be destroyed
@@ -736,6 +760,19 @@ namespace Wasteland2AccessibilityMod.States
         private void RebuildCurrentList()
         {
             int previousIndex = currentIndex;
+
+            // Remember WHAT was focused, not just where. Now that any inventory change
+            // rebuilds this list, holding the numeric index would silently move the cursor
+            // onto a different item whenever something ahead of it was added or removed —
+            // and the user would have no way to notice.
+            ItemInstance previousItem = null;
+            var previousSlot = GetCurrentEquipmentSlotComponent();
+            if (previousSlot == null)
+            {
+                var previousDrag = GetCurrentDragDropItem();
+                if (previousDrag != null) previousItem = previousDrag.GetItem();
+            }
+
             switch (currentZone)
             {
                 case NavigationZone.Equipment:
@@ -752,13 +789,45 @@ namespace Wasteland2AccessibilityMod.States
                     break;
             }
 
-            // Try to preserve index position
+            // Follow the same item to its new position if it is still here.
+            if (previousItem != null)
+            {
+                for (int i = 0; i < currentList.Count; i++)
+                {
+                    var drag = currentList[i] as INV_DragDropItem;
+                    if (drag != null && drag.GetItem() == previousItem)
+                    {
+                        currentIndex = i;
+                        return;
+                    }
+                }
+            }
+
+            // Equipment slots are positional and never reorder, so the index is the identity.
             if (previousIndex >= 0 && previousIndex < currentList.Count)
                 currentIndex = previousIndex;
             else if (currentList.Count > 0)
                 currentIndex = Math.Min(previousIndex, currentList.Count - 1);
             else
                 currentIndex = -1;
+
+            // The focused item is gone. Say so once rather than let the next arrow key read
+            // out something the user never selected — but only when the change came from
+            // outside; the user's own take/store/equip already announced its result.
+            if (announceExternalChange && previousItem != null && currentZone != NavigationZone.Equipment)
+            {
+                lastAnnouncedText = null;
+                ScreenReaderManager.SpeakInterrupt(
+                    currentList.Count == 0 ? GetZoneEmptyMessage() : "Item gone");
+                AnnounceCurrentItem(interrupt: false);
+            }
+        }
+
+        /// <summary>The focused entry as an equipment slot, or null when it is a loose item.</summary>
+        private INV_EquipmentSlot GetCurrentEquipmentSlotComponent()
+        {
+            if (currentIndex < 0 || currentIndex >= currentList.Count) return null;
+            return currentList[currentIndex] as INV_EquipmentSlot;
         }
 
         #endregion

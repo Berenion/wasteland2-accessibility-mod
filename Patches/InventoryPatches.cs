@@ -737,4 +737,28 @@ namespace Wasteland2AccessibilityMod.Patches
             }
         }
     }
+
+    /// <summary>
+    /// Marks the mod's cached inventory lists stale whenever a grid reconciles with its
+    /// underlying inventory, so the readout tracks changes made by ANY route — a script
+    /// granting or removing a quest item, a consumable used elsewhere, ammo spent,
+    /// auto-stacking, or a mouse drag — not just the actions the mod itself performs.
+    ///
+    /// InventoryContainer.ConsistencyCheck() is the game's own reconciliation point: its
+    /// EventInfo_InventoryModified / EventInfo_WeaponChanged handlers only set
+    /// shouldCheckConsistency, and Update() calls this, which rebuilds the item objects and
+    /// clears the flag (InventoryContainer.cs:823). It therefore fires once per real change
+    /// rather than every frame. The parameterless overload is the public driver; the private
+    /// three-argument one it calls internally must NOT be patched or every container sweep
+    /// would bump several times.
+    /// </summary>
+    [HarmonyPatch(typeof(InventoryContainer), "ConsistencyCheck", new Type[0])]
+    public class InventoryContainer_ConsistencyCheck_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            Helpers.InventoryChangeTracker.Bump();
+        }
+    }
 }
