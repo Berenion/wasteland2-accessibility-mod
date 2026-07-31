@@ -25,7 +25,7 @@ namespace Wasteland2AccessibilityMod.States
             return "Inventory. Up and Down move within a zone, Left and Right switch Equipment and Backpack, " +
                    "or switch container when looting. Enter opens the item menu, E quick-equips or unequips. " +
                    "Tab reads the full item info, I opens the info browser, R reads the flavor description, " +
-                   "F cycles the filter, C gives a context summary. " +
+                   "F cycles the filter, C gives a context summary, Shift plus D dismisses a companion. " +
                    "When looting: T takes all, G distributes across the party, F1 to F7 choose the destination ranger. " +
                    "Page Up and Page Down switch character-info tabs.";
         }
@@ -404,6 +404,17 @@ namespace Wasteland2AccessibilityMod.States
             if (Input.GetKeyDown(KeyCode.C))
             {
                 AnnounceInventoryContext();
+                return true;
+            }
+
+            // Shift+D - dismiss this companion from the party. The game's own Dismiss
+            // button lives on INV_MainPanel, which is neither an equipment slot nor a
+            // backpack item, so managed navigation could never reach it. Shifted because
+            // it is destructive.
+            if (Input.GetKeyDown(KeyCode.D) &&
+                (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+            {
+                DismissCurrentCompanion();
                 return true;
             }
 
@@ -1520,6 +1531,86 @@ namespace Wasteland2AccessibilityMod.States
                 return slot.GetCurrentItem(false);
 
             return null;
+        }
+
+        /// <summary>
+        /// Dismisses the companion whose sheet is open, via the game's own
+        /// CharacterInfoMenu.OnDismissClicked — which raises the standard "Are you sure?"
+        /// ModalMessageMenu that DialogState already reads, then calls
+        /// Game.RemoveCNPCFromParty(transferInventory: true).
+        ///
+        /// Every reason the button would be hidden or greyed out is spoken here instead.
+        /// Vanilla communicates them visually or not at all: a non-CNPC simply has no button
+        /// (INV_MainPanel.cs:111), and on the world map the button is disabled with no
+        /// explanation whatsoever (INV_MainPanel.cs:169).
+        /// </summary>
+        private void DismissCurrentCompanion()
+        {
+            var pc = GetCurrentPC();
+            if (pc == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("No character selected");
+                return;
+            }
+
+            string name = pc.pcTemplate != null
+                ? UITextExtractor.CleanText(Language.Localize(pc.pcTemplate.displayName, false, false, string.Empty))
+                : "This character";
+
+            // Only companions can be dismissed — CharacterInfoMenu.OnDismissConfirmed just
+            // logs a warning and does nothing for a created ranger (CharacterInfoMenu.cs:608).
+            if (!pc.isCNPC)
+            {
+                ScreenReaderManager.SpeakInterrupt(
+                    name + " is one of your own rangers and can't be dismissed. Only companions can leave the party");
+                return;
+            }
+
+            if (MonoBehaviourSingleton<CombatManager>.HasInstance() &&
+                MonoBehaviourSingleton<CombatManager>.GetInstance().inCombat)
+            {
+                ScreenReaderManager.SpeakInterrupt("You can't dismiss a party member during combat");
+                return;
+            }
+
+            if (pc.healthState >= PC.HealthState.Unconscious)
+            {
+                ScreenReaderManager.SpeakInterrupt("You can't dismiss " + name + " while they are unconscious");
+                return;
+            }
+
+            // OnDismissClicked silently does nothing on the world map (its whole body is
+            // wrapped in !HUD_WorldMapController.HasInstance()), so say why.
+            if (MonoBehaviourSingleton<HUD_WorldMapController>.HasInstance())
+            {
+                ScreenReaderManager.SpeakInterrupt(
+                    "You can't dismiss " + name + " on the world map. Travel to a location first");
+                return;
+            }
+
+            var charInfoMenu = UnityEngine.Object.FindObjectOfType<CharacterInfoMenu>();
+            if (charInfoMenu == null)
+            {
+                ScreenReaderManager.SpeakInterrupt("Dismiss unavailable");
+                return;
+            }
+
+            // The confirm text CharacterInfoMenu builds does NOT mention the inventory
+            // transfer (CHA_CNPCEntry's does), so state the consequence before the modal
+            // takes over the announcement.
+            ScreenReaderManager.SpeakInterrupt(
+                "Dismissing " + name + ". Their inventory transfers to the party");
+            ModLog.Debug("[InventoryState] Dismiss requested for " + name);
+
+            try
+            {
+                charInfoMenu.OnDismissClicked(null);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("[InventoryState] OnDismissClicked failed: " + ex.Message);
+                ScreenReaderManager.SpeakInterrupt("Dismiss failed");
+            }
         }
 
         private PC GetCurrentPC()

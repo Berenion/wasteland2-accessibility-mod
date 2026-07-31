@@ -137,6 +137,11 @@ namespace Wasteland2AccessibilityMod.States
                 if (topScreen is GameOverScreen)
                     return false;
 
+                // Not active for the companion join / dismiss roster - CNPCInfoState names
+                // each follower. Generic navigation reads every row as a bare "Dismiss".
+                if (topScreen is CNPCInfoMenu)
+                    return false;
+
                 // Active when any other menu is on top (including submenus over MainMenu)
                 return true;
             }

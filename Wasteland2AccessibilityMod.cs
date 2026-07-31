@@ -70,6 +70,7 @@ namespace Wasteland2AccessibilityMod
             InputRouter.Register(new MainMenuState());     // Priority 60 - main menu navigation
             InputRouter.Register(new ComputerGameState()); // Priority 59 - Snake Easter-egg computer sonification
             InputRouter.Register(new KeypadState());       // Priority 58 - safe/passcode keypad popup
+            InputRouter.Register(new CNPCInfoState());     // Priority 57 - companion join / dismiss roster screen
             InputRouter.Register(new ItemResultState());   // Priority 56 - field-strip result popup (overlays inventory)
             InputRouter.Register(new GenericMenuState());  // Priority 55 - generic popup menus (Options, Load/Save, etc.)
             InputRouter.Register(new ItemDropoffState());   // Priority 54 - conversation give-item screen (ItemDropoffMenu)
