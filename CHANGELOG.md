@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.7-beta] — 2026-08-01
+
+Ranger Lockers, dismissing companions, throwable weapons in free aim, and a batch of inventory and character-sheet fixes.
+
+### Added
+- **Ranger Locker deposits** — a Ranger Locker is the one container in the game that takes items back, and its deposit half was unreachable. Your ranger's backpack now sits at one end of the usual `Left`/`Right` container cycle, so Enter stores from the backpack and still takes from the locker. The announcement says which of the two happened. Refusals that vanilla showed silently — items flagged as someone else's property, a party switch blocked during combat — are now spoken.
+- **Dismissing party members** — only companions can be dismissed, and neither of the game's two routes was usable. `Shift+D` on the character screen now runs the game's own dismiss action, and every reason it would be unavailable (not a companion, in combat, unconscious, on the world map) is spoken instead of shown. The "would like to join your party" screen, which doubles as the roster when the party is full, gets a proper named list with each follower's rogue chance — a number vanilla only exposes through a mouse hover — plus `I` for details and `C` for party space.
+- **Large steps for sliders and steppers** — `Shift`+arrow and `Ctrl`+arrow move a slider 10% and 25% of its range, and an attribute or skill 5 and 10 points, instead of one notch or one point per press. Works with the plus/minus and numpad keys too. Reaching either end of a slider is announced rather than repeating the same number.
+- **Throwable and area weapons in free aim** — grenades and RPGs could not be fired from the free-aim cursor at all; with one equipped the action was hidden outright. Both cursors now aim them, and the tile read-out previews who is inside the blast using the same call that applies the damage. A blast that would catch a party member, a friendly NPC, or the thrower warns and asks for a second Enter.
+
+### Fixed
+- Perk requirements on the character sheet were checked against the party leader instead of the ranger whose sheet is open, so on anyone else every skill-gated perk read "requirements not met" — Bear with Assault Rifles 6 was told Full Metal Jacket, which needs 4, was unavailable. Trait-driven stat bonuses and base hit/crit in the stat details browser had the same fault.
+- The inventory read-out now refreshes on any change, not just ones the mod made. A quest item granted by a script, a consumable used elsewhere, ammo spent, auto-stacking, and mouse drags mixed with keyboard navigation could all leave it describing items that were no longer there. The cursor now follows the focused item rather than its position, and says so once if that item disappears.
+- Backing a stackable item out of a trade no longer leaves a permanent duplicate stack in the ranger's inventory.
+- "Use item" on a creature that accepts one (the flipped tortoise at Rail Nomad) was dropped silently. Plain Interact no longer auto-uses a held item on an object that offers an interaction of its own — which was burying that tortoise alive, and firing the shovel for Brute Force and Animal Whisperer too.
+- The buried cache the Rail Nomad tortoise reveals was missing from the scanner in every reveal mode, because the script that unhides it leaves the object's hidden flag stale. Hidden state is now read from the same field the game's own click test uses.
+
 ## [0.8.6-beta] — 2026-07-18
 
 Persistent location labels, a universal Drop action, and a batch of fixes across the world map, scanner, combat, and settings.
