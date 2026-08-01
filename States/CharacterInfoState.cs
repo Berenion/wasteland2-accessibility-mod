@@ -1800,7 +1800,7 @@ namespace Wasteland2AccessibilityMod.States
                 case InfoMode.StatDescription:
                     return CharacterAnnouncementHelper.BuildStatDescriptionLines(statObj);
                 case InfoMode.TraitDescription:
-                    return CharacterAnnouncementHelper.BuildTraitDescriptionLines(trait);
+                    return CharacterAnnouncementHelper.BuildTraitDescriptionLines(trait, pc);
                 default:
                     return new List<string>();
             }

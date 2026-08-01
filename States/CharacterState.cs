@@ -1968,7 +1968,8 @@ namespace Wasteland2AccessibilityMod.States
                     infoLines = CharacterAnnouncementHelper.BuildStatDescriptionLines(statObj);
                     break;
                 case InfoMode.TraitDescription:
-                    infoLines = CharacterAnnouncementHelper.BuildTraitDescriptionLines(trait);
+                    infoLines = CharacterAnnouncementHelper.BuildTraitDescriptionLines(
+                        trait, GetCurrentPC(CharacterScreen.instance));
                     break;
                 default:
                     infoLines = new List<string>();

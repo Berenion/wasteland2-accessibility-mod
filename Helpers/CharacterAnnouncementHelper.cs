@@ -36,6 +36,7 @@ namespace Wasteland2AccessibilityMod.Helpers
         internal static FieldInfo attrEditorMaxValueField;
         internal static FieldInfo traitEditorTraitField;
         internal static FieldInfo pressedCallbackField;
+        internal static FieldInfo traitsPanelPlayerField;
         internal static MethodInfo skillOnPlusClickedMethod;
         internal static MethodInfo skillOnMinusClickedMethod;
         internal static MethodInfo attrOnPlusClickedMethod;
@@ -86,6 +87,9 @@ namespace Wasteland2AccessibilityMod.Helpers
 
             traitEditorTraitField = typeof(CHA_TraitEditor).GetField("trait", flags);
             pressedCallbackField = typeof(CHA_TraitEditor).GetField("pressedCallback", flags);
+            // CHA_TraitsPanel.player is the PC the panel was populated for — the same field the
+            // game's own OnTraitEditorPressed uses to decide Purchased/RequirementsNotMet.
+            traitsPanelPlayerField = typeof(CHA_TraitsPanel).GetField("player", flags);
 
             // CHA_DescriptionPanel private string-builders (used to surface +1 deltas, perks-unlocked etc.)
             descPanelBuildAttrUnlockMethod = typeof(CHA_DescriptionPanel).GetMethod("BuildAttributeUnlockString", flags);
@@ -547,6 +551,28 @@ namespace Wasteland2AccessibilityMod.Helpers
         }
 
         /// <summary>
+        /// The PC a perk panel is displaying. Reads CHA_TraitsPanel.player, which is set in
+        /// PopulateData and is what the game itself tests requirements against.
+        /// Game.GetFirstSelectedPC() is NOT a substitute — it returns the party leader, so on
+        /// any other party member's sheet every skill-gated perk reads as unavailable.
+        /// Falls back to the leader only when there is no panel to ask.
+        /// </summary>
+        public static PC GetTraitsPanelPC(CHA_TraitsPanel panel)
+        {
+            EnsureReflectionCached();
+
+            if (panel != null && traitsPanelPlayerField != null)
+            {
+                var pc = traitsPanelPlayerField.GetValue(panel) as PC;
+                if (pc != null) return pc;
+            }
+
+            return MonoBehaviourSingleton<Game>.HasInstance()
+                ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
+                : null;
+        }
+
+        /// <summary>
         /// Mirrors CHA_TraitsPanel.OnTraitEditorPressed availability logic so the user
         /// learns whether the perk is purchasable before trying to toggle it.
         /// </summary>
@@ -565,19 +591,19 @@ namespace Wasteland2AccessibilityMod.Helpers
                 if (inCC)
                     return isLocked ? "locked" : "available";
 
-                var pc = MonoBehaviourSingleton<Game>.HasInstance()
-                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
-                    : null;
+                // The panel that owns this editor knows both the PC it was populated for and
+                // the points left. The PC must come from the panel, not from the party leader —
+                // the character screen can be showing any party member.
+                var panel = NGUITools.FindInParents<CHA_TraitsPanel>(editor.gameObject);
+
+                var pc = GetTraitsPanelPC(panel);
                 if (pc == null || pc.pcTemplate == null)
                     return isLocked ? "locked" : "";
 
                 if (pc.pcTemplate.HasTrait(trait.name))
                     return "purchased";
 
-                // Check perk points remaining via the panel that owns this editor
-                int pointsRemaining = -1;
-                var panel = NGUITools.FindInParents<CHA_TraitsPanel>(editor.gameObject);
-                if (panel != null) pointsRemaining = panel.GetPointsRemaining();
+                int pointsRemaining = panel != null ? panel.GetPointsRemaining() : -1;
 
                 if (pointsRemaining == 0)
                     return "insufficient perk points";

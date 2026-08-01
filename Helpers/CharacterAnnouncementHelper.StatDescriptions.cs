@@ -90,7 +90,8 @@ namespace Wasteland2AccessibilityMod.Helpers
                 string preview = BuildNextLevelPreview(characteristicName, currentLevel, isAttribute, isSkill);
                 AppendSplit(lines, preview);
 
-                string traitMod = BuildTraitStatModifier(characteristicName, isAttribute, isSkill);
+                string traitMod = BuildTraitStatModifier(
+                    characteristicName, isAttribute, isSkill, GetEditorPCTemplate(skillEditor, attrEditor));
                 if (!string.IsNullOrEmpty(traitMod))
                     lines.Add(traitMod);
 
@@ -103,7 +104,7 @@ namespace Wasteland2AccessibilityMod.Helpers
                     if (!string.IsNullOrEmpty(cost))
                         lines.Add(cost);
 
-                    string baseStats = BuildCombatSkillBaseStats(characteristicName);
+                    string baseStats = BuildCombatSkillBaseStats(characteristicName, skillEditor);
                     if (!string.IsNullOrEmpty(baseStats))
                         lines.Add(baseStats);
 
@@ -292,30 +293,50 @@ namespace Wasteland2AccessibilityMod.Helpers
         }
 
         /// <summary>
-        /// Returns trait-driven modifiers on the given stat (e.g. "+1 from Bookworm trait").
-        /// Uses pcTemplate.GetTraitAttributeTooltipString / GetTraitSkillTooltipString.
+        /// The PCTemplate an attribute/skill editor belongs to, taken from the editor itself.
+        /// Never falls back to the party leader — the character screen can be showing any
+        /// party member, and the leader's traits are not theirs.
         /// </summary>
-        private static string BuildTraitStatModifier(string statName, bool isAttribute, bool isSkill)
+        private static PCTemplate GetEditorPCTemplate(CHA_SkillEditor skillEditor, CHA_AttributeEditor attrEditor)
         {
             try
             {
-                var pc = MonoBehaviourSingleton<Game>.HasInstance()
-                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
-                    : null;
-                if (pc == null || pc.pcTemplate == null) return "";
+                if (skillEditor != null)
+                {
+                    var pcStats = GetSkillEditorPcStats(skillEditor);
+                    var pc = pcStats != null ? pcStats.GetPC() : null;
+                    if (pc != null) return pc.pcTemplate;
+                }
+
+                if (attrEditor != null && attrEditorPcTemplateField != null)
+                    return attrEditorPcTemplateField.GetValue(attrEditor) as PCTemplate;
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns trait-driven modifiers on the given stat (e.g. "+1 from Bookworm trait").
+        /// Uses pcTemplate.GetTraitAttributeTooltipString / GetTraitSkillTooltipString.
+        /// </summary>
+        private static string BuildTraitStatModifier(string statName, bool isAttribute, bool isSkill, PCTemplate template)
+        {
+            try
+            {
+                if (template == null) return "";
 
                 string raw = "";
                 if (isAttribute)
                 {
                     var attr = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetAttribute(statName);
                     if (attr == null) return "";
-                    raw = pc.pcTemplate.GetTraitAttributeTooltipString(attr);
+                    raw = template.GetTraitAttributeTooltipString(attr);
                 }
                 else if (isSkill)
                 {
                     var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(statName);
                     if (skill == null) return "";
-                    raw = pc.pcTemplate.GetTraitSkillTooltipString(skill);
+                    raw = template.GetTraitSkillTooltipString(skill);
                 }
 
                 if (string.IsNullOrEmpty(raw)) return "";
@@ -347,20 +368,18 @@ namespace Wasteland2AccessibilityMod.Helpers
         /// CHA_WeaponStatsPanel side panel a sighted user sees when focusing a combat skill.
         /// Empty for non-combat skills.
         /// </summary>
-        private static string BuildCombatSkillBaseStats(string skillName)
+        private static string BuildCombatSkillBaseStats(string skillName, CHA_SkillEditor skillEditor)
         {
             try
             {
                 var skill = MonoBehaviourSingleton<PCStatsManager>.GetInstance().GetSkill(skillName);
                 if (skill == null || skill.category != Skill.Category.Combat) return "";
 
-                var pc = MonoBehaviourSingleton<Game>.HasInstance()
-                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
-                    : null;
-                if (pc == null || pc.pcStats == null) return "";
+                var pcStats = skillEditor != null ? GetSkillEditorPcStats(skillEditor) : null;
+                if (pcStats == null) return "";
 
-                int hit = pc.pcStats.GetBaseChanceToHit(skillName, skillName == "atWeapons");
-                int crit = pc.pcStats.GetBaseChanceToCriticalHitWithSkill(skillName);
+                int hit = pcStats.GetBaseChanceToHit(skillName, skillName == "atWeapons");
+                int crit = pcStats.GetBaseChanceToCriticalHitWithSkill(skillName);
 
                 // Energy weapons use no critical hit calculation in the game's display
                 if (skillName == "energyWeapons")
@@ -440,17 +459,20 @@ namespace Wasteland2AccessibilityMod.Helpers
         /// effects, requirements with met/unmet markers, and unlock list.
         /// Kept for callers that want the dump form; new code should prefer the line-list version.
         /// </summary>
-        public static string BuildTraitDescription(Trait trait)
+        public static string BuildTraitDescription(Trait trait, PC pc = null)
         {
-            var lines = BuildTraitDescriptionLines(trait);
+            var lines = BuildTraitDescriptionLines(trait, pc);
             return (lines == null || lines.Count == 0) ? null : string.Join(". ", lines.ToArray());
         }
 
         /// <summary>
         /// Builds a Trait description as a list of individually-browsable lines.
         /// Each line = one fact, suitable for Up/Down navigation in an info browser.
+        /// <paramref name="pc"/> is the character the met/not-met markers are evaluated against;
+        /// callers must pass the PC whose sheet is open, since the party leader fallback would
+        /// mark every skill requirement against the wrong character.
         /// </summary>
-        public static List<string> BuildTraitDescriptionLines(Trait trait)
+        public static List<string> BuildTraitDescriptionLines(Trait trait, PC pc = null)
         {
             var lines = new List<string>();
             if (trait == null) return lines;
@@ -478,9 +500,8 @@ namespace Wasteland2AccessibilityMod.Helpers
                         lines.Add("Effects: " + effects);
                 }
 
-                var pc = MonoBehaviourSingleton<Game>.HasInstance()
-                    ? MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC()
-                    : null;
+                if (pc == null && MonoBehaviourSingleton<Game>.HasInstance())
+                    pc = MonoBehaviourSingleton<Game>.GetInstance().GetFirstSelectedPC();
 
                 if (trait.requiredStatValues != null && trait.requiredStatValues.Count > 0)
                 {
