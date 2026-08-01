@@ -256,7 +256,7 @@ namespace Wasteland2AccessibilityMod
         ///    these to remain "a surprise" until the party actually passes the
         ///    perception roll, matching the discovery beat a sighted player
         ///    experiences when the sparkle pops. Items with skob.hidden=true
-        ///    are already handled upstream by nexus.isVisible.
+        ///    are already handled upstream by <see cref="IsNexusVisible"/>.
         ///
         /// 2. Teleporters whose destination is far away and in unexplored fog —
         ///    avoids revealing paths the party hasn't discovered. Runtime-
@@ -322,9 +322,10 @@ namespace Wasteland2AccessibilityMod
         /// In Normal mode it's exactly the strict triad (game-visible, sighted-FOW,
         /// not perception-gated) callers previously inlined. In a reveal mode it
         /// drops the FOW / perception filters and shows every loaded interactable,
-        /// but still respects scripted invisibility (nexus.isHidden / mob.isHidden)
-        /// — those aren't fog, and forcing them visible would surface objects the
-        /// game deliberately un-rendered (story reveals, dead triggers).
+        /// but still respects scripted invisibility (<see cref="IsScriptedHidden"/>
+        /// / mob.isHidden) — those aren't fog, and forcing them visible would
+        /// surface objects the game deliberately un-rendered (story reveals, dead
+        /// triggers).
         ///
         /// Note the hard limit: SleepManager SetActive(false)s NPCs far from the
         /// party, so reveal mode cannot surface distance-culled or un-spawned mobs;
@@ -354,7 +355,7 @@ namespace Wasteland2AccessibilityMod
         public static bool IsDiscoveredNormally(InteractableNexus nexus)
         {
             if (nexus == null || nexus.gameObject == null) return false;
-            if (!nexus.isVisible) return false;
+            if (!IsNexusVisible(nexus)) return false;
             if (!IsVisibleToSighted(nexus.gameObject)) return false;
             if (IsPerceptionGated(nexus)) return false;
             return true;
@@ -369,7 +370,58 @@ namespace Wasteland2AccessibilityMod
         /// </summary>
         private static bool IsRevealVisible(InteractableNexus nexus)
         {
-            return !nexus.isHidden;
+            return !IsScriptedHidden(nexus);
+        }
+
+        /// <summary>
+        /// InteractableNexus.isVisible, reimplemented so the scripted-hide clause
+        /// goes through <see cref="IsScriptedHidden"/> instead of reading the raw
+        /// nexus.isHidden flag. The mob.isHidden and FOWRenderers clauses are
+        /// copied verbatim from InteractableNexus.cs:26 — only the hide test
+        /// differs.
+        /// </summary>
+        public static bool IsNexusVisible(InteractableNexus nexus)
+        {
+            if (nexus == null || nexus.gameObject == null) return false;
+            if (IsScriptedHidden(nexus)) return false;
+
+            Mob mob = nexus.drama != null ? nexus.drama.GetMob() : null;
+            if (mob != null && mob.isHidden) return false;
+
+            FOWRenderers fow = nexus.GetComponent<FOWRenderers>();
+            return fow == null || fow.isVisible;
+        }
+
+        /// <summary>
+        /// True if this nexus is genuinely hidden by script, as opposed to merely
+        /// carrying a stale nexus.isHidden flag.
+        ///
+        /// SkillObject_Examine.Start():105 is the ONLY runtime assignment of
+        /// isHidden = true in the whole game, and DoUnhide() (SkillObject_Examine.
+        /// cs:231) is what clears it — so nexus.isHidden is supposed to track
+        /// skob.hidden exactly. AZ3_Turtle.PATHING_15 (AZ3_Turtle.cs:271-283) is
+        /// the one place that breaks the pact: it hand-rolls the unhide (clears
+        /// skob.hidden, sets the Revealed_ WSBool, re-enables the renderers) but
+        /// never writes back base.isHidden, so the nexus stays flagged hidden for
+        /// the rest of the session and the tortoise's dig spot never reaches the
+        /// scanner. ChallengeObject can't repair it later either — its whole body
+        /// sits inside if (!perceived), which the turtle already set true.
+        ///
+        /// So we defer to skob.hidden, which is exactly what the game's own click
+        /// gate uses (InputManager.CheckInstigateDrama, InputManager.cs:2341) —
+        /// that's why the spot stays diggable by mouse while the nexus-based paths
+        /// lose it. A nexus with no SkillObject_Examine keeps its authored hide:
+        /// nothing else can have gone stale.
+        /// </summary>
+        private static bool IsScriptedHidden(InteractableNexus nexus)
+        {
+            if (!nexus.isHidden) return false;
+
+            SkillObject_Examine skob = nexus.skobExamine;
+            if (skob == null && nexus.gameObject != null)
+                skob = nexus.gameObject.GetComponent<SkillObject_Examine>();
+
+            return skob == null || skob.hidden;
         }
     }
 }

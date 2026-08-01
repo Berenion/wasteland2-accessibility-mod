@@ -1791,7 +1791,7 @@ namespace Wasteland2AccessibilityMod.States
         private string WhyNexusFiltered(InteractableNexus nexus)
         {
             if (nexus == null) return "null";
-            if (!nexus.isVisible) return "!isVisible";
+            if (!FOWHelper.IsNexusVisible(nexus)) return "!isVisible";
             if (nexus.isPC) return "isPC";
             if (!FOWHelper.IsVisibleToSighted(nexus.gameObject)) return "!sightedVisible";
             if (FOWHelper.IsPerceptionGated(nexus)) return "perceptionGated";
