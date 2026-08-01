@@ -843,9 +843,13 @@ namespace Wasteland2AccessibilityMod.States
                     sourceInv = entry.ParentEscrow.invVendor;
                 }
 
-                // Move the item back
+                // Move the item back. AddItems (not Add) so a stackable item merges into an
+                // existing partial stack — Inventory.Add just appends, which leaves a permanent
+                // duplicate entry that nothing ever consolidates (Inventory.cs:230 vs 369).
+                // Both vanilla escrow-return paths merge: VendorScreen.OnItemDoubleClicked uses
+                // AddItems (VendorScreen.cs:455), InventoryEscrow.Cancel uses AddRange.
                 escrowInv.Remove(entry.Item);
-                sourceInv.Add(entry.Item);
+                sourceInv.AddItems(new[] { entry.Item });
                 Escrow.UpdateTotalValue();
 
                 // Refresh containers
