@@ -336,8 +336,13 @@ namespace Wasteland2AccessibilityMod.Core
                 {
                     // Check if this object accepts items (e.g. dirt piles needing shovels).
                     // If a matching item is in party inventory, use it automatically instead
-                    // of falling through to examine/poke.
-                    if (TryUseItemOnObject(nexus, inputManager, pc))
+                    // of falling through to examine/poke — but only when the drama offers no
+                    // interaction of its own. Drama.InteractionAllowed is the game's own test
+                    // (any GetAllowedInteractions value == 1). Rail Nomad's flipped tortoise
+                    // accepts a Shovel but also offers Brute Force, Animal Whisperer and a
+                    // plain poke, so auto-using the shovel there buries it alive.
+                    if (!nexus.drama.InteractionAllowed() &&
+                        TryUseItemOnObject(nexus, inputManager, pc))
                         return;
 
                     // Check if interaction is blocked (e.g. perception-gated objects)
@@ -410,13 +415,29 @@ namespace Wasteland2AccessibilityMod.Core
 
                         // Trigger the game's item-use-on-targetable flow
                         Targetable targetable = nexus.gameObject.GetComponent<Targetable>();
-                        if (targetable != null)
+
+                        // AIBehaviour_PC.UseItem silently drops the command when the
+                        // event's target is a Mob and the item's isUsableOnMobs is false
+                        // (Rail Nomad's flipped tortoise is an NPC that accepts a Shovel).
+                        // Publishing with target=null and targetDrama set takes the drama
+                        // branch instead, which ends in usageItem.Use(drama, pc) — the same
+                        // Instigate(pc, "useItem", item) the mob branch would have reached.
+                        var usableTemplate = item.template as ItemTemplate_Usable;
+                        bool mobWouldBeDropped = targetable is Mob &&
+                            (usableTemplate == null || !usableTemplate.isUsableOnMobs);
+
+                        ModLog.Debug($"[Accessibility] useItem route: targetable={(targetable == null ? "null" : targetable.GetType().Name)}, " +
+                            $"template={(usableTemplate == null ? item.template.GetType().Name : "Usable/" + item.template.GetType().Name)}, " +
+                            $"isUsableOnMobs={(usableTemplate == null ? "n/a" : usableTemplate.isUsableOnMobs.ToString())}, " +
+                            $"drama={(nexus.drama == null ? "null" : nexus.drama.GetType().Name)}, viaDrama={mobWouldBeDropped || targetable == null}");
+
+                        if (targetable != null && !mobWouldBeDropped)
                         {
                             inputManager.HandleUsableItemClickOnTargetable(targetable);
                         }
                         else
                         {
-                            // Fallback: use PrepareUseItemActions directly with Drama
+                            // Drama path: PrepareUseItemActions with a null Targetable
                             InputManager.PrepareUseItemActions(nexus.transform, nexus.drama, null, false);
                         }
                         return true;

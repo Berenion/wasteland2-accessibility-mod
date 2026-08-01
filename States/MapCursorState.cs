@@ -2315,7 +2315,13 @@ namespace Wasteland2AccessibilityMod.States
             // This runs before skill handling because locked item-accepting objects
             // often only expose "Examine" in GetAllowedInteractions, hiding the real
             // interaction (use item) behind the fallback.
-            if (MonoBehaviourSingleton<InputManager>.HasInstance())
+            //
+            // Only when the drama has no interaction of its own. Drama.InteractionAllowed
+            // is the game's own test (any GetAllowedInteractions value == 1). Rail Nomad's
+            // flipped tortoise accepts a Shovel but also offers Brute Force, Animal
+            // Whisperer and a plain poke — auto-using the shovel there buries it alive.
+            if (MonoBehaviourSingleton<InputManager>.HasInstance() &&
+                !target.drama.InteractionAllowed())
             {
                 if (ExplorationState.TryUseItemOnObject(target, MonoBehaviourSingleton<InputManager>.GetInstance(), pc))
                     return;
