@@ -2246,7 +2246,7 @@ namespace Wasteland2AccessibilityMod.States
                     if (aoeTemplate != null)
                     {
                         var capturedPC = pc;
-                        string label = pc.stats.GetWeaponType() == WeaponType.RPG ? "Fire at tile" : "Throw at tile";
+                        string label = AoeVerb(pc, capitalized: true) + " at tile";
                         actionList.Add(new CombatAction
                         {
                             Label = label,
@@ -2545,7 +2545,28 @@ namespace Wasteland2AccessibilityMod.States
         // Free Aim Targeting
         // =====================================================================
 
-        private void EnterFreeAim(PC user)
+        /// <summary>
+        /// The verb for an area weapon: rockets are fired, everything else is thrown.
+        /// Keeps the aiming prompts consistent with the action labels that lead into them.
+        /// </summary>
+        private string AoeVerb(PC pc, bool capitalized = false)
+        {
+            bool isRpg = false;
+            try { isRpg = pc != null && pc.stats != null && pc.stats.GetWeaponType() == WeaponType.RPG; }
+            catch (Exception ex) { MelonLogger.Warning($"[CombatState] AoeVerb weapon type failed: {ex.Message}"); }
+
+            if (isRpg) return capitalized ? "Fire" : "fire";
+            return capitalized ? "Throw" : "throw";
+        }
+
+        /// <param name="aimedAt">
+        /// The mob the cursor is already sitting on, when free aim was entered from that
+        /// mob's target menu rather than from the general action list. The aim point is
+        /// then already where the blast would land, so the opening announcement reports
+        /// what this throw would actually catch instead of asking for a target that has
+        /// already been picked.
+        /// </param>
+        private void EnterFreeAim(PC user, Mob aimedAt = null)
         {
             freeAimUser = user;
             freeAimMode = true;
@@ -2554,6 +2575,23 @@ namespace Wasteland2AccessibilityMod.States
 
             if (AoeAimHelper.IsAoeWeapon(user))
             {
+                string verb = AoeVerb(user);
+
+                if (aimedAt != null)
+                {
+                    // Out of range is reported rather than blocking: the aim point is still
+                    // movable, so the user can pull the blast back to a tile they can reach.
+                    string opening = AoeAimHelper.IsInThrowRange(user, cursorPosition)
+                        ? DescribeBlastContents(AoeAimHelper.SummarizeBlast(user, cursorPosition))
+                        : "out of " + (verb == "fire" ? "firing" : "throwing") + " range, blast radius "
+                          + TileCoordinateSystem.GetRangeText(AoeAimHelper.GetBlastRadius(user));
+
+                    ScreenReaderManager.SpeakInterrupt(
+                        "Aiming at " + GetMobName(aimedAt) + ", " + opening +
+                        ". Enter to " + verb + ", arrows to move the aim point, Escape to cancel");
+                    return;
+                }
+
                 ScreenReaderManager.SpeakInterrupt(
                     "Area attack, blast radius " +
                     TileCoordinateSystem.GetRangeText(AoeAimHelper.GetBlastRadius(user)) +
@@ -3016,9 +3054,40 @@ namespace Wasteland2AccessibilityMod.States
             // Compute shared attack info
             string attackStatus = GetAttackStatus(pc, targetMob, isThinking);
 
-            if (isMelee || isAoe)
+            if (isAoe)
             {
-                // Melee / AOE: single attack option
+                // An area weapon has no per-target attack at all. Mob.CanAttack rejects
+                // Thrown and RPG outright (Mob.cs:1480 — the overload CanPerformAttack uses
+                // passes allowAoe: false), and the shot travels on EventInfo_CommandAreaAttack
+                // rather than the EventInfo_CommandAttack that ExecuteAttack publishes, so
+                // going through the melee path above produced an entry that was permanently
+                // "unavailable" and would not have worked if it had been enabled.
+                //
+                // Instead this hands off to the tile aiming mode with the cursor already on
+                // this target — the target menu is only reachable with the cursor on the
+                // mob's tile (see the Return handler), and EnterFreeAim leaves cursorPosition
+                // alone, so Enter throws right here and the arrows shift the blast off them.
+                int apCost = pc.GetActionPointsToAttack();
+
+                targetActionList.Add(new CombatAction
+                {
+                    Label = AoeVerb(pc, capitalized: true) + " " + weaponName
+                            + " at " + GetMobName(capturedTarget),
+                    Status = apCost + " AP, blast radius "
+                             + TileCoordinateSystem.GetRangeText(AoeAimHelper.GetBlastRadius(pc)),
+                    IsEnabled = isThinking && pc.combatActionPointsRemaining >= apCost,
+                    Execute = () => EnterFreeAim(pc, capturedTarget)
+                });
+
+                // Precision strikes need an ItemInstance_WeaponRanged and would all come
+                // back disabled here, so they are left off rather than padding the menu
+                // with four dead entries.
+                return;
+            }
+
+            if (isMelee)
+            {
+                // Melee: single attack option
                 int apCost = pc.GetActionPointsToAttack();
                 string info = BuildAttackInfo(pc, targetMob, apCost);
                 bool canAttack = isThinking && CanPerformAttack(pc, targetMob);
