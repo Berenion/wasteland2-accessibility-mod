@@ -134,18 +134,36 @@ namespace Wasteland2AccessibilityMod.Patches
         private static string lastAnnouncedText = "";
         private static float lastAnnouncedTime = 0f;
 
-        // Cancellation token for the voiceover-wait coroutine, mirroring
-        // ConversationState.announcementGeneration. On multi-step dialogue (press Enter
-        // to advance), each new line — or an explicit skip — supersedes the previous
-        // line's pending read so stale subtitles don't fire late / out of order / doubled.
-        private static int speakGeneration = 0;
+        // Dialogue lines waiting to be read, in arrival order, drained by a single pump
+        // coroutine (DrainPendingReads).
+        //
+        // These used to be independent coroutines guarded by a "newest line wins"
+        // generation counter. But the game routinely emits two or three conversation lines
+        // one frame apart: Drama only blocks between lines whose wait type is
+        // ClickToContinue, so one "click anywhere to continue" commonly gates a whole group
+        // of lines. Under newest-wins each new line cancelled the previous line's
+        // still-pending read, so every line of the group except the last was dropped
+        // silently — the player pressed Enter and a part of the conversation vanished.
+        // Queueing keeps both the order and every line.
+        private class PendingRead
+        {
+            public string Text;
+            public bool WaitForVoiceover;
+            // Append "Press Enter to continue" after Text.
+            public bool PromptToContinue;
+            // Append "Press Enter to continue", but only if a description bubble is still
+            // the thing awaiting advance by the time the read actually fires.
+            public bool PromptIfDescriptionShowing;
+        }
 
-        // Separate cancellation token for a deferred character/scene description. Kept
-        // distinct from speakGeneration so a description deferred behind a voiced line
-        // doesn't cancel (or get cancelled by) that line's own subtitle read.
-        private static int descriptionGeneration = 0;
+        private static readonly List<PendingRead> pendingReads = new List<PendingRead>();
+        private static bool pumpRunning;
 
-        // How long the voiceover-wait coroutines tolerate a *pending* voiced bubble (one
+        // Bumped by CancelPendingSpeak(). The pump captures it before waiting on a line and
+        // abandons that line if it changed, so an explicit skip drops the whole batch.
+        private static int cancelGeneration = 0;
+
+        // How long the voiceover wait tolerates a *pending* voiced bubble (one
         // tagged AudioConversation with a valid audio ID) that never actually starts
         // playing before giving up and reading the subtitle anyway.
         //
@@ -165,12 +183,14 @@ namespace Wasteland2AccessibilityMod.Patches
         private const float PendingAudioStartGraceSeconds = 0.6f;
 
         /// <summary>
-        /// Cancels any pending voiceover-wait subtitle read. Called when the player
-        /// skips/advances the current line so the skipped line isn't spoken afterwards.
+        /// Cancels every pending subtitle read. Called when the player skips/advances,
+        /// so the skipped line — and any others the same advance flushed — aren't spoken
+        /// afterwards.
         /// </summary>
         public static void CancelPendingSpeak()
         {
-            speakGeneration++;
+            cancelGeneration++;
+            pendingReads.Clear();
         }
 
         [HarmonyPostfix]
@@ -223,11 +243,8 @@ namespace Wasteland2AccessibilityMod.Patches
                     // line until the player advances. That pending voiceover sits BEHIND this
                     // prompt, so deferring the description "until voiceover finishes" deadlocks —
                     // the audio never starts and the player is never told they can advance.
-                    // Read it now and announce the prompt. Own generation bump so a later
-                    // line's subtitle read doesn't cancel this.
-                    int gen = ++speakGeneration;
-                    ScreenReaderManager.SpeakDirect(cleanedText);
-                    ScreenReaderManager.SpeakDirect("Press Enter to continue");
+                    // Read it as soon as the queue reaches it (no voiceover wait), plus prompt.
+                    EnqueueRead(cleanedText, waitForVoiceover: false, promptToContinue: true);
                     ModLog.Debug("[Conversation] Description gates on click-to-continue — read immediately + prompt");
                 }
                 else if (!thisLineHasAudio && thisLineIsDescription &&
@@ -236,32 +253,25 @@ namespace Wasteland2AccessibilityMod.Patches
                     // An unvoiced character/scene description that arrived while the NPC's
                     // voiced line is still playing. Speaking it now lands it on top of the
                     // dialogue ("lands halfway through"). Defer it until the voiceover
-                    // finishes. Uses its own generation, so it neither cancels nor is
-                    // cancelled by the concurrent voiced line's subtitle read.
+                    // finishes. It queues behind that line's own read, so the two can't race.
                     ModLog.Debug("[Conversation] Description arrived during voiceover — deferring until VO finishes");
-                    int descGen = ++descriptionGeneration;
-                    MelonCoroutines.Start(SpeakDescriptionAfterVoiceover(cleanedText, descGen));
+                    EnqueueRead(cleanedText, waitForVoiceover: true, promptIfDescriptionShowing: true);
                 }
                 else if (!thisLineHasAudio)
                 {
-                    // No voiceover for this line and nothing voiced playing — speak immediately.
-                    int gen = ++speakGeneration;
-                    ScreenReaderManager.SpeakDirect(cleanedText);
-                    ModLog.Debug($"[Conversation] No VO — speaking immediately");
-
-                    // If description is showing, prompt to continue
+                    // No voiceover for this line and nothing voiced playing — read it as soon
+                    // as any earlier queued line has been spoken. If a description bubble is
+                    // showing, prompt to continue afterwards.
                     bool descriptionShowing = VoiceoverHelper.HasActiveDescriptionBubbles();
-                    if (Drama.isConversationOn && !Drama.isCutsceneOn && descriptionShowing)
-                    {
-                        ScreenReaderManager.SpeakDirect("Press Enter to continue");
-                    }
+                    bool prompt = Drama.isConversationOn && !Drama.isCutsceneOn && descriptionShowing;
+                    EnqueueRead(cleanedText, waitForVoiceover: false, promptToContinue: prompt);
+                    ModLog.Debug($"[Conversation] No VO — speaking immediately");
                 }
                 else
                 {
                     // This line has voiceover — wait for it to finish, then read the text.
-                    int gen = ++speakGeneration;
                     ModLog.Debug($"[Conversation] Has VO — waiting for audio to finish");
-                    MelonCoroutines.Start(SpeakAfterVoiceoverFinishes(cleanedText, gen));
+                    EnqueueRead(cleanedText, waitForVoiceover: true);
                 }
 
                 // Update tracking
@@ -277,96 +287,105 @@ namespace Wasteland2AccessibilityMod.Patches
         }
 
         /// <summary>
-        /// Polls until voiced audio finishes, then speaks the text.
-        /// Handles the case where audio hasn't started yet (pending behind other bubble texts).
-        /// Bails without speaking if a newer line or a skip has superseded this read
-        /// (generation mismatch), so stale subtitles don't fire on multi-step dialogue.
+        /// Queues a dialogue line to be read, preserving arrival order, and starts the pump
+        /// if it isn't already draining.
         /// </summary>
-        private static IEnumerator SpeakAfterVoiceoverFinishes(string text, int generation)
+        private static void EnqueueRead(string text, bool waitForVoiceover,
+            bool promptToContinue = false, bool promptIfDescriptionShowing = false)
         {
-            // Wait until no voiced audio is playing or pending. A bubble that is only
-            // *pending* (tagged voiced but never actually plays) is tolerated for at most
-            // PendingAudioStartGraceSeconds, then we read the subtitle anyway — see the
-            // const's comment for why (avoids the one-line-late wedge on unvoiced dialogue).
-            float maxWait = 30f; // Safety timeout
-            float waited = 0f;
-            float pendingWaited = 0f;
-            while (waited < maxWait)
+            pendingReads.Add(new PendingRead
             {
-                if (generation != speakGeneration) yield break;
-                if (VoiceoverHelper.IsVoiceoverPlaying())
-                {
-                    pendingWaited = 0f; // real audio playing — reset the pending grace
-                }
-                else if (VoiceoverHelper.HasPendingOrActiveVoicedAudio())
-                {
-                    pendingWaited += 0.2f;
-                    if (pendingWaited >= PendingAudioStartGraceSeconds) break;
-                }
-                else
-                {
-                    break;
-                }
-                yield return new WaitForSeconds(0.2f);
-                waited += 0.2f;
+                Text = text,
+                WaitForVoiceover = waitForVoiceover,
+                PromptToContinue = promptToContinue,
+                PromptIfDescriptionShowing = promptIfDescriptionShowing
+            });
+
+            if (!pumpRunning)
+            {
+                pumpRunning = true;
+                MelonCoroutines.Start(DrainPendingReads());
             }
-
-            if (generation != speakGeneration) yield break;
-
-            // Small extra delay for natural pacing after audio stops
-            yield return new WaitForSeconds(0.3f);
-
-            if (generation != speakGeneration) yield break;
-
-            ScreenReaderManager.SpeakDirect(text);
         }
 
         /// <summary>
-        /// Waits for the active voiceover to finish, then reads a deferred character/scene
-        /// description so it doesn't land on top of the NPC's spoken line. Queued (not
-        /// interrupting), and followed by the "Press Enter to continue" prompt if the
-        /// description bubble is still the one awaiting advance. Bails on a newer description.
+        /// Drains pendingReads in arrival order: for each line, waits out its voiceover (if
+        /// the line has any), then speaks it. Speech is queued with Tolk rather than
+        /// interrupting, so consecutive lines of a group read back to back instead of
+        /// clobbering one another. Exits when the queue empties; EnqueueRead restarts it.
+        ///
+        /// A skip (CancelPendingSpeak) clears the queue and bumps cancelGeneration, which
+        /// makes the pump drop the line it is currently waiting on.
         /// </summary>
-        private static IEnumerator SpeakDescriptionAfterVoiceover(string text, int generation)
+        private static IEnumerator DrainPendingReads()
         {
-            float maxWait = 30f; // Safety timeout
-            float waited = 0f;
-            float pendingWaited = 0f;
-            while (waited < maxWait)
+            while (pendingReads.Count > 0)
             {
-                if (generation != descriptionGeneration) yield break;
-                if (VoiceoverHelper.IsVoiceoverPlaying())
+                PendingRead read = pendingReads[0];
+                int generation = cancelGeneration;
+
+                if (read.WaitForVoiceover)
                 {
-                    pendingWaited = 0f; // real audio playing — reset the pending grace
+                    // Wait until no voiced audio is playing or pending. A bubble that is only
+                    // *pending* (tagged voiced but never actually plays) is tolerated for at
+                    // most PendingAudioStartGraceSeconds, then we read the subtitle anyway —
+                    // see the const's comment for why (avoids the one-line-late wedge on
+                    // unvoiced dialogue).
+                    float maxWait = 30f; // Safety timeout
+                    float waited = 0f;
+                    float pendingWaited = 0f;
+                    while (waited < maxWait && generation == cancelGeneration)
+                    {
+                        if (VoiceoverHelper.IsVoiceoverPlaying())
+                        {
+                            pendingWaited = 0f; // real audio playing — reset the pending grace
+                        }
+                        else if (VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+                        {
+                            pendingWaited += 0.2f;
+                            if (pendingWaited >= PendingAudioStartGraceSeconds) break;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                        yield return new WaitForSeconds(0.2f);
+                        waited += 0.2f;
+                    }
+
+                    // Small extra delay for natural pacing after audio stops
+                    if (generation == cancelGeneration) yield return new WaitForSeconds(0.3f);
                 }
-                else if (VoiceoverHelper.HasPendingOrActiveVoicedAudio())
+
+                // Cancelled (or the queue was rebuilt) while we waited: drop this line and
+                // re-check what, if anything, arrived after the skip.
+                if (generation != cancelGeneration ||
+                    pendingReads.Count == 0 || !ReferenceEquals(pendingReads[0], read))
                 {
-                    pendingWaited += 0.2f;
-                    if (pendingWaited >= PendingAudioStartGraceSeconds) break;
+                    yield return null;
+                    continue;
                 }
-                else
+
+                pendingReads.RemoveAt(0);
+
+                try
                 {
-                    break;
+                    ScreenReaderManager.SpeakDirect(read.Text, false);
+
+                    if (read.PromptToContinue ||
+                        (read.PromptIfDescriptionShowing && Drama.isConversationOn && !Drama.isCutsceneOn &&
+                         VoiceoverHelper.HasActiveDescriptionBubbles()))
+                    {
+                        ScreenReaderManager.SpeakDirect("Press Enter to continue", false);
+                    }
                 }
-                yield return new WaitForSeconds(0.2f);
-                waited += 0.2f;
+                catch (Exception ex)
+                {
+                    MelonLogger.Error($"Error speaking queued conversation line: {ex.Message}");
+                }
             }
 
-            if (generation != descriptionGeneration) yield break;
-
-            // Small extra delay for natural pacing after audio stops
-            yield return new WaitForSeconds(0.3f);
-
-            if (generation != descriptionGeneration) yield break;
-
-            // Queue (don't interrupt the voiced line's own subtitle read if it speaks too)
-            ScreenReaderManager.SpeakDirect(text, false);
-
-            // Prompt to continue if the description is still the bubble awaiting advance.
-            if (Drama.isConversationOn && !Drama.isCutsceneOn && VoiceoverHelper.HasActiveDescriptionBubbles())
-            {
-                ScreenReaderManager.SpeakDirect("Press Enter to continue", false);
-            }
+            pumpRunning = false;
         }
     }
 

@@ -48,6 +48,11 @@ namespace Wasteland2AccessibilityMod.Core
             // Reset suppression flags each frame
             InputSuppressor.Reset();
 
+            // Mark the release of an Enter press we already consumed, so the game doesn't
+            // advance the conversation a second time on the key-up. Must run before the
+            // game's Update — see KeyReleaseGuard.
+            KeyReleaseGuard.Tick();
+
             // During a cutscene or movie, step out of the way entirely so the game's
             // native skip path (MoviePlayerCamera.OnButtonDown, HUD_Controller.OnButtonDown)
             // receives Enter/Escape. We still fire deactivation callbacks below so
@@ -115,6 +120,16 @@ namespace Wasteland2AccessibilityMod.Core
                     "Press the help key in any menu or cursor to hear its controls. " +
                     "No accessibility context is active right now.");
                 InputConsumedThisFrame = true;
+            }
+
+            // If a state took this frame's Enter, claim the matching key-up too. The game
+            // binds Enter to "Attack Current Target" and BubbleTextManager.Update() advances
+            // dialogue on that button's RELEASE, so leaving the release unclaimed lets one
+            // press advance twice.
+            if (InputConsumedThisFrame &&
+                (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
+            {
+                KeyReleaseGuard.ConsumeEnterPress();
             }
         }
 

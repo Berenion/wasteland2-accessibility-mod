@@ -94,6 +94,10 @@ namespace Wasteland2AccessibilityMod
         {
             MelonLogger.Msg("Applying Harmony patches...");
 
+            // cInput lives in Assembly-CSharp-firstpass.dll, which the mod doesn't
+            // reference, so this one is resolved by name and patched by hand.
+            KeyReleaseGuard.ApplyPatch(HarmonyInstance);
+
             // Capture initial camera rotation for lock
             CameraLock.ResetToNorth();
         }
