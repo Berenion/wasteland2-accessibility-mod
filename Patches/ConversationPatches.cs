@@ -1,4 +1,4 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using MelonLoader;
 using System;
 using System.Collections;
@@ -112,12 +112,31 @@ namespace Wasteland2AccessibilityMod.Patches
     [HarmonyPatch(typeof(BubbleTextManager.BubbleTextInfo), "EmitToTextWindow")]
     public class BubbleTextInfo_EmitToTextWindow_Patch
     {
+        /// <summary>
+        /// The bubble currently inside EmitToTextWindow, or null when no emit is in flight.
+        ///
+        /// EmitToTextWindow is the single place that fans a bubble out to the HUD text log
+        /// (HUD_Controller.QueueTextDescription) and — for conversation-kind bubbles only —
+        /// to ConversationHUD.AddText. The description patch needs to tell those two sources
+        /// apart: a line that also reaches AddText is announced there, but a bark only ever
+        /// reaches the log, so it must not be filtered out as a conversation duplicate.
+        /// </summary>
+        public static BubbleTextManager.BubbleTextInfo CurrentEmit { get; private set; }
+
         [HarmonyPrefix]
         public static void Prefix(BubbleTextManager.BubbleTextInfo __instance)
         {
+            CurrentEmit = __instance;
             if (__instance == null) return;
             BubbleTextManager_Print_Patch.SetMetadata(
                 __instance.textKind, __instance.audioName, __instance.hasClickToContinue);
+        }
+
+        // Finalizer rather than a postfix so the reference is cleared even if the emit throws.
+        [HarmonyFinalizer]
+        public static void Finalizer()
+        {
+            CurrentEmit = null;
         }
     }
 

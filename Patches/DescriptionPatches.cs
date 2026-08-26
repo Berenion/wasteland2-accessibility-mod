@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using HarmonyLib;
 using MelonLoader;
 
@@ -39,10 +39,20 @@ namespace Wasteland2AccessibilityMod.Patches
                 if (string.IsNullOrEmpty(newText)) return;
 
                 // During active conversations, ConversationPatches.AddText handles dialogue text
-                // to avoid duplicate announcements (both patches fire from EmitToTextWindow)
+                // to avoid duplicate announcements (both patches fire from EmitToTextWindow).
+                //
+                // Barks are the exception: EmitToTextWindow only forwards conversation-kind
+                // bubbles to ConversationHUD.AddText, so a bark raised from inside a drama
+                // (cmd.bark / cmd.barkOther — e.g. the Howdy/Jill exchange on the second
+                // "Rangers" topic in AZ5_Howdy) reaches this log and nothing else. Skipping it
+                // here left that whole exchange silent while the drama waited it out.
                 if (Drama.isConversationOn && textType == HUD_Controller.TextType.Conversation)
                 {
-                    return;
+                    var emitting = BubbleTextInfo_EmitToTextWindow_Patch.CurrentEmit;
+                    if (emitting == null || !emitting.isBarkText)
+                    {
+                        return;
+                    }
                 }
 
                 // Clean and speak the text

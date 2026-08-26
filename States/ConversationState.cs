@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -235,13 +235,25 @@ namespace Wasteland2AccessibilityMod.States
             // wait" is wrong and traps Enter; distinguish them by the click-to-continue prompt.
             if (IsConversationLoading)
             {
-                bool awaitingAdvance = IsAwaitingAdvance();
+                bool advanceKey = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
+                bool navKey = Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
+                              Input.GetKeyDown(KeyCode.Home) || Input.GetKeyDown(KeyCode.End);
+                if (!advanceKey && !navKey) return false;
 
-                if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+                bool awaitingAdvance = IsAwaitingAdvance();
+                // Barks (cmd.bark / cmd.barkOther) run a multi-speaker exchange inside the
+                // conversation while waitState stays None and no click-to-continue appears —
+                // the drama simply blocks until each bark's life expires. That is dialogue in
+                // progress, not the setup dead zone, so don't call it "loading": Enter flushes
+                // the current bark the same way it skips a spoken line. Checked only on a key
+                // press so the reflection scan stays off the per-frame path.
+                bool barkPlaying = !awaitingAdvance && VoiceoverHelper.HasActiveBarkBubbles();
+
+                if (advanceKey)
                 {
-                    // A shown line waiting to advance: advance it. Otherwise it's the pre-input
-                    // dead zone — swallow the key and say we're still loading.
-                    if (awaitingAdvance)
+                    // A shown line waiting to advance, or a bark playing: flush it. Otherwise
+                    // it's the pre-input dead zone — swallow the key and say we're still loading.
+                    if (awaitingAdvance || barkPlaying)
                         SkipCurrentDialogue();
                     else
                         SpeakHintThrottled("Loading, please wait");
@@ -250,15 +262,12 @@ namespace Wasteland2AccessibilityMod.States
                     return true;
                 }
 
-                if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow) ||
-                    Input.GetKeyDown(KeyCode.Home) || Input.GetKeyDown(KeyCode.End))
-                {
-                    SpeakHintThrottled(awaitingAdvance ? "Press Enter to continue" : "Loading, please wait");
-                    InputSuppressor.ShouldSuppressGameInput = true;
-                    InputSuppressor.ShouldSuppressUINavigation = true;
-                    return true;
-                }
-                return false;
+                SpeakHintThrottled(awaitingAdvance ? "Press Enter to continue"
+                    : barkPlaying ? "Press Enter to skip"
+                    : "Loading, please wait");
+                InputSuppressor.ShouldSuppressGameInput = true;
+                InputSuppressor.ShouldSuppressUINavigation = true;
+                return true;
             }
 
             // === Input mode: full option navigation ===

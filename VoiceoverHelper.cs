@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -207,6 +207,52 @@ namespace Wasteland2AccessibilityMod
             catch (Exception ex)
             {
                 MelonLogger.Error($"Error checking description bubbles: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if BubbleTextManager is currently showing a bark bubble
+        /// (Bark, BarkSpecial, AudioBark, PositionedAudioBark, RadioBark).
+        ///
+        /// Dramas use barks for multi-speaker exchanges inside a conversation
+        /// (cmd.bark / cmd.barkOther). While one is up the conversation sits at
+        /// DramaGUI.WaitState.None with no click-to-continue prompt, which is
+        /// indistinguishable from the pre-input "loading" dead zone without this check.
+        /// </summary>
+        public static bool HasActiveBarkBubbles()
+        {
+            try
+            {
+                var bubbleTextInfos = BubbleTextReflection.GetBubbleTextInfos();
+                if (bubbleTextInfos == null || bubbleTextInfos.Count == 0) return false;
+
+                foreach (var btInfo in bubbleTextInfos)
+                {
+                    if (btInfo == null) continue;
+
+                    Type btInfoType = btInfo.GetType();
+                    FieldInfo textKindField = btInfoType.GetField("textKind");
+                    if (textKindField == null) continue;
+                    object textKindValue = textKindField.GetValue(btInfo);
+                    if (textKindValue == null) continue;
+                    string textKindName = textKindValue.ToString();
+
+                    if (textKindName == "Bark" ||
+                        textKindName == "BarkSpecial" ||
+                        textKindName == "AudioBark" ||
+                        textKindName == "PositionedAudioBark" ||
+                        textKindName == "RadioBark")
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"Error checking bark bubbles: {ex.Message}");
                 return false;
             }
         }
