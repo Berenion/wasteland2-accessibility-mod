@@ -6,7 +6,7 @@
 //! progress back over a channel that the frame drains in its idle handler, so
 //! the window never freezes mid-install.
 
-use crate::core::{flow, paths, uninstall};
+use crate::core::{flow, paths, uninstall, vcredist};
 use crate::speech;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -92,6 +92,12 @@ pub fn run() {
             true,
         );
 
+        // Surface a missing VC++ runtime up front: it's the one prerequisite we
+        // don't install, and without it MelonLoader silently fails to load.
+        if let Some(advice) = vcredist::check().advice() {
+            announce(&log, &format!("Warning: {advice}"), false);
+        }
+
         let shared = Rc::new(Shared {
             rx: RefCell::new(None),
             busy: Cell::new(false),
@@ -139,6 +145,10 @@ pub fn run() {
                             Some(v) => format!("Installed: {v}"),
                             None => "Installed: none managed by this installer".to_string(),
                         }));
+                        let _ = tx.send(Msg::Line(plan.vcredist.summary()));
+                        if let Some(advice) = plan.vcredist.advice() {
+                            let _ = tx.send(Msg::Line(format!("Warning: {advice}")));
+                        }
                         format!("Action would be: {}", plan.summary())
                     });
                     let _ = tx.send(Msg::Done(result));

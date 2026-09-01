@@ -58,9 +58,17 @@ Write-Host "Building installer (release)..." -ForegroundColor Cyan
 # and gate on the real exit code instead.
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
-& $cargo build --release --manifest-path (Join-Path $root 'Cargo.toml')
-$code = $LASTEXITCODE
-$ErrorActionPreference = $prevEap
+# Build from installer\ rather than via --manifest-path: cargo resolves
+# .cargo\config.toml from the working directory, and that file is what turns on
+# the static CRT (see the comment in it).
+Push-Location $root
+try {
+    & $cargo build --release
+    $code = $LASTEXITCODE
+} finally {
+    Pop-Location
+    $ErrorActionPreference = $prevEap
+}
 if ($code -ne 0) { throw "cargo build failed (exit $code)." }
 
 $builtExe = Join-Path $root 'target\release\wl2-access-installer.exe'

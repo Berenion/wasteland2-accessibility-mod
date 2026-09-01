@@ -8,6 +8,7 @@ pub mod manifest;
 pub mod detect;
 pub mod install;
 pub mod melonloader;
+pub mod vcredist;
 pub mod process;
 pub mod flow;
 pub mod uninstall;

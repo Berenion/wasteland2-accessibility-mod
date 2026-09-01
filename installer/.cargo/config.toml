@@ -1,0 +1,18 @@
+# Link the CRT statically.
+#
+# The installer's whole job is to set up a machine that may be missing the
+# Visual C++ redistributable — and core::vcredist exists to say so. With the
+# default dynamic CRT the exe imports MSVCP140.dll / VCRUNTIME140.dll, so on
+# exactly that machine Windows refuses to start it ("MSVCP140.dll was not
+# found") and the check never runs. Static linking makes the installer
+# self-contained so it can deliver the diagnosis.
+#
+# wxdragon-sys reads crt-static out of CARGO_CFG_TARGET_FEATURE and builds
+# wxWidgets and its C++ glue with CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded to
+# match, so both halves of the binary agree on the runtime.
+#
+# Note: cargo resolves .cargo/config.toml from the working directory, not the
+# manifest — build-installer.ps1 therefore builds from this folder. A build run
+# with --manifest-path from elsewhere would silently miss this.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -125,7 +125,12 @@ fn install_flow(opts: &Options) -> Result<String, String> {
         Some(v) => println!("Installed version: {v}"),
         None => println!("Installed version: none managed by this installer"),
     }
+    println!("{}", plan.vcredist.summary());
     println!("Action: {}", plan.summary());
+
+    if let Some(advice) = plan.vcredist.advice() {
+        println!("\nWarning: {advice}");
+    }
 
     if plan.melonloader_incompatible {
         println!(

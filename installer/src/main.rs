@@ -50,11 +50,39 @@ fn main() {
 /// In a GUI-subsystem build there's no console, so CLI output would vanish.
 /// Attaching to the parent process's console lets println!/eprintln! reach the
 /// terminal that launched us. No-op if there's no parent console.
+///
+/// AttachConsole repoints the standard handles at the console it attaches to,
+/// which would throw away any redirection the launcher set up — `installer.exe
+/// --check > log.txt` would write an empty file and print to the screen instead.
+/// So we save the handles first and restore the ones that were already valid,
+/// keeping the redirect while a plain terminal launch still gets the console.
 #[cfg(windows)]
 fn attach_parent_console() {
-    use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+    use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Console::{
+        ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE,
+        STD_OUTPUT_HANDLE, SetStdHandle,
+    };
+
+    /// A handle we were actually given. Null means the launcher set none (a
+    /// double-click, or elevation, which doesn't pass handles across).
+    fn inherited(h: HANDLE) -> bool {
+        !h.is_null() && h != INVALID_HANDLE_VALUE
+    }
+
     unsafe {
-        AttachConsole(ATTACH_PARENT_PROCESS);
+        let ids = [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE];
+        let saved = ids.map(|id| (id, GetStdHandle(id)));
+        if AttachConsole(ATTACH_PARENT_PROCESS) == 0 {
+            return;
+        }
+        // Console handles are only usable once attached, so this also makes the
+        // inherited ones live — restore them all rather than only file/pipe ones.
+        for (id, handle) in saved {
+            if inherited(handle) {
+                SetStdHandle(id, handle);
+            }
+        }
     }
 }
 

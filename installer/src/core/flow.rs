@@ -6,6 +6,7 @@
 use super::detect::{self, InstallState};
 use super::github::{self, Asset};
 use super::install::{self, UpdateDecision};
+use super::vcredist::{self, VcRedistStatus};
 use super::{melonloader, paths, process};
 use std::path::Path;
 
@@ -21,6 +22,9 @@ pub struct Plan {
     pub decision: UpdateDecision,
     pub melonloader_present: bool,
     pub melonloader_incompatible: bool,
+    /// Whether the machine has the VC++ runtime MelonLoader needs. Reported by
+    /// both front-ends; never blocks the install.
+    pub vcredist: VcRedistStatus,
 }
 
 impl Plan {
@@ -49,6 +53,7 @@ pub fn plan(game_dir: &Path, include_prerelease: bool) -> Result<Plan, String> {
         decision: install::decide(&state, &latest),
         melonloader_present: detect::melonloader_present(game_dir),
         melonloader_incompatible: detect::melonloader_looks_incompatible(game_dir),
+        vcredist: vcredist::check(),
         latest,
         tag: release.tag_name,
         prerelease: release.prerelease,
@@ -88,6 +93,12 @@ pub fn apply<F: FnMut(&str)>(
         || matches!(&state, InstallState::Managed(m) if m.melonloader_installed);
     let manifest = install::install_mod(game_dir, &plan.asset, &plan.latest, &tmp, &state, melon_flag)?;
     let _ = std::fs::remove_file(&tmp);
+
+    // Say it again at the end: a runtime warning printed before a wall of
+    // download progress is a warning the user has already scrolled past.
+    if let Some(advice) = plan.vcredist.advice() {
+        log(&format!("Warning: {advice}"));
+    }
 
     Ok(format!(
         "Done. Installed mod {} ({} files).",
