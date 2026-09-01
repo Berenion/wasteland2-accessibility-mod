@@ -29,6 +29,7 @@ namespace Wasteland2AccessibilityMod.States
                    "the right bracket key orders the ranger to walk to the cursor, backslash scans the tile, X examines, " +
                    "L lists everything within the scan radius of the cursor, comma and period shrink and grow that radius, " +
                    "N names this location so you can find it again, and repeating N on a labelled tile edits it, " +
+                   "P toggles reach checks that say whether you can get to the tile and name the closed door in the way and its coordinates, " +
                    "Home jumps to the selected interactable, Shift Home jumps to the party leader, F toggles camera follow. " +
                    "Scanner: Page Up and Page Down cycle nearby interactables, Ctrl Page Up and Ctrl Page Down cycle category, " +
                    "the Labels category cycles the places you have named, " +
@@ -74,6 +75,19 @@ namespace Wasteland2AccessibilityMod.States
         // the node center are considered "on" this tile.
         // Canonical tile size lives in TileCoordinateSystem.SquareSize.
         private const float TILE_MATCH_RADIUS = TileCoordinateSystem.SquareSize * 0.75f;
+
+        // How far from a cut-off route to look for the shut door that cut it. A carved
+        // doorway pushes the reachable frontier back by roughly the agent radius, and a
+        // door's transform sits at its frame rather than the gap it fills, so the two can
+        // be a couple of metres apart. Three tiles is enough slack for that without
+        // reaching past the doorway into the next room.
+        private const float DOOR_BLOCK_SEARCH_RADIUS = TileCoordinateSystem.SquareSize * 3f;
+
+        // How many teleporters to path-test when working out which one leads into a region
+        // the party cannot walk to. Ordered nearest-destination-first, so the one that leads
+        // there is normally the first or second tried; the cap keeps a level with many
+        // portals from turning one keypress into a stall.
+        private const int MAX_TELEPORTER_TESTS = 6;
 
         // Camera follow
         private bool cameraFollowsCursor = true;
@@ -544,6 +558,13 @@ namespace Wasteland2AccessibilityMod.States
                 return true;
             }
 
+            // P: toggle "can the party actually walk here" checks on the tile cursor.
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                ModConfig.ToggleReachability();
+                return true;
+            }
+
             // F to toggle camera follow
             if (Input.GetKeyDown(KeyCode.F))
             {
@@ -980,11 +1001,7 @@ namespace Wasteland2AccessibilityMod.States
             }
 
             // Grid coordinates
-            string coords = ((int)cursorGridId.x) + ", " + ((int)cursorGridId.z);
-            if (cursorGridId.y > 0)
-            {
-                coords += ", floor " + ((int)cursorGridId.y + 1);
-            }
+            string coords = FormatGridCoords(cursorGridId);
 
             // Objects on this tile
             var interactables = FindInteractablesOnTile();
@@ -1083,6 +1100,15 @@ namespace Wasteland2AccessibilityMod.States
                     parts.Add(los);
             }
 
+            // Whether the selected ranger could actually walk here, and what is shut in
+            // the way when they can't (opt-in, toggled with P).
+            if (ModConfig.AnnounceReachability)
+            {
+                string reach = GetReachabilityDescription();
+                if (!string.IsNullOrEmpty(reach))
+                    parts.Add(reach);
+            }
+
             if (node != null)
             {
                 // Linked node info (doors/ladders)
@@ -1146,6 +1172,19 @@ namespace Wasteland2AccessibilityMod.States
             ScreenReaderManager.SpeakInterrupt(announcement);
         }
 
+        /// <summary>
+        /// Spoken grid coordinate for a tile, e.g. "42, 17" or "42, 17, floor 2". Storeys
+        /// are spoken 1-based because that is how the game's own UI counts them, while the
+        /// grid id's y component is 0-based.
+        /// </summary>
+        private static string FormatGridCoords(Vector3 gridId)
+        {
+            string coords = ((int)gridId.x) + ", " + ((int)gridId.z);
+            if (gridId.y > 0)
+                coords += ", floor " + ((int)gridId.y + 1);
+            return coords;
+        }
+
         private string GetCoverDescription(CombatAStarNode node)
         {
             if (node == null || node.cover == null) return "No cover info";
@@ -1183,6 +1222,191 @@ namespace Wasteland2AccessibilityMod.States
             {
                 return null;
             }
+        }
+
+        // "reachable" / "no route" / "behind Wooden Door, closed" / "nothing walkable
+        // nearby" for the tile under the cursor, or null when there is no selected ranger
+        // to walk there or the route could not be settled either way.
+        //
+        // The question is "can this ranger get to this thing", not "can one stand on this
+        // exact tile" — the things worth pointing the cursor at sit on tiles you walk up
+        // beside, not onto — so PathReachabilityHelper paths to the nearest walkable ground
+        // within the game's own 3 m interact range of the tile. That makes this a different
+        // question from GetLineOfSight above, which asks whether the tile can be *seen*,
+        // and why the two can disagree on the same tile.
+        private string GetReachabilityDescription()
+        {
+            PC pc = GetPartyLeader();
+            if (pc == null) return null;
+
+            PathProbe probe;
+            try
+            {
+                probe = PathReachabilityHelper.Probe(pc, cursorPosition);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning($"[MapCursorState] reachability probe failed: {ex.Message}");
+                return null;
+            }
+
+            ModLog.Debug($"[Reachability] tile={cursorGridId} pos={cursorPosition} "
+                + $"approach={probe.ApproachFound} sampleOffset={probe.SampleOffset:F2} "
+                + $"queried={probe.Queried} agentQuery={probe.UsedAgentQuery} status={probe.Status} "
+                + $"corners={probe.CornerCount} hops={probe.Hops} frontierGap={probe.FrontierGap:F2} "
+                + $"regionGap={probe.RegionGap:F2} separate={probe.SeparateRegion} "
+                + $"complete={probe.Complete} inconclusive={probe.Inconclusive}");
+
+            if (!probe.ApproachFound) return "nothing walkable nearby";
+
+            // No query could be run at all (agent off the navmesh and the positional
+            // fallback failed too). Say nothing rather than assert a route that was never
+            // tested — a wrong "no route" is worse than a missing line.
+            if (!probe.Queried) return null;
+
+            // The route was still advancing when the hop budget ran out, so neither verdict
+            // is earned. Same rule: say nothing rather than guess.
+            if (probe.Inconclusive) return null;
+
+            if (probe.Complete) return "reachable";
+
+            // The route is cut. A partial path stops where it was cut, which for a shut door
+            // is the doorway itself — and the backwards route stops on its far side, so a
+            // door whose transform sits past the near face is caught there instead. Fall back
+            // to the cursor's own tile for when the tile the user picked IS the blocked
+            // doorway.
+            InteractableNexus door = probe.HasFrontier ? FindClosedDoorNear(probe.Frontier) : null;
+            if (door == null && probe.HasReverseFrontier) door = FindClosedDoorNear(probe.ReverseFrontier);
+            if (door == null) door = FindClosedDoorNear(cursorPosition);
+
+            if (door != null)
+            {
+                // GetInteractableName already appends "closed" (and "locked" once the party
+                // has examined it). The door's own coordinates follow so the cursor can be
+                // walked straight to it — the whole reads "behind Cell Door, closed, locked,
+                // at 42, 17". TileCoordinateSystem.GetGridId rather than a grid lookup:
+                // doors sit in wall gaps that often have no walkable node of their own.
+                string name = GetInteractableName(door);
+                if (!string.IsNullOrEmpty(name))
+                    return "behind " + name + ", at "
+                        + FormatGridCoords(TileCoordinateSystem.GetGridId(door.transform.position));
+            }
+
+            // Both ends of the break are far apart, so there is no obstacle between them to
+            // name: the target is on a piece of navmesh that simply does not join this one.
+            // The levels place their interiors and sub-areas well away from the exterior in
+            // world space and connect them with a teleporter rather than ground, so the
+            // useful answer is not "you can't get there" but "here is the way in".
+            if (probe.SeparateRegion)
+            {
+                InteractableNexus portal = FindTeleporterInto(probe.Approach, probe.AreaMask);
+                if (portal != null)
+                {
+                    string portalName = GetInteractableName(portal);
+                    if (!string.IsNullOrEmpty(portalName))
+                        return "through " + portalName + ", at "
+                            + FormatGridCoords(TileCoordinateSystem.GetGridId(portal.transform.position));
+                }
+                return "separate area, no way there on foot";
+            }
+
+            return "no route";
+        }
+
+        /// <summary>
+        /// The teleporter that lands the party in the same pocket of navmesh as
+        /// <paramref name="approach"/>, or null when nothing found leads there.
+        ///
+        /// InteractableTeleporter.targetTransform is where DoTeleport warps the party to, so
+        /// a teleporter leads into the target's region exactly when that transform can walk
+        /// to the target. Candidates are tried nearest-destination-first and capped, because
+        /// each test is a path query and this runs on a keypress.
+        /// </summary>
+        private InteractableNexus FindTeleporterInto(Vector3 approach, int areaMask)
+        {
+            FOWHelper.UpdateActivationTracking();
+
+            var candidates = new List<KeyValuePair<float, InteractableNexus>>();
+
+            foreach (var nexus in InteractableNexus.interactables)
+            {
+                if (nexus == null) continue;
+                if (nexus.isPC) continue;
+
+                var teleporter = nexus.drama as InteractableTeleporter;
+                if (teleporter == null) teleporter = nexus.GetComponent<InteractableTeleporter>();
+                if (teleporter == null || teleporter.targetTransform == null) continue;
+
+                // Same gate as everything else the cursor names, so an undiscovered way in
+                // stays hidden under normal fog.
+                if (!FOWHelper.PassesScannerGate(nexus)) continue;
+
+                float d = Vector3.Distance(teleporter.targetTransform.position, approach);
+                candidates.Add(new KeyValuePair<float, InteractableNexus>(d, nexus));
+            }
+
+            candidates.Sort((a, b) => a.Key.CompareTo(b.Key));
+
+            ModLog.Debug($"[Reachability] teleporter candidates={candidates.Count}"
+                + (candidates.Count > 0 ? $" nearestDest={candidates[0].Key:F1}m ({candidates[0].Value.name})" : ""));
+
+            int tested = 0;
+            foreach (var candidate in candidates)
+            {
+                if (tested++ >= MAX_TELEPORTER_TESTS) break;
+
+                var teleporter = candidate.Value.drama as InteractableTeleporter;
+                if (teleporter == null) teleporter = candidate.Value.GetComponent<InteractableTeleporter>();
+                if (teleporter == null || teleporter.targetTransform == null) continue;
+
+                if (PathReachabilityHelper.Connected(teleporter.targetTransform.position, approach, areaMask))
+                    return candidate.Value;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Nearest shut door to <paramref name="point"/> within DOOR_BLOCK_SEARCH_RADIUS,
+        /// or null when there is none. Open, broken and blown-apart doors are skipped —
+        /// you can walk through those, so they are never what is blocking a route.
+        /// Undiscovered doors are skipped too (the same scanner gate everything else the
+        /// cursor reports goes through), so a route blocked out in unexplored fog reads as
+        /// a plain "no route" instead of naming a door the party has not found yet.
+        /// </summary>
+        private InteractableNexus FindClosedDoorNear(Vector3 point)
+        {
+            FOWHelper.UpdateActivationTracking();
+
+            InteractableNexus best = null;
+            float bestSq = DOOR_BLOCK_SEARCH_RADIUS * DOOR_BLOCK_SEARCH_RADIUS;
+
+            foreach (var nexus in InteractableNexus.interactables)
+            {
+                if (nexus == null) continue;
+                if (nexus.isPC) continue;
+
+                var io = nexus.GetComponent<InteractableObject>();
+                if (io == null) io = nexus.drama as InteractableObject;
+
+                if (!LooksLikeOpenableDoor(nexus, io)) continue;
+                if (io != null && (io.isExploded || io.isBroken)) continue;
+                if (ResolveDoorOpen(nexus, io)) continue;
+                if (!FOWHelper.PassesScannerGate(nexus)) continue;
+
+                Vector3 p = nexus.transform.position;
+                float dx = p.x - point.x;
+                float dy = p.y - point.y;
+                float dz = p.z - point.z;
+                float sq = dx * dx + dy * dy + dz * dz;
+                if (sq < bestSq)
+                {
+                    bestSq = sq;
+                    best = nexus;
+                }
+            }
+
+            return best;
         }
 
         // --- Object Finding ---

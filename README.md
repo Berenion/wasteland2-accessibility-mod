@@ -78,6 +78,7 @@ The settings menu (Shift+S, available anywhere) lists every setting below as a n
 - UseTileDistances (default on): report distances in tiles when a combat grid is available (one tile is about 1.6 metres); otherwise in metres.
 - ConveyElevation (default on): announce terrain height changes and height relative to the party. Toggle with H.
 - AnnounceLineOfSight (default off): say whether a tile is in sight of the active character (perception in exploration, clear line of fire in combat). Toggle with Y.
+- AnnounceReachability (default off): say whether the selected ranger could get to the tile the exploration cursor is on, and name the shut door in the way, and its coordinates, when they could not. Reaching means being able to walk up to it, so a container or corpse you can stand beside counts even though its own tile is not walkable. Toggle with P.
 - AnnouncePartyStopped (default on): announce when the party finishes an ordered move and comes to rest, in exploration and on the world map. When members move separately (ungrouped), the one that stopped is named.
 - ScannerCategorySounds (default on): play a short sound cue when a new item enters the exploration scanner, with a distinct sound per category (characters, containers, objects, exits, examine, loot, and a generic cue for miscellaneous). Party members get no cue.
 - CursorBlockedByTerrain (default off): confine the exploration grid cursor to walkable ground. When on, a single step onto a wall or terrain tile is refused and the obstruction is announced instead of the cursor passing through. Multi-tile moves always stop at walls regardless.
@@ -155,7 +156,7 @@ Exploration, grid cursor:
 - ]: order the selected ranger to walk to the cursor.
 - Home: jump the cursor to the selected interactable (the one from the scanner). End: distance and direction to it.
 - Shift+Home: jump the cursor to the party leader. Shift+End: distance and direction to the leader.
-- F: toggle camera-follows-cursor. K: toggle announcement order. H: toggle elevation announcements. Y: toggle line-of-sight announcements.
+- F: toggle camera-follows-cursor. K: toggle announcement order. H: toggle elevation announcements. Y: toggle line-of-sight announcements. P: toggle reach checks.
 - Escape: cancel an active free-aim or item mode; with none active, open the pause menu.
 Context menus and selection lists use the baseline keys.
 

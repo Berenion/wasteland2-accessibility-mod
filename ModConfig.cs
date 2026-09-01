@@ -12,6 +12,7 @@ namespace Wasteland2AccessibilityMod
         private static MelonPreferences_Entry<bool> useTileDistancesEntry;
         private static MelonPreferences_Entry<bool> conveyElevationEntry;
         private static MelonPreferences_Entry<bool> announceLineOfSightEntry;
+        private static MelonPreferences_Entry<bool> announceReachabilityEntry;
         private static MelonPreferences_Entry<bool> announcePartyStoppedEntry;
         private static MelonPreferences_Entry<bool> scannerCategorySoundsEntry;
         private static MelonPreferences_Entry<bool> cursorBlockedByTerrainEntry;
@@ -24,6 +25,7 @@ namespace Wasteland2AccessibilityMod
         public static bool UseTileDistances { get; private set; } = true;
         public static bool ConveyElevation { get; private set; } = true;
         public static bool AnnounceLineOfSight { get; private set; } = false;
+        public static bool AnnounceReachability { get; private set; } = false;
         public static bool AnnouncePartyStopped { get; private set; } = true;
         public static bool ScannerCategorySounds { get; private set; } = true;
         public static bool CursorBlockedByTerrain { get; private set; } = false;
@@ -120,6 +122,13 @@ namespace Wasteland2AccessibilityMod
                 "If true, the exploration tile cursor also announces whether the tile is within line of sight of the selected character (clear physics LOS within that character's perception range)."
             );
 
+            announceReachabilityEntry = configCategory.CreateEntry(
+                "AnnounceReachability",
+                false,
+                "Announce Reachability",
+                "If true, the exploration tile cursor also announces whether the selected ranger could get to the tile, and names the shut door blocking the way, with its coordinates, when there is one. Reaching means being able to walk up to it within the game's own interact range, so a container or corpse you can stand beside counts as reachable even though its own tile is not walkable."
+            );
+
             announcePartyStoppedEntry = configCategory.CreateEntry(
                 "AnnouncePartyStopped",
                 true,
@@ -173,6 +182,7 @@ namespace Wasteland2AccessibilityMod
                 new Setting("Distance units", () => UseTileDistances, FlipTileDistances, "tiles", "meters"),
                 new Setting("Elevation announcements", () => ConveyElevation, FlipConveyElevation, "on", "off"),
                 new Setting("Line of sight announcements", () => AnnounceLineOfSight, FlipLineOfSight, "on", "off"),
+                new Setting("Reachability announcements", () => AnnounceReachability, FlipReachability, "on", "off"),
                 new Setting("Party stopped notification", () => AnnouncePartyStopped, FlipPartyStopped, "on", "off"),
                 new Setting("Scanner category sounds", () => ScannerCategorySounds, FlipScannerCategorySounds, "on", "off"),
                 new Setting("Cursor stops at walls", () => CursorBlockedByTerrain, FlipCursorBlockedByTerrain, "on", "off"),
@@ -181,7 +191,7 @@ namespace Wasteland2AccessibilityMod
                 new Setting("Debug logging", () => DebugLogging, FlipDebugLogging, "on", "off"),
             };
 
-            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Party stopped: {AnnouncePartyStopped}, Scanner sounds: {ScannerCategorySounds}, Cursor stops at walls: {CursorBlockedByTerrain}, Output mode: {OutputModeText(OutputMode)}, Debug logging: {DebugLogging}");
+            MelonLogger.Msg($"Configuration loaded - Clock positions: {UseClockPositions}, Object names first: {ObjectNamesFirst}, Tile distances: {UseTileDistances}, Convey elevation: {ConveyElevation}, Line of sight: {AnnounceLineOfSight}, Reachability: {AnnounceReachability}, Party stopped: {AnnouncePartyStopped}, Scanner sounds: {ScannerCategorySounds}, Cursor stops at walls: {CursorBlockedByTerrain}, Output mode: {OutputModeText(OutputMode)}, Debug logging: {DebugLogging}");
         }
 
         public static void LoadConfig()
@@ -191,6 +201,7 @@ namespace Wasteland2AccessibilityMod
             UseTileDistances = useTileDistancesEntry.Value;
             ConveyElevation = conveyElevationEntry.Value;
             AnnounceLineOfSight = announceLineOfSightEntry.Value;
+            AnnounceReachability = announceReachabilityEntry.Value;
             AnnouncePartyStopped = announcePartyStoppedEntry.Value;
             ScannerCategorySounds = scannerCategorySoundsEntry.Value;
             CursorBlockedByTerrain = cursorBlockedByTerrainEntry.Value;
@@ -289,6 +300,13 @@ namespace Wasteland2AccessibilityMod
             configCategory.SaveToFile();
         }
 
+        private static void FlipReachability()
+        {
+            AnnounceReachability = !AnnounceReachability;
+            announceReachabilityEntry.Value = AnnounceReachability;
+            configCategory.SaveToFile();
+        }
+
         private static void FlipPartyStopped()
         {
             AnnouncePartyStopped = !AnnouncePartyStopped;
@@ -357,6 +375,14 @@ namespace Wasteland2AccessibilityMod
             string mode = AnnounceLineOfSight ? "on" : "off";
             MelonLogger.Msg($"Line of sight announcements changed to: {mode}");
             ScreenReaderManager.SpeakInterrupt($"Line of sight announcements {mode}");
+        }
+
+        public static void ToggleReachability()
+        {
+            FlipReachability();
+            string mode = AnnounceReachability ? "on" : "off";
+            MelonLogger.Msg($"Reachability announcements changed to: {mode}");
+            ScreenReaderManager.SpeakInterrupt($"Reachability announcements {mode}");
         }
     }
 }
