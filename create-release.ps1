@@ -21,7 +21,9 @@
   only builds the assets into dist\ and prints what would be uploaded.
 
 .PARAMETER Notes
-  Optional release notes. Defaults to a minimal auto-generated line.
+  Optional release notes. Defaults to this version's section of CHANGELOG.md,
+  which is what every release since 0.8.5 has used; falls back to a one-line
+  placeholder if the changelog has no section for the version being built.
 #>
 param(
     [switch]$Publish,
@@ -59,13 +61,32 @@ if (-not $Publish) {
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
     throw "gh CLI not found. Install it from https://cli.github.com/ to publish."
 }
-if (-not $Notes) { $Notes = "Wasteland 2 Accessibility Mod $tag (beta prerelease)." }
+# Default the notes to this version's changelog section. Read through .NET rather
+# than Get-Content: PS 5.1 decodes a BOM-less file as the system ANSI codepage,
+# which turns every em dash in the changelog into mojibake.
+if (-not $Notes) {
+    $changelog = "$root\CHANGELOG.md"
+    if (Test-Path $changelog) {
+        $text = [System.IO.File]::ReadAllText($changelog, [System.Text.Encoding]::UTF8)
+        # "## [0.8.8-beta] - 2026-09-04" through to the next "## [" heading.
+        $m = [regex]::Match($text, "(?ms)^\#\# \[" + [regex]::Escape($version) + ".*?(?=^\#\# \[|\z)")
+        if ($m.Success) { $Notes = $m.Value.TrimEnd() }
+    }
+    if (-not $Notes) {
+        Write-Host "No CHANGELOG.md section for $version; using placeholder notes." -ForegroundColor Yellow
+        $Notes = "Wasteland 2 Accessibility Mod $tag (beta prerelease)."
+    }
+}
 
 # Pass notes via a temp file, not --notes: a multi-line notes string handed to
 # gh inline gets mangled (backticks/markdown are re-parsed and gh fails with
 # "no matches found"). --notes-file takes the body verbatim.
+#
+# Write it with .NET, not Set-Content -Encoding utf8: on PS 5.1 that emits a BOM,
+# and gh re-decodes the result so the published notes carry a stray BOM and every
+# em dash lands as "a-EUR-". v0.8.7 shipped that way. UTF8Encoding($false) = no BOM.
 $notesFile = Join-Path ([System.IO.Path]::GetTempPath()) "wl2mod-release-notes-$version.md"
-Set-Content -Path $notesFile -Value $Notes -Encoding utf8
+[System.IO.File]::WriteAllText($notesFile, $Notes, (New-Object System.Text.UTF8Encoding $false))
 
 # Create the prerelease, or upload assets to it if the tag already exists.
 # gh writes progress to stderr; relax ErrorActionPreference around the native
